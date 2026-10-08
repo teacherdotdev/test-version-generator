@@ -27,7 +27,6 @@ import {
   mergeSection,
   moveToNewSection,
   splitSection,
-  defaultWorkSpaceOf,
   workSpaceIn,
   placeQuestions,
   rewordSection,
@@ -1082,18 +1081,19 @@ export function createExamStore(options: {
             style: patch.style ?? prior.style,
             fill: patch.fill ?? prior.fill,
           }
+          // "None" picked for a position that sets nothing is the teacher's
+          // own setting even where it prints what the style already prints:
+          // stored as a zero-height Work Space, it stays none when the Exam
+          // later takes a style that rules lines (ADR-0044). A position the
+          // teacher never touched keeps storing nothing.
+          const choosesNone = !hasWorkSpace(next) && !isWorkSpace(currentSpaces[questionId])
           if (
             next.height === prior.height
             && next.style === prior.style
             && next.fill === prior.fill
+            && !choosesNone
           ) continue
-          // No room at all is the absence of a setting, not a stored zero, so
-          // taking work space away leaves the Working Copy as it was before —
-          // unless the Paper Style would rule lines there: then "None" is
-          // the teacher's own setting, stored, and wins over the style.
-          if (hasWorkSpace(next) || hasWorkSpace(defaultWorkSpaceOf(style))) {
-            nextSpaces[questionId] = next
-          } else delete nextSpaces[questionId]
+          nextSpaces[questionId] = next
           changed = true
         }
         return changed

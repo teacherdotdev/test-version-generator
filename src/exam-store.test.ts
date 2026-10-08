@@ -9,7 +9,7 @@ import {
   sectionsOf,
   topicsOf,
 } from './exam'
-import type { Question, SectionTarget } from './exam'
+import { workSpaceOf, type Question, type SectionTarget } from './exam'
 import {
   createAuthoringState,
   createExamStore,
@@ -1755,7 +1755,7 @@ describe('work space', () => {
     expect(store.getState().questionBank.questions[0]).not.toHaveProperty('workSpace')
   })
 
-  test('changes only the fields given, and taking all the room away clears the setting', async () => {
+  test('changes only the fields given, and taking all the room away stores "None"', async () => {
     const { store, questions } = await withExamWorkingCopy(1, 'open')
     const id = questions[0]!.id
 
@@ -1768,7 +1768,26 @@ describe('work space', () => {
     })
 
     store.setQuestionWorkSpace([id], { height: 0, fill: false })
-    expect(store.getState().workingCopy.workSpace?.[id]).toBeUndefined()
+    expect(store.getState().workingCopy.workSpace?.[id]).toEqual({ height: 0, style: 'lines', fill: false })
+  })
+
+  test('keeps "None" picked under Standard as none when the Exam takes a style that rules lines', async () => {
+    const { store, questions } = await withExamWorkingCopy(2, 'open')
+    const [chosen, untouched] = questions.map(({ id }) => id) as [string, string]
+    // Under Standard the position already prints no room; picking None is
+    // still the teacher's own setting.
+    store.setQuestionWorkSpace([chosen], { height: 0, fill: false })
+    expect(store.getState().workingCopy.workSpace?.[chosen]).toEqual({ height: 0, style: 'blank', fill: false })
+    // A position the teacher never touched stores nothing.
+    expect(store.getState().workingCopy.workSpace?.[untouched]).toBeUndefined()
+
+    for (const style of ['classic', 'condensed', 'exam-board'] as const) {
+      store.setPaperStyle(style)
+      const { exam } = store.selectedExam()
+      expect(workSpaceOf(exam, chosen).height, style).toBe(0)
+      // …while the untouched one takes the style's lines.
+      expect(workSpaceOf(exam, untouched), style).toMatchObject({ height: 96, style: 'lines' })
+    }
   })
 
   test('under a Paper Style that rules lines, starts from its lines, and keeps "None" as a setting of its own', async () => {
