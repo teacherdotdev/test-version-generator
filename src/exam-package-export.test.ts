@@ -10,6 +10,7 @@ import {
   type ExamSection,
   type Question,
 } from './exam'
+import type { ProseMirrorJSON } from './question-doc'
 import { unmeasured } from './export-plan'
 import { prepareExport, prepareHistoricalExport, EMPTY_EXPORT_HISTORY, type ExportConfiguration } from './export-preparation'
 import { printFingerprint } from './print-fingerprint'
@@ -375,6 +376,75 @@ describe('a Multipart question in an Exam package', () => {
       parts: [{ id: 'q1-s1', type: 'multiple-choice', choices: [{ correct: true }, { correct: false }] }],
     })
     expect(proposal.exams[0]!.positions).toHaveLength(1)
+  })
+
+  test('travels with a Part’s Subparts in its bank record, as a bare position like its Parts', async () => {
+    const answering = (type: string, id: string, stem: string, answer: ProseMirrorJSON) => ({
+      type,
+      attrs: { id, columns: 2 },
+      content: [{ type: 'multipartPartStem', content: [paragraph(stem)] }, answer],
+    })
+    const survey: Question = {
+      id: 'survey-1',
+      type: 'multipart',
+      columns: 2,
+      doc: {
+        type: 'doc',
+        content: [paragraph('A class counted frogs at a pond.'), {
+          type: 'multipartParts',
+          content: [{
+            type: 'multipartPart',
+            attrs: { id: 'survey-1-b', columns: 2 },
+            content: [
+              { type: 'multipartPartStem', content: [paragraph('The count was highest in April.')] },
+              {
+                type: 'multipartSubparts',
+                content: [
+                  answering('multipartSubpart', 'survey-1-b-i', 'Which season?', {
+                    type: 'multipleChoice',
+                    content: ['Spring', 'Autumn'].map((answer, index) => ({
+                      type: 'multipleChoiceChoice',
+                      attrs: { id: `survey-1-b-i-${index}`, correct: index === 0 },
+                      content: [paragraph(answer)],
+                    })),
+                  }),
+                  answering('multipartSubpart', 'survey-1-b-ii', 'Why?', {
+                    type: 'suggestedAnswer', content: [paragraph('Breeding.')],
+                  }),
+                ],
+              },
+            ],
+          }],
+        }],
+      },
+    }
+    const sheet: Exam = {
+      title: 'Survey',
+      questions: [survey],
+      workSpace: { 'survey-1-b-ii': { height: 64, style: 'lines', fill: false } },
+    }
+    const order: Arrangement = {
+      id: 'exam-draft',
+      letter: 'A',
+      questionOrder: ['survey-1'],
+      choiceOrder: { 'survey-1-b-i': ['survey-1-b-i-1', 'survey-1-b-i-0'] },
+    }
+    const carried = (await examPackage({ exam: sheet, arrangement: order, ownerOf: async () => null, loadMedia: noImages })).package
+
+    // Per-Part and per-Subpart presentation is not carried yet (Exam Record
+    // has nowhere to put it): the position is bare, as a Part's is.
+    expect(carried.exams[0]!.positions).toEqual([{ question: { bank: 'bank-1', question: 'q1' }, section: 0 }])
+    const proposal = await inspectImportRecord(new TextEncoder().encode(JSON.stringify(carried)))
+    expect(proposal.banks[0]!.record.bank.questions[0]).toMatchObject({
+      type: 'multipart',
+      parts: [{
+        id: 'q1-s1',
+        subparts: [
+          { id: 'q1-s1-s1', type: 'multiple-choice', choices: [{ correct: true }, { correct: false }] },
+          { id: 'q1-s1-s2', type: 'short-answer' },
+        ],
+      }],
+    })
   })
 
   test('carries a derived Exam’s legacy section wording on its Sections, with heading size and header lines, and imports them again', async () => {

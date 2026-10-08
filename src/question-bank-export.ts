@@ -7,6 +7,7 @@ import {
   type Difficulty,
   type Question,
   type QuestionType,
+  type Subpart,
 } from './exam'
 import { bankLetter } from './matching'
 import {
@@ -17,7 +18,7 @@ import {
   type ProseMirrorJSON,
 } from './question-doc'
 import type { QuestionBankResource } from './question-bank-workspaces'
-import { PAGE_CONTENT_WIDTH } from './export-plan'
+import { PAGE_CONTENT_WIDTH, subpartLabelAt } from './export-plan'
 import { mediaFilePath } from './package-zip'
 import { jpegOrientation } from './export-media'
 import {
@@ -169,16 +170,38 @@ export function wordBankLettersOf(
  *  Matching or Multipart itself. */
 export type QuestionBankRecordPartType = 'multiple-choice' | 'short-answer'
 
-/** One lettered Part of a Multipart question: its own stem, then the choices of a
- *  Multiple Choice Part or the optional Suggested Answer of a Short Answer
+/** One lettered Part of a Multipart question that answers — or one Subpart of a
+ *  Part, which has the same shape: its own stem, then the choices of a
+ *  Multiple Choice one or the optional Suggested Answer of a Short Answer
  *  one. Answer columns and Work Space are Exam presentation, as they are for a
  *  whole Question, so neither is written here. */
-export type QuestionBankRecordPart = {
+export type QuestionBankRecordAnsweringPart = {
   id: string
   type: QuestionBankRecordPartType
   stem: SemanticDocument
   choices?: QuestionBankRecordChoice[]
   suggestedAnswer?: SemanticDocument
+}
+
+/** A Subpart of a Part, numbered (i), (ii)…: shaped as a Part that answers,
+ *  and never holding Subparts of its own. Added in 0.9.0. */
+export type QuestionBankRecordSubpart = QuestionBankRecordAnsweringPart
+
+/** A Part that holds Subparts: its stem is their lead-in, and it has no type,
+ *  choices or Suggested Answer of its own (ADR-0043). Added in 0.9.0. */
+export type QuestionBankRecordHoldingPart = {
+  id: string
+  stem: SemanticDocument
+  subparts: QuestionBankRecordSubpart[]
+}
+
+/** One lettered Part of a Multipart question: one that answers, or one that holds
+ *  Subparts. */
+export type QuestionBankRecordPart = QuestionBankRecordAnsweringPart | QuestionBankRecordHoldingPart
+
+/** Whether a record Part holds Subparts rather than answering itself. */
+export function holdsSubparts(part: QuestionBankRecordPart): part is QuestionBankRecordHoldingPart {
+  return 'subparts' in part && Array.isArray(part.subparts)
 }
 
 /** One answer of a Multiple Choice or True/False Question or a Multiple
@@ -580,33 +603,21 @@ function portableQuestion(
       parts: partsOf(question).map((part, partIndex): QuestionBankRecordPart => {
         const id = `q${index + 1}-s${partIndex + 1}`
         const where = `Question ${index + 1}, Part ${partLetter(partIndex)}`
-        const stem = semanticStem(part.stem, mediaIds)
-        if (part.type === 'open') {
-          return {
-            id,
-            type: 'short-answer',
-            stem,
-            ...(part.suggestedAnswer
-              ? { suggestedAnswer: semanticDocument(childNodes(part.suggestedAnswer), mediaIds) }
-              : {}),
-          }
+        if (part.type !== 'subparts') {
+          return recordAnsweringPart({ ...part, type: part.type }, id, where, mediaIds)
         }
-        if (part.choices.length < 2) {
-          throw new Error(`${where} must have at least two choices.`)
-        }
-        if (part.choices.filter((choice) => choice.correct).length > 1) {
-          throw new Error(`${where} must have zero or one correct choice.`)
-        }
+        // A Part that holds Subparts is their lead-in alone; each Subpart is
+        // written as a Part that answers, under an id that carries its Part's.
         return {
           id,
-          type: 'multiple-choice',
-          stem,
-          choices: part.choices.map((choice, choiceIndex) => ({
-            id: `${id}-c${choiceIndex + 1}`,
-            content: semanticDocument(childNodes(choice.node), mediaIds),
-            correct: choice.correct,
-            ...recordLockOf(choice),
-          })),
+          stem: semanticStem(part.stem, mediaIds),
+          subparts: part.subparts.map((subpart, subpartIndex) =>
+            recordAnsweringPart(
+              subpart,
+              `${id}-s${subpartIndex + 1}`,
+              `${where} (${subpartLabelAt(subpartIndex)})`,
+              mediaIds,
+            )),
         }
       }),
     }
@@ -632,6 +643,46 @@ function portableQuestion(
       content: semanticDocument(childNodes(choice.node), mediaIds),
       correct: choice.correct,
       ...(question.type === 'multiple-choice' ? recordLockOf(choice) : {}),
+    })),
+  }
+}
+
+/** A Part that answers, or a Subpart, as a record writes it under `id`: a
+ *  Short Answer one with its Suggested Answer, if any, or a Multiple Choice one
+ *  with its choices, held to a Multiple Choice Question's rules. `where` names
+ *  it in an error. */
+function recordAnsweringPart(
+  part: Subpart,
+  id: string,
+  where: string,
+  mediaIds: ReadonlyMap<string, EmbeddedMedia>,
+): QuestionBankRecordAnsweringPart {
+  const stem = semanticStem(part.stem, mediaIds)
+  if (part.type === 'open') {
+    return {
+      id,
+      type: 'short-answer',
+      stem,
+      ...(part.suggestedAnswer
+        ? { suggestedAnswer: semanticDocument(childNodes(part.suggestedAnswer), mediaIds) }
+        : {}),
+    }
+  }
+  if (part.choices.length < 2) {
+    throw new Error(`${where} must have at least two choices.`)
+  }
+  if (part.choices.filter((choice) => choice.correct).length > 1) {
+    throw new Error(`${where} must have zero or one correct choice.`)
+  }
+  return {
+    id,
+    type: 'multiple-choice',
+    stem,
+    choices: part.choices.map((choice, choiceIndex) => ({
+      id: `${id}-c${choiceIndex + 1}`,
+      content: semanticDocument(childNodes(choice.node), mediaIds),
+      correct: choice.correct,
+      ...recordLockOf(choice),
     })),
   }
 }

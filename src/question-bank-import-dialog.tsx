@@ -4,16 +4,22 @@ import {
   RECORD_PART_TYPE_LABELS,
   RECORD_TYPE_LABELS,
   RECORD_TYPE_ORDER,
+  holdsSubparts,
   recordDocumentToEditorNodes,
   wordBankLettersOf,
   type QuestionBankRecordChoice,
+  type QuestionBankRecordPart,
   type QuestionBankRecordQuestion,
   type SemanticDocument,
 } from './question-bank-export'
 import { TopicBadge } from './badges'
 import type { Question } from './exam'
 import { QuestionReading } from './question-reading'
-import type { QuestionReadingContent } from './question-reading-content'
+import {
+  SUBPARTS_LABEL,
+  type QuestionReadingContent,
+  type QuestionReadingPart,
+} from './question-reading-content'
 import { pendingImageOf, plainTextOf, type ProseMirrorJSON } from './question-doc'
 import { isLocked } from './locked-answers'
 import type { ImportProposal, ProposedBank, ProposedExam } from './package-import'
@@ -28,7 +34,7 @@ import {
   setExamAllowed,
   type ImportSelection,
 } from './import-selection'
-import type { LayoutPlan } from './export-plan'
+import { subpartLabelAt, type LayoutPlan } from './export-plan'
 import { domMeasure, imageSourcesOfDocuments } from './dom-measure'
 import { ExportPreview } from './exam-page'
 import { ImportError } from './import-error'
@@ -192,6 +198,26 @@ function readingOfRecordQuestion(
   previewDocument: (document: SemanticDocument) => ProseMirrorJSON[],
 ): QuestionReadingContent {
   const letters = wordBankLettersOf(question)
+  // A Part that holds Subparts reads as its lead-in with its Subparts beneath.
+  const partOf = (part: QuestionBankRecordPart, letter: string): QuestionReadingPart =>
+    holdsSubparts(part)
+      ? {
+          id: part.id,
+          letter,
+          typeLabel: SUBPARTS_LABEL,
+          stem: previewDocument(part.stem),
+          subparts: part.subparts.map((subpart, subpartIndex) => partOf(subpart, subpartLabelAt(subpartIndex))),
+        }
+      : {
+          id: part.id,
+          letter,
+          typeLabel: RECORD_PART_TYPE_LABELS[part.type],
+          stem: previewDocument(part.stem),
+          ...(part.choices ? {
+            choices: part.choices.map((choice) => choiceOf(choice, true)),
+          } : {}),
+          ...(part.suggestedAnswer ? { suggestedAnswer: previewDocument(part.suggestedAnswer) } : {}),
+        }
   // A choice is locked as it will be once imported: as the record says, or
   // by its wording where the record leaves it undecided. True/False never is.
   const choiceOf = (choice: QuestionBankRecordChoice, lockable: boolean) => {
@@ -226,16 +252,7 @@ function readingOfRecordQuestion(
     } : {}),
     ...(question.suggestedAnswer ? { suggestedAnswer: previewDocument(question.suggestedAnswer) } : {}),
     ...(question.parts ? {
-      parts: question.parts.map((part, index) => ({
-        id: part.id,
-        letter: String.fromCharCode(97 + index),
-        typeLabel: RECORD_PART_TYPE_LABELS[part.type],
-        stem: previewDocument(part.stem),
-        ...(part.choices ? {
-          choices: part.choices.map((choice) => choiceOf(choice, true)),
-        } : {}),
-        ...(part.suggestedAnswer ? { suggestedAnswer: previewDocument(part.suggestedAnswer) } : {}),
-      })),
+      parts: question.parts.map((part, index) => partOf(part, String.fromCharCode(97 + index))),
     } : {}),
   }
 }

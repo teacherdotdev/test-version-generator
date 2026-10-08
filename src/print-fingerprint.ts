@@ -259,8 +259,14 @@ function blockLines(
   }
   // A Multipart question's Part opens with its blank and letter, from its own letter
   // column, as a question opens with its number — then its stem, then its
-  // choice grid or work space.
+  // choice grid or work space, or the Subparts it holds, each read the same
+  // way. A Part continued from an earlier page prints neither letter nor
+  // lead-in, so only its Subparts are read.
   if (has(node, 'multipart-part-print')) {
+    if (node.attrs['data-continued'] !== undefined) {
+      const body = find(node, 'part-body')
+      return body ? childBlocks(body, reader) : []
+    }
     const letter = find(node, 'part-letter')
     const body = find(node, 'part-body')
     const text = letter

@@ -164,7 +164,7 @@ export function cleanDocument(value: ProseMirrorJSON): ProseMirrorJSON {
         ? (clean.content as ProseMirrorJSON[])
         : []
       ).filter((child) => child.type === 'multipartPart')
-    } else if (node.type === 'multipartPart') {
+    } else if (node.type === 'multipartPart' || node.type === 'multipartSubpart') {
       const attrs = (node.attrs ?? {}) as Record<string, unknown>
       clean.attrs = {
         id: typeof attrs.id === 'string' ? attrs.id : '',
@@ -172,7 +172,13 @@ export function cleanDocument(value: ProseMirrorJSON): ProseMirrorJSON {
       }
       clean.content = cleanPartContent(
         Array.isArray(clean.content) ? (clean.content as ProseMirrorJSON[]) : [],
+        node.type === 'multipartPart',
       )
+    } else if (node.type === 'multipartSubparts') {
+      clean.content = (Array.isArray(clean.content)
+        ? (clean.content as ProseMirrorJSON[])
+        : []
+      ).filter((child) => child.type === 'multipartSubpart')
     } else if (node.type === 'sideBySide') {
       // Panels only, and no more than three; one left is unwrapped by the
       // editor as soon as it loads.
@@ -231,15 +237,19 @@ function cleanMatchingContent(nodes: ProseMirrorJSON[]): ProseMirrorJSON[] {
   return [...prompts, ...bank]
 }
 
-// A Part's content in the one shape the schema accepts: its stem, then the
-// answer node that makes it the Part it is. A Part that lost its answer node
-// in storage comes back as a Multiple Choice Part, the kind a new one starts
-// as, rather than failing to load.
-function cleanPartContent(nodes: ProseMirrorJSON[]): ProseMirrorJSON[] {
+// A Part's or Subpart's content in the one shape the schema accepts: its
+// stem, then the node that makes it the Part it is — its answers, or, for a
+// Part only, the Subparts it holds. A Part that lost that node in storage, or
+// kept a Subparts box with nothing in it, comes back as a Multiple Choice
+// Part, the kind a new one starts as, rather than failing to load.
+function cleanPartContent(nodes: ProseMirrorJSON[], holdsSubparts: boolean): ProseMirrorJSON[] {
   const stem = nodes.find((node) => node.type === 'multipartPartStem')
     ?? { type: 'multipartPartStem', content: [{ type: 'paragraph' }] }
   const answer = nodes.find(
-    (node) => node.type === 'multipleChoice' || node.type === 'suggestedAnswer',
+    (node) =>
+      node.type === 'multipleChoice'
+      || node.type === 'suggestedAnswer'
+      || (holdsSubparts && node.type === 'multipartSubparts' && childrenOf(node).length > 0),
   ) ?? { type: 'multipleChoice', content: [blankChoice(), blankChoice()] }
   return [stem, answer]
 }
@@ -364,14 +374,23 @@ export function partStemNodesOf(part: ProseMirrorJSON): ProseMirrorJSON[] {
   return stem ? childrenOf(stem) : []
 }
 
-// The node that answers a Part: its `multipleChoice` list, or its
-// `suggestedAnswer` block for a Short Answer Part. Unlike a Short Answer
+// The node that answers a Part or Subpart: its `multipleChoice` list, or its
+// `suggestedAnswer` block for a Short Answer one. Unlike a Short Answer
 // question's, a Part's Suggested Answer stays inside the document, beside the
-// stem it answers.
+// stem it answers. A Part that holds Subparts has none: they answer for it.
 export function partAnswerNodeOf(part: ProseMirrorJSON): ProseMirrorJSON | undefined {
   return childrenOf(part).find(
     (node) => node.type === 'multipleChoice' || node.type === 'suggestedAnswer',
   )
+}
+
+// A Part's Subparts in authored order — the order they are numbered (i), (ii)…
+// in. Empty for a Part that answers itself, and for a Subpart, which never
+// holds any (ADR-0043).
+export function subpartNodesOf(part: ProseMirrorJSON): ProseMirrorJSON[] {
+  if (part.type !== 'multipartPart') return []
+  const box = childrenOf(part).find((node) => node.type === 'multipartSubparts')
+  return box ? childrenOf(box).filter((node) => node.type === 'multipartSubpart') : []
 }
 
 // The `suggestedAnswer` node of a question document being edited, or undefined
@@ -465,8 +484,8 @@ export function withMultipleChoice(
 // A copy of the document whose answers carry brand-new ids. Duplicating a
 // question must not hand the copy the original's choice ids: a version's
 // `choiceOrder` is keyed by choice id, so shared ids would make one question's
-// ordering move the other's answers. A Multipart question's Parts are renamed too, since
-// their answer order and Work Space are keyed by Part id. A matching set's Word Bank is renamed the
+// ordering move the other's answers. A Multipart question's Parts and Subparts are renamed
+// too, since their answer order and Work Space are keyed by their ids. A matching set's Word Bank is renamed the
 // same way, and every prompt follows the answer it named to its new id, so the
 // copy matches what the original matched.
 export function withFreshChoiceIds(doc: ProseMirrorJSON): ProseMirrorJSON {
@@ -484,6 +503,7 @@ export function withFreshChoiceIds(doc: ProseMirrorJSON): ProseMirrorJSON {
       || node.type === 'matchingPrompt'
       || node.type === 'matchingAnswer'
       || node.type === 'multipartPart'
+      || node.type === 'multipartSubpart'
     ) {
       copy.attrs = { ...attrs, id: freshId(choiceIdOf(node)) }
     }

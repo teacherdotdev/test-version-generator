@@ -41,13 +41,14 @@ import {
   orderedChoices,
   orderedPartChoices,
   orderedQuestions,
-  partsOf,
+  answeringPartsOf,
+  presentationIdsOf,
   shuffleSelectedQuestions,
   type Arrangement,
   type ColumnSetting,
   newSectionWordingOf,
   type ExamSection,
-  type Part,
+  type Subpart,
   type Question,
   type SectionPlacement,
   type SectionTarget,
@@ -509,29 +510,32 @@ function sameExamWorkingCopy(left: ExamWorkingCopy, right: ExamWorkingCopy): boo
     && (left.questionStyle ?? DEFAULT_QUESTION_STYLE) === (right.questionStyle ?? DEFAULT_QUESTION_STYLE)
 }
 
-/** The Part with this id, when it belongs to a Multipart question this Exam references.
- *  Part ids and question ids never collide — both are fresh UUIDs — so a
- *  presentation setting addressed to one can tell which it is by looking. */
-function referencedPartOf(state: AuthoringState, id: string): Part | undefined {
+/** The Part or Subpart that answers with this id, when it belongs to a Multipart question
+ *  this Exam references. Its ids and question ids never collide — all are fresh
+ *  UUIDs — so a presentation setting addressed to one can tell which it is by
+ *  looking. A Part that holds Subparts answers nothing, so has nothing to set. */
+function referencedPartOf(state: AuthoringState, id: string): Subpart | undefined {
   for (const questionId of state.workingCopy.questionIds) {
     const question = bankQuestionById(state.questionBank, questionId)
-    const part = question ? partsOf(question).find((candidate) => candidate.id === id) : undefined
+    const part = question
+      ? answeringPartsOf(question).find((candidate) => candidate.id === id)
+      : undefined
     if (part) return part
   }
   return undefined
 }
 
 /** A duplicate Multipart question looks like its original on the sheet: each of its
- *  Parts takes the answer order, columns and work space its original Part had
- *  here, under the copy's fresh Part and choice ids. */
+ *  Parts and Subparts takes the answer order, columns and work space its
+ *  original had here, under the copy's fresh ids. */
 function withPartPresentationCopied(
   workingCopy: ExamWorkingCopy,
   original: Question,
   copy: Question,
   arrangement: Arrangement,
 ): ExamWorkingCopy {
-  const originalParts = partsOf(original)
-  const copiedParts = partsOf(copy)
+  const originalParts = answeringPartsOf(original)
+  const copiedParts = answeringPartsOf(copy)
   if (originalParts.length === 0) return workingCopy
   const columns = { ...(workingCopy.columns ?? {}) }
   const workSpace = { ...(workingCopy.workSpace ?? {}) }
@@ -1168,7 +1172,7 @@ export function createExamStore(options: {
           deleted.removedQuestionIds,
           deleted.removedQuestionIds.flatMap((id) => {
             const question = bankQuestionById(current.questionBank, id)
-            return question ? partsOf(question).map((part) => part.id) : []
+            return question ? presentationIdsOf(question).slice(1) : []
           }),
         )
         return withExamWorkingCopy(current, removed)
@@ -1260,7 +1264,7 @@ export function createExamStore(options: {
             questionIds,
             questionIds.flatMap((id) => {
               const question = bankQuestionById(current.questionBank, id)
-              return question ? partsOf(question).map((part) => part.id) : []
+              return question ? presentationIdsOf(question).slice(1) : []
             }),
           ),
         ),

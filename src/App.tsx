@@ -196,6 +196,10 @@ import {
   multipartPartView,
   multipartPartsSchema,
   multipartPartsView,
+  multipartSubpartSchema,
+  multipartSubpartView,
+  multipartSubpartsSchema,
+  multipartSubpartsView,
 } from './multipart'
 import {
   keepSuggestedAnswer,
@@ -595,9 +599,13 @@ function CrepeQuestion({
       .use(multipartPartsSchema)
       .use(multipartPartSchema)
       .use(multipartPartStemSchema)
+      .use(multipartSubpartsSchema)
+      .use(multipartSubpartSchema)
       .use(multipartPartsView)
       .use(multipartPartView)
       .use(multipartPartStemView)
+      .use(multipartSubpartsView)
+      .use(multipartSubpartView)
       .use(keepMultipartParts)
       .use(sideBySideSchema)
       .use(sideBySidePanelSchema)
@@ -634,6 +642,8 @@ function CrepeQuestion({
             || node?.type?.name === 'multipartParts'
             || node?.type?.name === 'multipartPart'
             || node?.type?.name === 'multipartPartStem'
+            || node?.type?.name === 'multipartSubparts'
+            || node?.type?.name === 'multipartSubpart'
             // A Panel moves with its Side-by-Side; the blocks in it keep
             // their own handles, so they drag in and out of it.
             || node?.type?.name === 'sideBySidePanel'

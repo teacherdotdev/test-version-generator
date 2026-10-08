@@ -163,10 +163,14 @@ export function picturesOf(plans: readonly LayoutPlan[]): ExportPicture[] {
         for (const row of item.grid?.cells ?? []) {
           for (const cell of row) if (cell) visit(cell.node)
         }
+        // A Part's lead-in prints once, on the first piece of it; its
+        // Subparts print in order beneath it.
         for (const part of item.parts ?? []) {
-          for (const block of part.stem) visit(block)
-          for (const row of part.grid?.cells ?? []) {
-            for (const cell of row) if (cell) visit(cell.node)
+          for (const shown of [...(part.continued ? [] : [part]), ...part.subparts]) {
+            for (const block of shown.stem) visit(block)
+            for (const row of shown.grid?.cells ?? []) {
+              for (const cell of row) if (cell) visit(cell.node)
+            }
           }
         }
       }
@@ -226,7 +230,7 @@ export function questionNumberForMedia(
             || (item.grid?.cells.flat().some(
               (cell) => cell && nodeContainsSource(cell.node, source),
             ) ?? false)
-            || (item.parts ?? []).some((part) =>
+            || (item.parts ?? []).flatMap((part) => [part, ...part.subparts]).some((part) =>
               part.stem.some((node) => nodeContainsSource(node, source))
               || (part.grid?.cells.flat().some(
                 (cell) => cell && nodeContainsSource(cell.node, source),

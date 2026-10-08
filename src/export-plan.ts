@@ -48,6 +48,7 @@ import {
   type QuestionType,
   type Arrangement,
   type PartType,
+  type Subpart,
   type WorkSpaceRows,
   type WordBankLayout,
   type WorkSpace,
@@ -251,27 +252,87 @@ function plannedWorkSpace(space: WorkSpace, rows: WorkSpaceRows): PlannedWorkSpa
   }
 }
 
+// One Subpart of a Part as it prints: numbered `i`, `ii`, … in authored order
+// beneath its Part's lead-in, with its own stem and — for a Multiple Choice
+// Subpart — its answers in this arrangement's order and the grid they lay out
+// in, or — for a Short Answer one — the room it leaves for work. A Subpart
+// prints the way a Part of its kind does, one level further in.
+export type PlannedSubpart = {
+  id: string
+  /** Its position under its Part — `i`, `ii`, … — as every Paper Style labels
+   *  it today. The label is data, like a Part's letter, so a style that prints
+   *  `(i)` changes the plan rather than an adapter. */
+  label: string
+  type: PartType
+  stem: ProseMirrorJSON[]
+  /** The answers in this arrangement's order, lettered `A`, `B`, …; empty for
+   *  a Short Answer one. */
+  choices: PlannedChoice[]
+  grid: ChoiceGrid | null
+  /** The room a Short Answer one leaves for work, resolved as a question's is
+   *  — zero-height when it leaves none, so the sheet can offer a handle to
+   *  drag some open. `null` for a Multiple Choice one. */
+  workSpace: PlannedWorkSpace | null
+  /** A Short Answer one's Suggested Answer, for the Answer Key only. */
+  suggestedAnswer?: ProseMirrorJSON[]
+}
+
 // One Part of a Multipart question as it prints: lettered `a`, `b`, … in authored order
 // beneath the Multipart question's one number, with its own stem and — for a Multiple
 // Choice Part — its answers in this arrangement's order and the grid they lay
 // out in, or — for a Short Answer Part — the room it leaves for work. A Part
-// prints the way a question of its kind does, one level in.
-export type PlannedPart = {
-  id: string
+// prints the way a question of its kind does, one level in. A Part that holds
+// Subparts prints its stem as their lead-in and answers nothing itself: no
+// answers, no grid, no work space — its Subparts carry them.
+export type PlannedPart = Omit<PlannedSubpart, 'label' | 'type'> & {
   /** Its position under the Multipart question: `a`, `b`, …. */
   letter: string
-  type: PartType
-  stem: ProseMirrorJSON[]
-  /** The answers in this arrangement's order, lettered `A`, `B`, …; empty for
-   *  a Short Answer Part. */
-  choices: PlannedChoice[]
-  grid: ChoiceGrid | null
-  /** The room a Short Answer Part leaves for work, resolved as a question's is
-   *  — zero-height when it leaves none, so the sheet can offer a handle to
-   *  drag some open. `null` for a Multiple Choice Part. */
-  workSpace: PlannedWorkSpace | null
-  /** A Short Answer Part's Suggested Answer, for the Answer Key only. */
-  suggestedAnswer?: ProseMirrorJSON[]
+  type: PartType | 'subparts'
+  /** The Subparts this piece prints beneath the Part's lead-in, in authored
+   *  order; empty for a Part that answers itself. */
+  subparts: PlannedSubpart[]
+  /** Set on a piece of a Part whose letter and lead-in printed on an earlier
+   *  page: it prints only the Subparts it carries, in their place. */
+  continued?: true
+}
+
+/** A Part or Subpart that answers, as it is planned, with the name it goes by:
+ *  a Part's letter, `a`, or a Subpart's place under its Part, `a (i)`. */
+export type NamedAnswering = {
+  name: string
+  part: Omit<PlannedSubpart, 'label'>
+  /** Whether it is a Subpart rather than a Part. */
+  subpart: boolean
+}
+
+/** Every Part and Subpart that answers among these planned Parts, in the order
+ *  they print, by the name the Answer Key and the sheet's menus give each. */
+export function answeringPartsIn(parts: readonly PlannedPart[]): NamedAnswering[] {
+  return parts.flatMap(({ letter, subparts, type, continued, ...part }): NamedAnswering[] => {
+    void continued
+    return type === 'subparts'
+      ? subparts.map(({ label, ...subpart }) => ({ name: `${letter} (${label})`, part: subpart, subpart: true }))
+      : [{ name: letter, part: { ...part, type }, subpart: false }]
+  })
+}
+
+/** The Work Space that ends this Part on the page: its own, or its last
+ *  Subpart's when it holds Subparts. */
+export function closingWorkSpaceOf(part: PlannedPart): PlannedWorkSpace | null {
+  return part.subparts.length > 0 ? part.subparts.at(-1)!.workSpace : part.workSpace
+}
+
+/** The Part with the Work Space that ends it grown by `grow`. */
+function withClosingWorkSpace(
+  part: PlannedPart,
+  grow: (space: PlannedWorkSpace) => PlannedWorkSpace,
+): PlannedPart {
+  const last = part.subparts.at(-1)
+  if (last) {
+    if (!last.workSpace) return part
+    return { ...part, subparts: [...part.subparts.slice(0, -1), { ...last, workSpace: grow(last.workSpace) }] }
+  }
+  return part.workSpace ? { ...part, workSpace: grow(part.workSpace) } : part
 }
 
 export type PlannedQuestion = {
@@ -388,9 +449,10 @@ export type QuestionItem = {
    *  for an answer always follows the whole question. `null` on every other
    *  piece and for every other Question Type. */
   workSpace: PlannedWorkSpace | null
-  /** The Parts of a Multipart question this piece prints, whole; `null` for every other
-   *  Question Type. A Multipart question breaks only between its Parts, or — when the
-   *  stem and its first Part cannot share a page — between its stem's blocks. */
+  /** The Parts of a Multipart question this piece prints; `null` for every other
+   *  Question Type. A Multipart question breaks only between its Parts or a
+   *  Part's Subparts, or — when the stem and its first Part cannot share a
+   *  page — between its stem's blocks. */
   parts: PlannedPart[] | null
 }
 
@@ -426,15 +488,20 @@ export type AnswerKeyEntryItem = {
   difficulty?: Difficulty
   topics?: string[]
   suggestedAnswer?: ProseMirrorJSON[]
-  /** A Multipart question's one line per Part, under its one number. */
+  /** A Multipart question's one line per Part — or per Subpart, where a Part
+   *  holds them — under its one number. */
   parts?: AnswerKeyPartLine[]
 }
 
-/** What the Answer Key records for one Part: the correct letter for a
- *  Multiple Choice Part (`null` when none is marked), or the Suggested Answer
- *  for a Short Answer Part. */
+/** What the Answer Key records for one Part or Subpart: the correct letter for
+ *  a Multiple Choice one (`null` when none is marked), or the Suggested Answer
+ *  for a Short Answer one. */
 export type AnswerKeyPartLine = {
+  /** What the line is labelled: a Part's letter, `a`, or a Subpart's place
+   *  under its Part, `a (i)`. */
   letter: string
+  /** Set on a Subpart's line, whose longer label takes a wider column. */
+  subpart?: true
   answer: string | null
   suggestedAnswer?: ProseMirrorJSON[]
 }
@@ -748,8 +815,19 @@ export function partChoiceAreaWidth(
   return contentWidth - questionIndentOf(question) - PART_INDENT - CHOICE_INDENT
 }
 
-/** Both, on today's sheet. */
+/** The width a Multiple Choice Subpart's choice grid is laid out in: its Part's
+ *  less the Subpart's own label column, which is a Part's letter column one
+ *  level further in. */
+export function subpartChoiceAreaWidth(
+  contentWidth: number,
+  question: Pick<PlannedQuestion, 'type'> & { marks?: readonly string[] } = { type: 'multipart' },
+): number {
+  return partChoiceAreaWidth(contentWidth, question) - PART_INDENT
+}
+
+/** Each, on today's sheet. */
 export const PART_CHOICE_AREA_WIDTH = partChoiceAreaWidth(PAGE_CONTENT_WIDTH)
+export const SUBPART_CHOICE_AREA_WIDTH = subpartChoiceAreaWidth(PAGE_CONTENT_WIDTH)
 export const CHOICE_AREA_WIDTH = choiceAreaWidth(PAGE_CONTENT_WIDTH)
 
 // A matching set spans the whole content width — its prompts carry their own
@@ -770,6 +848,25 @@ const TRUE_FALSE_LETTERS = ['T', 'F']
  *  from a choice's capital letter at a glance. */
 function partLetterAt(index: number): string {
   return letterAt(index).toLowerCase()
+}
+
+const ROMAN: readonly [number, string][] = [
+  [1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'],
+  [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i'],
+]
+
+/** The label a Subpart prints under its Part — 'i', 'ii', 'iii', 'iv', … — a
+ *  lowercase roman numeral, told apart from its Part's letter at a glance. */
+export function subpartLabelAt(index: number): string {
+  let label = ''
+  let remaining = index + 1
+  for (const [value, numeral] of ROMAN) {
+    while (remaining >= value) {
+      label += numeral
+      remaining -= value
+    }
+  }
+  return label
 }
 
 /** The letter of the choice at `index` — 'A', 'B', … then 'AA', 'AB', …. */
@@ -873,38 +970,63 @@ function blankBlocks(blocks: readonly ProseMirrorJSON[]): boolean {
   )
 }
 
-// A Multipart question's Parts under this arrangement: each lettered by position, each
-// Multiple Choice Part's answers in the order recorded under its own id, and
-// each Short Answer Part's work space as this Exam sets it for that Part.
+// A Part that answers, or a Subpart, under this arrangement: a Multiple Choice
+// one's answers in the order recorded under its own id, and a Short Answer
+// one's work space as this Exam sets it for that id.
+function deriveAnswering(
+  exam: Exam,
+  part: Subpart,
+  arrangement: Arrangement,
+): Omit<PlannedSubpart, 'label'> {
+  const choices: PlannedChoice[] = orderedPartChoices(part, arrangement).map(
+    (choice, choiceIndex) => ({
+      id: choice.id,
+      letter: letterAt(choiceIndex),
+      correct: choice.correct,
+      ...(choice.locked ? { locked: true as const } : {}),
+      node: choice.node,
+    }),
+  )
+  const multipleChoice = part.type === 'multiple-choice'
+  const suggested = part.suggestedAnswer?.content
+  const suggestedBlocks = Array.isArray(suggested) ? (suggested as ProseMirrorJSON[]) : []
+  return {
+    id: part.id,
+    type: part.type,
+    stem: part.stem,
+    choices,
+    grid: multipleChoice ? layOutGrid(choices, part.columns) : null,
+    workSpace: multipleChoice ? null : plannedWorkSpace(workSpaceOf(exam, part.id), workSpaceRowsOf(exam.questionStyle)),
+    ...(!multipleChoice && suggestedBlocks.length > 0 && !blankBlocks(suggestedBlocks)
+      ? { suggestedAnswer: structuredClone(suggestedBlocks) }
+      : {}),
+  }
+}
+
+// A Multipart question's Parts under this arrangement, each lettered by position, and
+// each Part's Subparts numbered by theirs beneath it.
 function deriveParts(
   exam: Exam,
   question: Question,
   arrangement: Arrangement,
 ): PlannedPart[] {
-  return partsOf(question).map((part, index) => {
-    const choices: PlannedChoice[] = orderedPartChoices(part, arrangement).map(
-      (choice, choiceIndex) => ({
-        id: choice.id,
-        letter: letterAt(choiceIndex),
-        correct: choice.correct,
-        ...(choice.locked ? { locked: true as const } : {}),
-        node: choice.node,
-      }),
-    )
-    const multipleChoice = part.type === 'multiple-choice'
-    const suggested = part.suggestedAnswer?.content
-    const suggestedBlocks = Array.isArray(suggested) ? (suggested as ProseMirrorJSON[]) : []
+  return partsOf(question).map((part, index): PlannedPart => {
+    const letter = partLetterAt(index)
+    if (part.type !== 'subparts') {
+      return { ...deriveAnswering(exam, { ...part, type: part.type }, arrangement), letter, subparts: [] }
+    }
     return {
       id: part.id,
-      letter: partLetterAt(index),
-      type: part.type,
+      letter,
+      type: 'subparts',
       stem: part.stem,
-      choices,
-      grid: multipleChoice ? layOutGrid(choices, part.columns) : null,
-      workSpace: multipleChoice ? null : plannedWorkSpace(workSpaceOf(exam, part.id), workSpaceRowsOf(exam.questionStyle)),
-      ...(!multipleChoice && suggestedBlocks.length > 0 && !blankBlocks(suggestedBlocks)
-        ? { suggestedAnswer: structuredClone(suggestedBlocks) }
-        : {}),
+      choices: [],
+      grid: null,
+      workSpace: null,
+      subparts: part.subparts.map((subpart, subpartIndex) => ({
+        ...deriveAnswering(exam, subpart, arrangement),
+        label: subpartLabelAt(subpartIndex),
+      })),
     }
   })
 }
@@ -1028,7 +1150,8 @@ type Segment = {
   grid: ChoiceGrid | null
   matching: MatchingSet | null
   workSpace: PlannedWorkSpace | null
-  /** A Multipart question's Parts carried by this segment, whole. */
+  /** A Multipart question's Parts carried by this segment: a Part that answers
+   *  whole, and a Part that holds Subparts one Subpart at a time. */
   parts: PlannedPart[]
 }
 
@@ -1069,9 +1192,11 @@ function segmentsOf(question: PlannedQuestion, measure: Measure, fullPage: numbe
   return segments
 }
 
-// A Multipart question breaks only between its Parts: its number and its stem
-// glued to Part a, then one segment per Part after it, so a student never
-// turns a page to find the first question about what they have just read.
+// A Multipart question breaks only between its Parts and between a Part's Subparts:
+// its number and its stem glued to Part a — and, when Part a holds Subparts,
+// to its lead-in and Subpart (i) — then one segment per Part or Subpart after
+// it, so a student never turns a page to find the first question about what
+// they have just read, nor a lead-in apart from its first Subpart.
 // Only when the stem and Part a together are taller than a whole page does the
 // stem itself come apart between its blocks, as any oversized stem does —
 // there is then no page that could hold them together.
@@ -1084,17 +1209,27 @@ function multipartSegmentsOf(
   const partSegment = (part: PlannedPart): Segment => ({
     stem: [], numbered: false, grid: null, matching: null, workSpace: null, parts: [part],
   })
-  const [firstPart, ...laterParts] = parts
+  // A Part that holds Subparts is its letter and lead-in glued to Subpart
+  // (i), then each later Subpart as a continuation of the same Part.
+  const piecesOf = (part: PlannedPart): PlannedPart[] => {
+    const [first, ...later] = part.subparts
+    if (!first) return [part]
+    return [
+      { ...part, subparts: [first] },
+      ...later.map((subpart): PlannedPart => ({ ...part, subparts: [subpart], continued: true })),
+    ]
+  }
+  const [firstPiece, ...laterPieces] = parts.flatMap(piecesOf)
   const lead: Segment = {
     stem: question.stem,
     numbered: true,
     grid: null,
     matching: null,
     workSpace: null,
-    parts: firstPart ? [firstPart] : [],
+    parts: firstPiece ? [firstPiece] : [],
   }
   if (measure.itemHeight(pieceOf(question, [lead])) <= fullPage || question.stem.length < 2) {
-    return [lead, ...laterParts.map(partSegment)]
+    return [lead, ...laterPieces.map(partSegment)]
   }
   const [first, ...rest] = question.stem
   return [
@@ -1102,15 +1237,31 @@ function multipartSegmentsOf(
     ...rest.map((block): Segment => ({
       stem: [block], numbered: false, grid: null, matching: null, workSpace: null, parts: [],
     })),
-    ...parts.map(partSegment),
+    ...(firstPiece ? [firstPiece, ...laterPieces] : []).map(partSegment),
   ]
 }
 
-/** Whether a Part short of a Multipart question's last fills the rest of its page. The
- *  Parts after it cannot then share that page, so the Multipart question cannot move
- *  whole and has to be broken up after it. */
+/** Consecutive pieces of the same Part, joined back into one: the Subparts of
+ *  a Part that holds them travel one to a segment, but print together. */
+function joinedParts(pieces: readonly PlannedPart[]): PlannedPart[] {
+  const joined: PlannedPart[] = []
+  for (const piece of pieces) {
+    const last = joined.at(-1)
+    if (last && last.id === piece.id && piece.continued) {
+      joined[joined.length - 1] = { ...last, subparts: [...last.subparts, ...piece.subparts] }
+    } else joined.push(piece)
+  }
+  return joined
+}
+
+/** Whether a Part or Subpart short of a Multipart question's last fills the rest of its
+ *  page. The ones after it cannot then share that page, so the Multipart question
+ *  cannot move whole and has to be broken up after it. */
 function fillsBeforeItsEnd(question: PlannedQuestion): boolean {
-  return (question.parts ?? []).slice(0, -1).some((part) => part.workSpace?.fill === true)
+  const spaces = (question.parts ?? []).flatMap((part) =>
+    part.subparts.length > 0 ? part.subparts.map((subpart) => subpart.workSpace) : [part.workSpace],
+  )
+  return spaces.slice(0, -1).some((space) => space?.fill === true)
 }
 
 // A matching set breaks only between its items: the directions glued to the
@@ -1157,17 +1308,18 @@ function pieceOf(
     matching:
       sets.length === 0 ? null : { ...sets[0]!, prompts: sets.flatMap((set) => set.prompts) },
     workSpace: segments.find((segment) => segment.workSpace !== null)?.workSpace ?? null,
-    parts: question.parts ? segments.flatMap((segment) => segment.parts) : null,
+    parts: question.parts ? joinedParts(segments.flatMap((segment) => segment.parts)) : null,
   }
 }
 
 /** The work space that fills the rest of the page this piece lands on, if
- *  any: a Short Answer question's own, or — for a Multipart question — its last Part's,
- *  since a piece of a Multipart question ends at any Part that fills. */
+ *  any: a Short Answer question's own, or — for a Multipart question — its last Part's
+ *  or Subpart's, since a piece of a Multipart question ends at any that fills. */
 function fillingSpaceOf(item: QuestionItem): PlannedWorkSpace | null {
   if (item.workSpace?.fill) return item.workSpace
   const last = item.parts?.at(-1)
-  return last?.workSpace?.fill ? last.workSpace : null
+  const space = last ? closingWorkSpaceOf(last) : null
+  return space?.fill ? space : null
 }
 
 /** The piece with its filling work space grown to `height`. */
@@ -1180,8 +1332,8 @@ function withFillHeight(item: QuestionItem, height: number): QuestionItem {
   if (item.workSpace?.fill) return { ...item, workSpace: grow(item.workSpace) }
   const parts = item.parts ?? []
   const last = parts.at(-1)
-  if (!last?.workSpace) return item
-  return { ...item, parts: [...parts.slice(0, -1), { ...last, workSpace: grow(last.workSpace) }] }
+  if (!last) return item
+  return { ...item, parts: [...parts.slice(0, -1), withClosingWorkSpace(last, grow)] }
 }
 
 // Packing: fill a page until the next item does not fit, then start another.
@@ -1258,10 +1410,12 @@ function paginate(
   // on ahead of it only when a fresh page would actually hold it, and an
   // oversized piece overflows under the heading instead.
   const fullPage = contentHeight(continuedHeader)
-  // A Part that fills its page ends the piece it is in: nothing may follow it
-  // on that page.
-  const endsPiece = (segment: Segment) =>
-    segment.parts.at(-1)?.workSpace?.fill === true
+  // A Part or Subpart that fills its page ends the piece it is in: nothing may
+  // follow it on that page.
+  const endsPiece = (segment: Segment) => {
+    const last = segment.parts.at(-1)
+    return last ? closingWorkSpaceOf(last)?.fill === true : false
+  }
   const split = (question: PlannedQuestion) => {
     const segments = segmentsOf(question, measure, fullPage)
     let start = 0
@@ -1352,6 +1506,21 @@ function paginate(
   return pages
 }
 
+/** The Answer Key's line for a Part or Subpart that answers. */
+function answerKeyPartLine(
+  letter: string,
+  part: Pick<PlannedSubpart, 'type' | 'choices' | 'suggestedAnswer'>,
+): AnswerKeyPartLine {
+  return {
+    letter,
+    answer:
+      part.type === 'multiple-choice'
+        ? part.choices.find((choice) => choice.correct)?.letter ?? null
+        : null,
+    ...(part.suggestedAnswer ? { suggestedAnswer: part.suggestedAnswer } : {}),
+  }
+}
+
 // Derive the key from the exact rendered questions that students see, so its
 // numbering and arrangement-relative choice letters cannot drift from the test. A
 // question that later splits across pages still contributes exactly one answer
@@ -1393,13 +1562,11 @@ function deriveAnswerKey(testItems: readonly PageItem[]): PageItem[] {
         number: item.question.number,
         letter: null,
         ...metadata,
-        parts: item.question.parts.map((part) => ({
-          letter: part.letter,
-          answer:
-            part.type === 'multiple-choice'
-              ? part.choices.find((choice) => choice.correct)?.letter ?? null
-              : null,
-          ...(part.suggestedAnswer ? { suggestedAnswer: part.suggestedAnswer } : {}),
+        // A Part that holds Subparts answers nothing itself: its line is one
+        // per Subpart, each labelled with its place under the Part.
+        parts: answeringPartsIn(item.question.parts).map(({ name, part, subpart }) => ({
+          ...answerKeyPartLine(name, part),
+          ...(subpart ? { subpart: true as const } : {}),
         })),
       })
       continue
@@ -1657,7 +1824,13 @@ function fitAnswersAcross(
     const grid = acrossGrid(question.grid, lane, measure, textSize)
     const parts = question.parts?.map((part) => {
       const partGrid = acrossGrid(part.grid, partChoiceAreaWidth(contentWidth, question), measure, textSize)
-      return partGrid === part.grid ? part : { ...part, grid: partGrid }
+      const subparts = part.subparts.map((subpart) => {
+        const subpartGrid = acrossGrid(subpart.grid, subpartChoiceAreaWidth(contentWidth, question), measure, textSize)
+        return subpartGrid === subpart.grid ? subpart : { ...subpart, grid: subpartGrid }
+      })
+      return partGrid === part.grid && subparts.every((subpart, index) => subpart === part.subparts[index])
+        ? part
+        : { ...part, grid: partGrid, subparts }
     }) ?? null
     if (grid === question.grid && parts?.every((part, index) => part === question.parts![index]) !== false) {
       return item

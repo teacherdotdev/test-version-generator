@@ -1,5 +1,5 @@
 import { choiceIdOf, choiceNodesOf } from './question-doc'
-import { partsOf, type Question } from './exam'
+import { answeringPartsOf, type Question } from './exam'
 import type { AuthoringState, SavedState } from './exam-store'
 import type { ExamWorkingCopy, QuestionBank } from './question-bank'
 
@@ -37,13 +37,13 @@ function withoutChoiceArrangement(draft: ExamWorkingCopy, questionId: string): E
   }
 }
 
-/** The ids of the Parts whose answers changed identity between two revisions
- *  of a Multipart question — a Part added, removed, or given a different set of choices.
+/** The ids of the Parts and Subparts whose answers changed identity between two
+ *  revisions of a Multipart question — one added, removed, or given a different set of choices.
  *  Their answer arrangements no longer describe anything, exactly as a
  *  question's does not. */
 function partsWithNewChoices(left: Question | undefined, right: Question): string[] {
-  const before = new Map((left ? partsOf(left) : []).map((part) => [part.id, part]))
-  return partsOf(right).flatMap((part) => {
+  const before = new Map((left ? answeringPartsOf(left) : []).map((part) => [part.id, part]))
+  return answeringPartsOf(right).flatMap((part) => {
     const prior = before.get(part.id)
     const same = prior
       && prior.choices.length === part.choices.length

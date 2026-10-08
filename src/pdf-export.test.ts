@@ -202,6 +202,26 @@ describe('PDF Export Adapter', () => {
     expect(paths).toBeGreaterThan(40)
   })
 
+  test('draws Subparts numbered beneath their Part’s lead-in, one level further in, and keys each', async () => {
+    const { plans } = plansOf('a multipart whose part holds subparts')
+    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const document = await getDocument({ data: bytes, disableWorker: true }).promise
+    const items = async (page: number) =>
+      (await (await document.getPage(page)).getTextContent()).items.flatMap((item) =>
+        'str' in item && item.str.trim() ? [{ text: item.str.trim(), x: item.transform[4] as number }] : [])
+    const test = await items(1)
+    const x = (text: string) => test.find((item) => item.text === text)?.x
+    expect(x('b.')).toBeDefined()
+    expect(x('i.')).toBeGreaterThan(x('b.')!)
+    expect(x('ii.')).toBe(x('i.')!)
+    expect(test.map((item) => item.text).join(' ')).toContain('The count was highest in April.')
+
+    // A Subpart's label is drawn whole, never wrapped in a Part's narrow column.
+    const key = (await items(document.numPages)).map((item) => item.text)
+    expect(key).toContain('b (i).')
+    expect(key).toContain('b (ii).')
+  })
+
   test('draws a boxed passage inside a black border around its text', async () => {
     const { plans } = plansOf('a boxed passage that opens its question')
     const bytes = await createPublicationPdf(plans, noImages, fonts)

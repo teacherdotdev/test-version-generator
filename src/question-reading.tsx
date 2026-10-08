@@ -16,7 +16,7 @@ import { Check, Lock } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { DifficultyBadge, TopicBadge } from './badges'
 import { DocView } from './doc-view'
-import type { QuestionReadingContent } from './question-reading-content'
+import type { QuestionReadingContent, QuestionReadingPart } from './question-reading-content'
 
 /** A Locked Answer's mark: it keeps its letter when answers are shuffled. */
 function LockMark() {
@@ -89,31 +89,45 @@ export function QuestionReading({
       // The Multipart question is the stem above; its Parts follow, lettered as the
       // test prints them, each drawn the way a question of its kind is.
       <ol type="a" className="record-multipart-parts question-reading-parts">
-        {content.parts.map((part) => (
-          <li key={part.id} aria-label={`Part ${part.letter}, ${part.typeLabel}`}>
-            <DocView className="question-reading-stem" content={part.stem} />
-            {part.choices && (
-              <ol type="A" className="question-reading-choices">
-                {part.choices.map((choice) => (
-                  <li key={choice.id} className={choice.correct ? 'is-correct' : undefined}>
-                    <DocView content={choice.content} />
-                    {choice.correct && (
-                      <Check className="question-reading-correct" role="img" aria-label="Correct answer" />
-                    )}
-                    {choice.locked && <LockMark />}
-                  </li>
-                ))}
-              </ol>
-            )}
-            {part.suggestedAnswer && (
-              <section className="question-reading-answer">
-                <h4>Suggested Answer</h4>
-                <DocView content={part.suggestedAnswer} />
-              </section>
-            )}
-          </li>
-        ))}
+        {content.parts.map((part) => <ReadingPart key={part.id} part={part} name={part.letter} />)}
       </ol>
     )}
   </>
+}
+
+// One Part, or one Subpart: its stem, then its answers — or, for a Part that
+// holds Subparts, its lead-in and then its Subparts, numbered (i), (ii)…
+// beneath it.
+function ReadingPart({ part, name }: { part: QuestionReadingPart; name: string }) {
+  return (
+    <li aria-label={`Part ${name}, ${part.typeLabel}`}>
+      <DocView className="question-reading-stem" content={part.stem} />
+      {part.choices && (
+        <ol type="A" className="question-reading-choices">
+          {part.choices.map((choice) => (
+            <li key={choice.id} className={choice.correct ? 'is-correct' : undefined}>
+              <DocView content={choice.content} />
+              {choice.correct && (
+                <Check className="question-reading-correct" role="img" aria-label="Correct answer" />
+              )}
+              {choice.locked && <LockMark />}
+            </li>
+          ))}
+        </ol>
+      )}
+      {part.suggestedAnswer && (
+        <section className="question-reading-answer">
+          <h4>Suggested Answer</h4>
+          <DocView content={part.suggestedAnswer} />
+        </section>
+      )}
+      {part.subparts && (
+        <ol type="i" className="record-multipart-parts question-reading-parts">
+          {part.subparts.map((subpart) => (
+            <ReadingPart key={subpart.id} part={subpart} name={`${name} (${subpart.letter})`} />
+          ))}
+        </ol>
+      )}
+    </li>
+  )
 }

@@ -8,8 +8,8 @@ import { useLayoutEffect, useRef, type DragEvent, type MouseEvent, type ReactNod
 import { ColumnLayoutIcon } from './column-layout-icon'
 import { DifficultyBadge } from './badges'
 import { DocView } from './doc-view'
-import { SECTION_LABELS, choicesOf, partsOf, promptsOf, type ColumnSetting, type Question } from './exam'
-import { layOutColumns } from './export-plan'
+import { SECTION_LABELS, choicesOf, partsOf, promptsOf, type ColumnSetting, type Question, type Subpart } from './exam'
+import { layOutColumns, subpartLabelAt } from './export-plan'
 import { bankLetter } from './matching'
 import { stemNodesOf, type ProseMirrorJSON } from './question-doc'
 import { defaultWordBank, type CopyFormat, type CopyPartFormat } from './question-copy'
@@ -193,23 +193,40 @@ function body(question: Question, format: CopyFormat, onFormat: (format: CopyFor
         answers: <ol className="pop-over-parts">
           {partsOf(question).map((part, index) => {
             const letter = bankLetter(index).toLowerCase()
-            const partFormat: CopyPartFormat = format.parts?.[part.id] ?? {}
-            const setPart = (next: CopyPartFormat) => onFormat({ ...format, parts: { ...format.parts, [part.id]: next } })
-            const answers = part.type === 'multiple-choice'
-              ? <Answers answers={part.choices.map(({ node }) => childrenOf(node))} columns={partFormat.columns ?? part.columns} />
-              : (partFormat.lines ?? 0) > 0 ? <Rules count={partFormat.lines ?? 0} /> : null
+            // A Part that holds Subparts answers nothing itself: its lead-in,
+            // then its Subparts, each formatted as a Part is, under its own id.
+            const answering = (one: Subpart, label: string, name: string) => {
+              const partFormat: CopyPartFormat = format.parts?.[one.id] ?? {}
+              const setPart = (next: CopyPartFormat) => onFormat({ ...format, parts: { ...format.parts, [one.id]: next } })
+              const answers = one.type === 'multiple-choice'
+                ? <Answers answers={one.choices.map(({ node }) => childrenOf(node))} columns={partFormat.columns ?? one.columns} />
+                : (partFormat.lines ?? 0) > 0 ? <Rules count={partFormat.lines ?? 0} /> : null
+              return <li key={one.id} className="pop-over-part">
+                <div className="pop-over-part-head">
+                  <span className="pop-over-part-letter">{label}.</span>
+                  <span className="pop-over-part-type">{SECTION_LABELS[one.type]}</span>
+                  <span className="pop-over-card-controls">
+                    {one.type === 'multiple-choice'
+                      ? <ColumnToggle label={`Part ${name} answer columns`} value={partFormat.columns ?? one.columns} onChange={(value) => setPart({ ...partFormat, columns: value })} />
+                      : <FormatSelect label={`Part ${name} answer lines`} value={partFormat.lines ?? 0} options={LINE_OPTIONS} onChange={(value) => setPart({ ...partFormat, lines: value })} />}
+                  </span>
+                </div>
+                <DocView className="pop-over-stem" content={one.stem} />
+                {answers && <div className="pop-over-answer-half">{answers}</div>}
+              </li>
+            }
+            if (part.type !== 'subparts') return answering({ ...part, type: part.type }, letter, letter)
             return <li key={part.id} className="pop-over-part">
               <div className="pop-over-part-head">
                 <span className="pop-over-part-letter">{letter}.</span>
-                <span className="pop-over-part-type">{SECTION_LABELS[part.type]}</span>
-                <span className="pop-over-card-controls">
-                  {part.type === 'multiple-choice'
-                    ? <ColumnToggle label={`Part ${letter} answer columns`} value={partFormat.columns ?? part.columns} onChange={(value) => setPart({ ...partFormat, columns: value })} />
-                    : <FormatSelect label={`Part ${letter} answer lines`} value={partFormat.lines ?? 0} options={LINE_OPTIONS} onChange={(value) => setPart({ ...partFormat, lines: value })} />}
-                </span>
               </div>
               <DocView className="pop-over-stem" content={part.stem} />
-              {answers && <div className="pop-over-answer-half">{answers}</div>}
+              <ol className="pop-over-parts pop-over-subparts">
+                {part.subparts.map((subpart, subpartIndex) => {
+                  const label = subpartLabelAt(subpartIndex)
+                  return answering(subpart, label, `${letter} (${label})`)
+                })}
+              </ol>
             </li>
           })}
         </ol>,

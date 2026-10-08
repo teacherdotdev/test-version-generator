@@ -17,9 +17,11 @@ import {
   QUESTION_BANK_FORMAT_VERSION,
   RECORD_PART_TYPE_LABELS,
   RECORD_TYPE_LABELS,
+  holdsSubparts,
   partLetter,
   recordDocumentToEditorNodes,
   type QuestionBankRecord,
+  type QuestionBankRecordAnsweringPart,
   type QuestionBankRecordChoice,
   type QuestionBankRecordPart,
   type QuestionBankRecordQuestion,
@@ -27,6 +29,7 @@ import {
   type SemanticDocument,
   type SemanticNode,
 } from './question-bank-export'
+import { subpartLabelAt } from './export-plan'
 
 export const DEFAULT_QUESTION_BANK_IMPORT_LIMITS = Object.freeze({
   pdfBytes: 100 * 1024 * 1024,
@@ -215,9 +218,10 @@ function importedMatching(
 /** A Multipart question's Parts box: each Part given a fresh local id, its stem, then
  *  its answer component — a Multiple Choice Part's choices, each with a fresh
  *  id, or a Short Answer Part's Suggested Answer, which stays inside the
- *  document beside the stem it answers, unlike a Short Answer question's. A
- *  Part's answer columns are not in the record, so it starts with the
- *  editor's default, as a new Part does. */
+ *  document beside the stem it answers, unlike a Short Answer question's — or
+ *  the Subparts it holds, each built the same way. A Part's answer columns
+ *  are not in the record, so it starts with the editor's default, as a new
+ *  Part does. */
 function importedParts(
   parts: readonly QuestionBankRecordPart[],
   createId: () => string,
@@ -226,6 +230,7 @@ function importedParts(
   return {
     type: 'multipartParts',
     content: parts.map((part) => {
+      if (!holdsSubparts(part)) return importedPart('multipartPart', part, createId, answerIds)
       const id = createId()
       answerIds.set(part.id, id)
       return {
@@ -233,28 +238,51 @@ function importedParts(
         attrs: { id, columns: DEFAULT_COLUMNS },
         content: [
           { type: 'multipartPartStem', content: blocksOrBlank(part.stem) },
-          part.type === 'multiple-choice'
-            ? {
-                type: 'multipleChoice',
-                content: (part.choices ?? []).map((choice) => {
-                  const choiceId = createId()
-                  answerIds.set(choice.id, choiceId)
-                  return {
-                    type: 'multipleChoiceChoice',
-                    attrs: { id: choiceId, correct: choice.correct, ...lockAttrOf(choice) },
-                    content: recordDocumentToEditorNodes(choice.content),
-                  }
-                }),
-              }
-            : {
-                type: 'suggestedAnswer',
-                content: part.suggestedAnswer
-                  ? blocksOrBlank(part.suggestedAnswer)
-                  : [{ type: 'paragraph' }],
-              },
+          {
+            type: 'multipartSubparts',
+            content: part.subparts.map((subpart) =>
+              importedPart('multipartSubpart', subpart, createId, answerIds)),
+          },
         ],
       }
     }),
+  }
+}
+
+/** A Part that answers, or a Subpart, as the editor holds it. */
+function importedPart(
+  type: 'multipartPart' | 'multipartSubpart',
+  part: QuestionBankRecordAnsweringPart,
+  createId: () => string,
+  answerIds: Map<string, string>,
+): ProseMirrorJSON {
+  const id = createId()
+  answerIds.set(part.id, id)
+  return {
+    type,
+    attrs: { id, columns: DEFAULT_COLUMNS },
+    content: [
+      { type: 'multipartPartStem', content: blocksOrBlank(part.stem) },
+      part.type === 'multiple-choice'
+        ? {
+            type: 'multipleChoice',
+            content: (part.choices ?? []).map((choice) => {
+              const choiceId = createId()
+              answerIds.set(choice.id, choiceId)
+              return {
+                type: 'multipleChoiceChoice',
+                attrs: { id: choiceId, correct: choice.correct, ...lockAttrOf(choice) },
+                content: recordDocumentToEditorNodes(choice.content),
+              }
+            }),
+          }
+        : {
+            type: 'suggestedAnswer',
+            content: part.suggestedAnswer
+              ? blocksOrBlank(part.suggestedAnswer)
+              : [{ type: 'paragraph' }],
+          },
+    ],
   }
 }
 
@@ -373,6 +401,10 @@ type CopyContext = {
   /** Whether the record's choices may say they are locked; an older record
    *  that carries `locked` carries an unknown optional field, ignored. */
   locks: boolean
+  /** Whether the record's Parts may hold Subparts; an older record's Part that
+   *  carries `subparts` carries an unknown optional field, ignored, and is
+   *  read as the Part its `type` says. */
+  subparts: boolean
   media: ReadonlyMap<string, { width: number; height: number }>
 }
 
@@ -382,6 +414,9 @@ const SHARE_SIZE_VERSIONS: ReadonlySet<string> = new Set(['0.7.0', '0.8.0', '0.9
 
 /** The versions that know the Locked Answer, added in 0.9.0. */
 const LOCKED_ANSWER_VERSIONS: ReadonlySet<string> = new Set(['0.9.0'])
+
+/** The versions that let a Part hold Subparts, added in 0.9.0. */
+const SUBPART_VERSIONS: ReadonlySet<string> = new Set(['0.9.0'])
 
 function copyPicture(node: SemanticNode, context: CopyContext): Partial<SemanticNode> {
   const size =
@@ -442,6 +477,17 @@ function copyQuestion(question: QuestionBankRecordQuestion, context: CopyContext
     correct: choice.correct,
     ...(context.locks && choice.locked !== undefined ? { locked: choice.locked } : {}),
   })
+  const copyAnsweringPart = (part: QuestionBankRecordAnsweringPart): QuestionBankRecordAnsweringPart => ({
+    id: part.id,
+    type: part.type,
+    stem: copyDocument(part.stem),
+    ...(part.choices !== undefined
+      ? { choices: part.choices.map(copyChoice) }
+      : {}),
+    ...(part.suggestedAnswer !== undefined
+      ? { suggestedAnswer: copyDocument(part.suggestedAnswer) }
+      : {}),
+  })
   return {
     id: question.id,
     type: question.type,
@@ -470,17 +516,14 @@ function copyQuestion(question: QuestionBankRecordQuestion, context: CopyContext
       : {}),
     ...(question.parts !== undefined
       ? {
-          parts: question.parts.map((part) => ({
-            id: part.id,
-            type: part.type,
-            stem: copyDocument(part.stem),
-            ...(part.choices !== undefined
-              ? { choices: part.choices.map(copyChoice) }
-              : {}),
-            ...(part.suggestedAnswer !== undefined
-              ? { suggestedAnswer: copyDocument(part.suggestedAnswer) }
-              : {}),
-          })),
+          parts: question.parts.map((part): QuestionBankRecordPart =>
+            context.subparts && holdsSubparts(part)
+              ? {
+                  id: part.id,
+                  stem: copyDocument(part.stem),
+                  subparts: part.subparts.map(copyAnsweringPart),
+                }
+              : copyAnsweringPart(part as QuestionBankRecordAnsweringPart)),
         }
       : {}),
     ...(question.suggestedAnswer !== undefined
@@ -707,6 +750,33 @@ function malformedPendingImage(
  * a bad `href` is the one schema violation a teacher can act on: it names the
  * link rather than a JSON pointer.
  */
+/** Why a Part that holds Subparts cannot stand, in a teacher's words. */
+function subpartsAndAnswers(where: string): string {
+  return `${where} holds Subparts, so it cannot also have a type, choices or a Suggested Answer of its own; each Subpart carries its own.`
+}
+
+/** A Part of a record that knows Subparts which holds them and answers too —
+ *  named before the schema would, since its message could only say that the
+ *  Part matched neither shape. */
+function partWithSubpartsAndAnswers(value: unknown, sourceVersion: string): string | undefined {
+  if (!SUBPART_VERSIONS.has(sourceVersion)) return undefined
+  const questions = valueAt(value, '/bank/questions')
+  if (!Array.isArray(questions)) return undefined
+  for (const question of questions) {
+    const parts = (question as { parts?: unknown } | null)?.parts
+    if (!Array.isArray(parts)) continue
+    for (const [partIndex, part] of parts.entries()) {
+      if (typeof part !== 'object' || part === null || !('subparts' in part)) continue
+      if ('type' in part || 'choices' in part || 'suggestedAnswer' in part) {
+        const id = String((part as { id?: unknown }).id ?? '')
+        const questionId = String((question as { id?: unknown }).id ?? '')
+        return subpartsAndAnswers(`Part ${partLetter(partIndex)} (“${id}”) of Multipart Question “${questionId}”`)
+      }
+    }
+  }
+  return undefined
+}
+
 function parseWith(
   validate: SchemaValidator & { errors?: ErrorObject[] | null },
   sourceVersion: string,
@@ -714,6 +784,8 @@ function parseWith(
 ): DeclaredRecord {
   const misplaced = misplacedContent(value)
   if (misplaced) throw new QuestionBankImportError('invalid-question', misplaced)
+  const doubled = partWithSubpartsAndAnswers(value, sourceVersion)
+  if (doubled) throw new QuestionBankImportError('invalid-question', doubled)
   if (!validate(value)) {
     const unsafeLink = validate.errors?.find(
       (error) =>
@@ -772,6 +844,7 @@ function parseWith(
           currentSize: SHARE_SIZE_VERSIONS.has(sourceVersion),
           crops: SHARE_SIZE_VERSIONS.has(sourceVersion),
           locks: LOCKED_ANSWER_VERSIONS.has(sourceVersion),
+          subparts: SUBPART_VERSIONS.has(sourceVersion),
           media: new Map(record.media.map((asset) => [asset.id, asset])),
         }),
       ),
@@ -794,7 +867,8 @@ function parseWith(
  * 0.8.0 changed only how a Media Asset's bytes travel: it names a file in the
  * package's zip where 0.1.0–0.7.0 carry base64 (ADR-0036). 0.9.0 added a
  * choice's optional `locked` (ADR-0038); a choice of an older record has none,
- * and is locked by its wording once imported, as an undecided one is.
+ * and is locked by its wording once imported, as an undecided one is. 0.9.0
+ * also let a Part hold `subparts` (ADR-0043); an older record's Parts all answer.
  * 0.7.0 is the one version that changed something an older record already
  * says: its `authoredSize` is a share of the picture's container, where
  * 0.1.0–0.6.0's was Crepe's ratio against the size the picture fit at. An
@@ -1122,8 +1196,24 @@ async function validateSemantics(
       }
       const parts = question.parts ?? []
       let incomplete = parts.length === 0
-      parts.forEach((part, partIndex) => {
+      // A Part that holds Subparts answers nothing itself (ADR-0043): each of
+      // its Subparts obeys the rules a Part that answers does.
+      const answering = parts.flatMap((part, partIndex) => {
         const where = `Part ${partLetter(partIndex)} (“${part.id}”) of Multipart Question “${question.id}”`
+        if (!holdsSubparts(part)) return [{ part, where }]
+        const answers = part as Partial<QuestionBankRecordAnsweringPart>
+        if (answers.type !== undefined || answers.choices !== undefined || answers.suggestedAnswer !== undefined) {
+          throw new QuestionBankImportError('invalid-question', subpartsAndAnswers(where))
+        }
+        if (part.subparts.length === 0) {
+          throw new QuestionBankImportError('invalid-question', `${where} must hold at least one Subpart.`)
+        }
+        return part.subparts.map((subpart, subpartIndex) => ({
+          part: subpart,
+          where: `Subpart (${subpartLabelAt(subpartIndex)}) (“${subpart.id}”) of ${where}`,
+        }))
+      })
+      answering.forEach(({ part, where }) => {
         const label = RECORD_PART_TYPE_LABELS[part.type]
         if (part.type === 'short-answer') {
           if (part.choices !== undefined) {
@@ -1243,13 +1333,17 @@ async function validateSemantics(
       return part.content
     }
     // A Multipart Part claims its own id, then brings its stem, its choices
-    // and its Suggested Answer under the Question's node and depth limits:
-    // the limits bound the whole Question, however it is divided.
-    const partDocuments = (part: QuestionBankRecordPart): SemanticDocument[] => [
-      claimed({ id: part.id, content: part.stem }),
-      ...(part.choices?.map(claimed) ?? []),
-      ...(part.suggestedAnswer ? [part.suggestedAnswer] : []),
-    ]
+    // and its Suggested Answer — or its Subparts, each the same way — under
+    // the Question's node and depth limits: the limits bound the whole
+    // Question, however it is divided.
+    const partDocuments = (part: QuestionBankRecordPart): SemanticDocument[] =>
+      holdsSubparts(part)
+        ? [claimed({ id: part.id, content: part.stem }), ...part.subparts.flatMap(partDocuments)]
+        : [
+            claimed({ id: part.id, content: part.stem }),
+            ...(part.choices?.map(claimed) ?? []),
+            ...(part.suggestedAnswer ? [part.suggestedAnswer] : []),
+          ]
     const documents = [
       question.stem,
       ...(question.suggestedAnswer ? [question.suggestedAnswer] : []),

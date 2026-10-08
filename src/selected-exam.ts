@@ -34,7 +34,7 @@ import {
   isWorkSpace,
   sameSectionOf,
   sameSections,
-  partsOf,
+  answeringPartsOf,
   presentationIdsOf,
   type ColumnSetting,
   type Exam,
@@ -72,17 +72,33 @@ function sameWorkSpace(
 }
 
 /** A Multipart question with this Exam's answer columns written onto its Multiple
- *  Choice Parts, as a question's own `columns` is overridden: the Part nodes
- *  carry the layout each Part starts with, and the Working Copy the layout this
+ *  Choice Parts and Subparts, as a question's own `columns` is overridden: the
+ *  nodes carry the layout each starts with, and the Working Copy the layout this
  *  Exam gives it. The same question comes back when nothing differs, so a
  *  consumer comparing by identity sees no change. */
 function withPartColumns(
   question: Question,
   columns: Record<string, ColumnSetting>,
 ): Question {
-  const parts = partsOf(question)
+  const parts = answeringPartsOf(question)
   if (!parts.some((part) => columns[part.id] !== undefined && columns[part.id] !== part.columns)) {
     return question
+  }
+  const withColumns = (node: ProseMirrorJSON): ProseMirrorJSON => {
+    const attrs = (node.attrs ?? {}) as Record<string, unknown>
+    const id = typeof attrs.id === 'string' ? attrs.id : ''
+    const own = columns[id] === undefined ? node : { ...node, attrs: { ...attrs, columns: columns[id] } }
+    // A Part that holds Subparts has its columns set on each Subpart.
+    return !Array.isArray(own.content)
+      ? own
+      : {
+          ...own,
+          content: (own.content as ProseMirrorJSON[]).map((child) =>
+            child.type !== 'multipartSubparts' || !Array.isArray(child.content)
+              ? child
+              : { ...child, content: (child.content as ProseMirrorJSON[]).map(withColumns) },
+          ),
+        }
   }
   const content = Array.isArray(question.doc.content)
     ? (question.doc.content as ProseMirrorJSON[])
@@ -96,13 +112,7 @@ function withPartColumns(
           ? node
           : {
               ...node,
-              content: (node.content as ProseMirrorJSON[]).map((part) => {
-                const attrs = (part.attrs ?? {}) as Record<string, unknown>
-                const id = typeof attrs.id === 'string' ? attrs.id : ''
-                return columns[id] === undefined
-                  ? part
-                  : { ...part, attrs: { ...attrs, columns: columns[id] } }
-              }),
+              content: (node.content as ProseMirrorJSON[]).map(withColumns),
             },
       ),
     },

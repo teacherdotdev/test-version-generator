@@ -137,6 +137,31 @@ function part(
   }
 }
 
+function subpart(
+  id: string,
+  stem: ProseMirrorJSON[],
+  answer: ProseMirrorJSON,
+  columns: Question['columns'] = DEFAULT_COLUMNS,
+): ProseMirrorJSON {
+  return {
+    type: 'multipartSubpart',
+    attrs: { id, columns },
+    content: [{ type: 'multipartPartStem', content: stem }, answer],
+  }
+}
+
+/** A Part that holds Subparts: its stem is their lead-in. */
+function partWithSubparts(id: string, leadIn: ProseMirrorJSON[], subparts: ProseMirrorJSON[]): ProseMirrorJSON {
+  return {
+    type: 'multipartPart',
+    attrs: { id, columns: DEFAULT_COLUMNS },
+    content: [
+      { type: 'multipartPartStem', content: leadIn },
+      { type: 'multipartSubparts', content: subparts },
+    ],
+  }
+}
+
 function choicesOf(...choices: ProseMirrorJSON[]): ProseMirrorJSON {
   return { type: 'multipleChoice', content: choices }
 }
@@ -440,6 +465,100 @@ export const FIXTURES: readonly Fixture[] = [
         itemHeight: (item) =>
           item.kind === 'question'
             ? item.stem.length * 200 + (item.parts?.length ?? 0) * 260
+            : 40,
+      },
+    },
+  ),
+
+  // A Part may hold Subparts: its stem prints as their lead-in, and each
+  // Subpart prints numbered beneath it, one level further in, as a Part of
+  // its kind prints — a shuffled Multiple Choice Subpart, a Short Answer one
+  // with ruled room. The key gives one line per Subpart, labelled with its
+  // place under its Part.
+  fixture(
+    'a multipart whose part holds subparts',
+    {
+      title: 'Pond Survey',
+      questions: [
+        multipart(
+          'sp1',
+          [paragraph(text('A class counted the frogs at a pond each month for a year.'))],
+          [
+            part(
+              'sp1-a',
+              [paragraph(text('Name one thing a frog eats.'))],
+              suggestedAnswer(paragraph(text('Insects.'))),
+            ),
+            partWithSubparts(
+              'sp1-b',
+              [paragraph(text('The count was highest in April.'))],
+              [
+                subpart(
+                  'sp1-b-i',
+                  [paragraph(text('In which season is April?'))],
+                  choicesOf(
+                    choice('sp1-b-i1', true, paragraph(text('Spring'))),
+                    choice('sp1-b-i2', false, paragraph(text('Autumn'))),
+                    choice('sp1-b-i3', false, paragraph(text('Winter'))),
+                  ),
+                  1,
+                ),
+                subpart(
+                  'sp1-b-ii',
+                  [paragraph(text('Suggest why more frogs were seen then.'))],
+                  suggestedAnswer(paragraph(text('Frogs gather at ponds to breed in spring.'))),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+      workSpace: { 'sp1-b-ii': { height: 64, style: 'lines', fill: false } },
+    },
+    arrangement(['sp1'], { 'sp1-b-i': ['sp1-b-i2', 'sp1-b-i1', 'sp1-b-i3'] }),
+    { answerKey: true },
+  ),
+
+  // A Part's Subparts may break across pages: the lead-in stays with
+  // Subpart (i), and the Subparts after the break continue on the next page
+  // without the Part's letter or lead-in printed again.
+  fixture(
+    'a part whose later subparts continue on the next page',
+    {
+      title: 'Reading',
+      questions: [
+        multipart(
+          'sp2',
+          [paragraph(text('Read the notice below.'))],
+          [
+            partWithSubparts(
+              'sp2-a',
+              [paragraph(text('The notice is about a lost cat.'))],
+              ['i', 'ii', 'iii'].map((label) =>
+                subpart(
+                  `sp2-a-${label}`,
+                  [paragraph(text(`Question (${label}) about the notice.`))],
+                  choicesOf(
+                    choice(`sp2-a-${label}1`, true, paragraph(text('Yes'))),
+                    choice(`sp2-a-${label}2`, false, paragraph(text('No'))),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    },
+    arrangement(['sp2']),
+    {
+      measure: {
+        itemHeight: (item) =>
+          item.kind === 'question'
+            ? item.stem.length * 200
+              + (item.parts ?? []).reduce(
+                (sum, part) => sum + (part.continued ? 0 : 100) + part.subparts.length * 260,
+                0,
+              )
             : 40,
       },
     },

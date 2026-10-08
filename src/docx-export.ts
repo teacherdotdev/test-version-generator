@@ -1052,19 +1052,31 @@ function questionContent(
 }
 
 // A Multipart question's Part, one level in: its letter hanging off its own letter column inside the Multipart question's body,
-// then its choice grid or its work space, as a question of its kind prints.
+// then its choice grid or its work space, as a question of its kind prints —
+// or, for a Part that holds Subparts, each Subpart the same way one level
+// further in. A piece continued from an earlier page carries only Subparts.
 function partContent(
   part: PlannedPart,
   multipartIndentPx: number,
   build: BuildContext,
 ): (Paragraph | Table)[] {
-  const indentPx = multipartIndentPx + PART_INDENT
-  const indent = twips(indentPx)
-  const prefix: ParagraphChild[] = [
-    new TextRun({
-      text: `${part.letter}.\t`,
-    }),
+  return [
+    ...(part.continued ? [] : answeringContent(`${part.letter}.`, part, multipartIndentPx, build)),
+    ...part.subparts.flatMap((subpart) =>
+      answeringContent(`${subpart.label}.`, subpart, multipartIndentPx + PART_INDENT, build),
+    ),
   ]
+}
+
+function answeringContent(
+  label: string,
+  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace'>,
+  outerIndentPx: number,
+  build: BuildContext,
+): (Paragraph | Table)[] {
+  const indentPx = outerIndentPx + PART_INDENT
+  const indent = twips(indentPx)
+  const prefix: ParagraphChild[] = [new TextRun({ text: `${label}\t` })]
   const context: BlockContext = {
     indent,
     hanging: twips(PART_INDENT),

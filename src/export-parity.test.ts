@@ -112,6 +112,36 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     expectSameDocument(planned, await docxOf(fixture))
   })
 
+  test('carries Subparts beneath their Part’s lead-in, and a key line for each', async () => {
+    const fixture = FIXTURES.find((item) => item.name === 'a multipart whose part holds subparts')!
+    const planned = layoutFingerprint(planOf(fixture))
+    const lines = planned.pages.flatMap((page) => page.content)
+    const at = (start: string) => lines.findIndex((line) => line.startsWith(`para ${start}`))
+    // The lead-in, then each Subpart labelled beneath it, in order.
+    expect(at('b. The count was highest')).toBeGreaterThan(at('a. Name one thing'))
+    expect(at('i. In which season')).toBeGreaterThan(at('b. The count was highest'))
+    expect(at('ii. Suggest why')).toBeGreaterThan(at('i. In which season'))
+    expect(lines).toContain('space:lines:2')
+    // Spring is the second answer under this arrangement.
+    expect(lines).toContain('para b (i). «strong»B«/»')
+    expect(lines.some((line) => line.startsWith('para b (ii).'))).toBe(true)
+    expectSameDocument(planned, await docxOf(fixture))
+    expectSameDocument(planned, printFingerprint(planOf(fixture)))
+  })
+
+  test('continues a Part’s later Subparts on the next page without its letter or lead-in', async () => {
+    const fixture = FIXTURES.find((item) => item.name === 'a part whose later subparts continue on the next page')!
+    const planned = layoutFingerprint(planOf(fixture))
+    const test = planned.pages.filter((page) => page.content.some((line) => line.includes('Question (')))
+    expect(test).toHaveLength(2)
+    const second = test[1]!.content.join('\n')
+    expect(second).not.toContain('The notice is about a lost cat.')
+    expect(second).not.toContain('a. ')
+    expect(second).toContain('iii. Question (iii)')
+    expectSameDocument(planned, await docxOf(fixture))
+    expectSameDocument(planned, printFingerprint(planOf(fixture)))
+  })
+
   test('packages the canonical student test before its answer key', async () => {
     const fixture = FIXTURES.find(
       (item) => item.name === 'a realistic composite exam',

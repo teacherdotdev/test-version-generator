@@ -24,6 +24,9 @@
   "side-by-side-in-choice.json": "invalid-structure",
   "side-by-side-nested.json": "invalid-structure",
   "side-by-side-one-panel.json": "invalid-structure",
+  "subparts-and-answers.json": "invalid-question",
+  "subparts-empty.json": "invalid-structure",
+  "subparts-nested.json": "invalid-structure",
   "unsafe-url.json": "unsafe-url",
   "unsupported-required-feature.json": "unsupported-feature",
   "unsupported-version.json": "unsupported-version"

@@ -125,6 +125,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       'provenance-and-links.json',
       'short-answer.json',
       'side-by-side.json',
+      'subparts.json',
       'true-false.json',
     ])
     for (const name of names) {
@@ -370,6 +371,62 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     expect(partsOf(imported[2]!)[0]!.choices.map((choice) => choice.locked)).toEqual([false, false, true])
   })
 
+  test('a Part holds Subparts as its lead-in, and they reach the editor numbered beneath it', async () => {
+    const proposal = await inspectFixture(exampleRoot, 'subparts.json')
+    const [pond] = proposal.record.bank.questions
+    const [answering, holding] = pond!.parts!
+
+    expect(answering).toMatchObject({ id: 'q1-s1', type: 'short-answer' })
+    expect(holding).not.toHaveProperty('type')
+    expect(holding).toMatchObject({ id: 'q1-s2' })
+    const subparts = (holding as { subparts: { id: string; type: string }[] }).subparts
+    expect(subparts.map(({ id, type }) => [id, type])).toEqual([
+      ['q1-s2-s1', 'multiple-choice'],
+      ['q1-s2-s2', 'short-answer'],
+      ['q1-s2-s3', 'short-answer'],
+    ])
+
+    const [imported] = importedQuestionsFromRecord(proposal.record)
+    const parts = partsOf(imported!)
+    expect(parts.map((part) => part.type)).toEqual(['open', 'subparts'])
+    expect(parts[1]!.subparts.map((subpart) => subpart.type)).toEqual(['multiple-choice', 'open', 'open'])
+    expect(parts[1]!.subparts[0]!.choices.map((choice) => [choice.correct, choice.locked])).toEqual([
+      [true, false],
+      [false, false],
+      [false, true],
+    ])
+  })
+
+  test('a record older than 0.9.0 has no Subparts: its Parts all answer, and a `subparts` it carries is ignored', async () => {
+    const record = (await fixture(exampleRoot, 'subparts.json')) as {
+      formatVersion: string
+      bank: { questions: { parts: Record<string, unknown>[] }[] }
+    }
+    record.formatVersion = '0.8.0'
+    // An older record cannot leave a Part's type out.
+    try {
+      await inspectQuestionBankRecordValue(structuredClone(record))
+      throw new Error('unexpectedly conformed')
+    } catch (error) {
+      expect((error as QuestionBankImportError).code).toBe('invalid-structure')
+    }
+    record.bank.questions[0]!.parts[1]!.type = 'short-answer'
+    const proposal = await inspectQuestionBankRecordValue(record)
+    expect(proposal.record.bank.questions[0]!.parts![1]).not.toHaveProperty('subparts')
+    expect(partsOf(importedQuestionsFromRecord(proposal.record)[0]!)[1]!.type).toBe('open')
+  })
+
+  test('a Part that holds Subparts and answers too is refused, by name', async () => {
+    try {
+      await inspectFixture(invalidRoot, 'subparts-and-answers.json')
+      throw new Error('unexpectedly conformed')
+    } catch (error) {
+      expect((error as QuestionBankImportError).message).toBe(
+        'Part b (“q1-s2”) of Multipart Question “q1” holds Subparts, so it cannot also have a type, choices or a Suggested Answer of its own; each Subpart carries its own.',
+      )
+    }
+  })
+
   test('a record older than 0.9.0 has no Locked Answers of its own, so its wording locks its answers', async () => {
     const record = (await fixture(exampleRoot, 'locked-answers.json')) as { formatVersion: string }
     record.formatVersion = '0.8.0'
@@ -426,6 +483,9 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       'side-by-side-in-choice.json',
       'side-by-side-nested.json',
       'side-by-side-one-panel.json',
+      'subparts-and-answers.json',
+      'subparts-empty.json',
+      'subparts-nested.json',
       'unsafe-url.json',
       'unsupported-required-feature.json',
       'unsupported-version.json',
@@ -433,7 +493,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     const validate = new Ajv2020({ allErrors: true, strict: true }).compile(publicSchema)
     for (const [name, code] of Object.entries(manifest)) {
       // An inverted crop is well-formed: only the importer can compare its sides.
-      if (/^(?:pending-|side-by-side-|crop-(?!inverted)|base64-|locked-)/.test(name))
+      if (/^(?:pending-|side-by-side-|crop-(?!inverted)|base64-|locked-|subparts-)/.test(name))
         expect(validate(await fixture(invalidRoot, name)), name).toBe(false)
       // Only the importer can compare a crop's sides, or look for a file.
       if (['crop-inverted.json', 'missing-media-file.json', 'invalid-media.json'].includes(name))
@@ -578,6 +638,103 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     expect(generated.bank.questions[1]!.parts![0]!.choices!.map((choice) => choice.locked)).toEqual([
       undefined, undefined, true,
     ])
+  })
+
+  test('a Part with Subparts is written as their lead-in, validates, and imports back as it was', async () => {
+    const validate = new Ajv2020({ strict: true }).compile(publicSchema)
+    const text = (value: string) => [{ type: 'paragraph', content: [{ type: 'text', text: value }] }]
+    const answering = (type: string, id: string, stem: string, answer: Record<string, unknown>) => ({
+      type,
+      attrs: { id, columns: 2 },
+      content: [{ type: 'multipartPartStem', content: text(stem) }, answer],
+    })
+    const bank: QuestionBankResource = {
+      id: 'local-bank',
+      name: 'Generated Subparts',
+      createdAt: 'not-public',
+      lastUpdatedAt: 'not-public',
+      questions: [{
+        id: 'local-multipart',
+        type: 'multipart',
+        columns: 2,
+        doc: {
+          type: 'doc',
+          content: [
+            ...text('A table of rainfall by month.'),
+            {
+              type: 'multipartParts',
+              content: [
+                answering('multipartPart', 'local-a', 'Which month was wettest?', {
+                  type: 'suggestedAnswer', content: text('March.'),
+                }),
+                {
+                  type: 'multipartPart',
+                  attrs: { id: 'local-b', columns: 2 },
+                  content: [
+                    { type: 'multipartPartStem', content: text('Rain fell on 12 days in May.') },
+                    {
+                      type: 'multipartSubparts',
+                      content: [
+                        answering('multipartSubpart', 'local-b-i', 'Is that more than in April?', {
+                          type: 'multipleChoice',
+                          content: ['Yes', 'No'].map((answer, index) => ({
+                            type: 'multipleChoiceChoice',
+                            attrs: { id: `local-b-i-${index}`, correct: index === 0 },
+                            content: text(answer),
+                          })),
+                        }),
+                        answering('multipartSubpart', 'local-b-ii', 'Give a reason.', {
+                          type: 'suggestedAnswer', content: [{ type: 'paragraph' }],
+                        }),
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      }],
+    }
+    const prepared = await prepareQuestionBankExport(bank)
+    const generated = JSON.parse(decoder.decode(prepared.recordBytes)) as QuestionBankRecord
+
+    expect(generated.formatVersion).toBe('0.9.0')
+    expect(validate(generated), JSON.stringify(validate.errors)).toBe(true)
+    expect(generated.bank.questions[0]!.parts![1]).toEqual({
+      id: 'q1-s2',
+      stem: { type: 'document', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Rain fell on 12 days in May.' }] }] },
+      subparts: [
+        expect.objectContaining({
+          id: 'q1-s2-s1',
+          type: 'multiple-choice',
+          choices: [
+            expect.objectContaining({ id: 'q1-s2-s1-c1', correct: true }),
+            expect.objectContaining({ id: 'q1-s2-s1-c2', correct: false }),
+          ],
+        }),
+        { id: 'q1-s2-s2', type: 'short-answer', stem: expect.anything() },
+      ],
+    })
+
+    const proposal = await inspectQuestionBankRecord(prepared.recordBytes)
+    const [imported] = importedQuestionsFromRecord(proposal.record)
+    const original = partsOf(bank.questions[0]!)
+    const back = partsOf(imported!)
+    // Fresh local ids, the same Parts and Subparts.
+    const shape = (parts: typeof back) => parts.map((part) => ({
+      type: part.type,
+      stem: part.stem,
+      subparts: part.subparts.map((subpart) => ({
+        type: subpart.type,
+        stem: subpart.stem,
+        choices: subpart.choices.map((choice) => [choice.correct, choice.node.content]),
+        suggestedAnswer: subpart.suggestedAnswer,
+      })),
+      suggestedAnswer: part.suggestedAnswer,
+    }))
+    expect(shape(back)).toEqual(shape(original))
+    expect(back[1]!.subparts[0]!.id).not.toBe('local-b-i')
   })
 })
 

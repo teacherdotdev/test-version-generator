@@ -28,6 +28,7 @@ import {
   type PageFurniture,
   type PlannedBankAnswer,
   type PlannedPart,
+  type PlannedSubpart,
   type PlannedWorkSpace,
   type PageHeader,
   type PageItem,
@@ -221,8 +222,9 @@ export function WorkSpaceView({ space }: { space: PlannedWorkSpace }) {
 
 // One Part of a Multipart question, drawn the way a question of its kind is, one level
 // in: a short letter column — no answer blank, for either kind — then its
-// stem, its choice grid or its work space. `renderWorkSpace` lets the sheet wrap a Short Answer Part's space in
-// the handle that sizes it.
+// stem, its choice grid or its work space, or the Subparts it holds.
+// `renderWorkSpace` lets the sheet wrap a Short Answer Part's or Subpart's
+// space in the handle that sizes it.
 export function PartContent({
   part,
   showCorrectness = false,
@@ -230,20 +232,71 @@ export function PartContent({
 }: {
   part: PlannedPart
   showCorrectness?: boolean
-  renderWorkSpace?: (part: PlannedPart, space: PlannedWorkSpace) => ReactNode
+  renderWorkSpace?: (partId: string, space: PlannedWorkSpace) => ReactNode
 }) {
+  // A piece continued from an earlier page keeps the letter column, empty, so
+  // its Subparts stand where they would have under the lead-in.
   return (
-    <div className="multipart-part-print" data-part-id={part.id} data-part-type={part.type}>
+    <div
+      className="multipart-part-print"
+      data-part-id={part.id}
+      data-part-type={part.type}
+      {...(part.continued ? { 'data-continued': 'true' } : {})}
+    >
       <div className="part-letter">
-        <span className="part-count">{part.letter}.</span>
+        {!part.continued && <span className="part-count">{part.letter}.</span>}
       </div>
       <div className="part-body">
-        <DocView className="question-stem" content={part.stem} />
+        {!part.continued && <DocView className="question-stem" content={part.stem} />}
         {part.grid && <ChoiceGridView grid={part.grid} showCorrectness={showCorrectness} />}
         {part.workSpace
           && (renderWorkSpace
-            ? renderWorkSpace(part, part.workSpace)
+            ? renderWorkSpace(part.id, part.workSpace)
             : <WorkSpaceView space={part.workSpace} />)}
+        {part.subparts.length > 0 && (
+          <div className="multipart-subparts-print">
+            {part.subparts.map((subpart) => (
+              <SubpartContent
+                key={subpart.id}
+                subpart={subpart}
+                showCorrectness={showCorrectness}
+                renderWorkSpace={renderWorkSpace}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// One Subpart, drawn as a Part is, one level further in under its Part's
+// lead-in: its label column, then its stem and its choice grid or work space.
+function SubpartContent({
+  subpart,
+  showCorrectness,
+  renderWorkSpace,
+}: {
+  subpart: PlannedSubpart
+  showCorrectness: boolean
+  renderWorkSpace?: (partId: string, space: PlannedWorkSpace) => ReactNode
+}) {
+  return (
+    <div
+      className="multipart-part-print multipart-subpart-print"
+      data-part-id={subpart.id}
+      data-part-type={subpart.type}
+    >
+      <div className="part-letter">
+        <span className="part-count">{subpart.label}.</span>
+      </div>
+      <div className="part-body">
+        <DocView className="question-stem" content={subpart.stem} />
+        {subpart.grid && <ChoiceGridView grid={subpart.grid} showCorrectness={showCorrectness} />}
+        {subpart.workSpace
+          && (renderWorkSpace
+            ? renderWorkSpace(subpart.id, subpart.workSpace)
+            : <WorkSpaceView space={subpart.workSpace} />)}
       </div>
     </div>
   )
@@ -263,7 +316,7 @@ export function QuestionContent({
   showCorrectness?: boolean
   /** The sheet's own drawing of a Short Answer Part's work space, with its
    *  sizing handle; everywhere else the space is drawn plain. */
-  renderPartWorkSpace?: (part: PlannedPart, space: PlannedWorkSpace) => ReactNode
+  renderPartWorkSpace?: (partId: string, space: PlannedWorkSpace) => ReactNode
 }) {
   const numbered = printsNumberLine(item)
   const column = numberColumnOf(item.question)
@@ -358,7 +411,13 @@ export function AnswerKeyEntry({ item }: { item: AnswerKeyEntryItem }) {
         <DocView className="answer-key-suggested" content={item.suggestedAnswer} />
       )}
       {item.parts && (
-        <div className="answer-key-parts">
+        <div
+          className={
+            item.parts.some((part) => part.subpart)
+              ? 'answer-key-parts answer-key-parts--subparts'
+              : 'answer-key-parts'
+          }
+        >
           {item.parts.map((part) => (
             <div className="answer-key-part" key={part.letter}>
               <span className="answer-key-part-letter">{part.letter}.</span>

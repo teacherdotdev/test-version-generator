@@ -25,9 +25,11 @@ import {
   QUESTION_BANK_FORMAT_VERSION,
   RECORD_PART_TYPE_LABELS,
   RECORD_TYPE_LABELS,
+  holdsSubparts,
   partLetter,
   wordBankLettersOf,
   type PreparedQuestionBankExport,
+  type QuestionBankRecordPart,
   type QuestionBankRecordQuestion,
   type SemanticDocument,
   type SemanticNode,
@@ -40,6 +42,7 @@ import {
   topicKey,
   type QuestionBankFileOutline,
 } from './question-bank-file-outline'
+import { subpartLabelAt } from './export-plan'
 import { PACKAGE_FORMAT, PACKAGE_FORMAT_VERSION, type TestParrotPackage } from './package-import'
 import {
   PACKAGE_ZIP_ATTACHMENT_NAME,
@@ -1019,27 +1022,43 @@ function drawQuestion(context: Context, question: QuestionBankRecordQuestion, nu
     if (question.parts.length === 0) {
       drawText(context, 'No Parts yet.', { font: 'italic' })
     }
-    question.parts.forEach((part, partIndex) => {
+    // A Part that holds Subparts prints its lead-in, then each Subpart
+    // numbered beneath it and one level further in, drawn as a Part is.
+    const drawPart = (
+      label: string,
+      part: QuestionBankRecordPart,
+      indent: number,
+    ) => {
       context.y -= 3
       drawPieces(
         context,
         [
-          { text: `${partLetter(partIndex)}. `, font: 'bold', size: BODY_SIZE },
-          { text: RECORD_PART_TYPE_LABELS[part.type], font: 'italic', size: BODY_SIZE },
+          { text: `${label}. `, font: 'bold', size: BODY_SIZE },
+          {
+            text: holdsSubparts(part) ? 'Subparts' : RECORD_PART_TYPE_LABELS[part.type],
+            font: 'italic',
+            size: BODY_SIZE,
+          },
         ],
-        { x: MARGIN + 18, width: CONTENT_WIDTH - 18 },
+        { x: MARGIN + indent, width: CONTENT_WIDTH - indent },
       )
-      drawIndentedDocument(context, part.stem, 36)
-      if (part.choices) drawChoices(context, part.choices, 36)
+      drawIndentedDocument(context, part.stem, indent + 18)
+      if (holdsSubparts(part)) {
+        part.subparts.forEach((subpart, subpartIndex) =>
+          drawPart(subpartLabelAt(subpartIndex), subpart, indent + 18))
+        return
+      }
+      if (part.choices) drawChoices(context, part.choices, indent + 18)
       if (part.suggestedAnswer) {
         drawText(context, 'Suggested Answer', {
-          x: MARGIN + 36,
-          width: CONTENT_WIDTH - 36,
+          x: MARGIN + indent + 18,
+          width: CONTENT_WIDTH - indent - 18,
           font: 'bold',
         })
-        drawIndentedDocument(context, part.suggestedAnswer, 36)
+        drawIndentedDocument(context, part.suggestedAnswer, indent + 18)
       }
-    })
+    }
+    question.parts.forEach((part, partIndex) => drawPart(partLetter(partIndex), part, 18))
   }
   if (question.suggestedAnswer) {
     context.y -= 3

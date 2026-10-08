@@ -45,9 +45,9 @@ import {
   type PageItem,
   type QuestionItem,
   type SectionHeadingItem,
-  type PlannedPart,
   type PlannedQuestion,
   type PlannedWorkSpace,
+  answeringPartsIn,
   wordBankLayoutOf,
 } from './export-plan'
 import {
@@ -404,11 +404,14 @@ function questionMenuItems({
   if (question.type === 'matching' && onSetWordBankLayout) {
     answerFormat.push(wordBankMenu(wordBankLayout, (next) => onSetWordBankLayout(actedOnIds, next)))
   }
-  for (const part of question.parts ?? []) {
+  // A Part that holds Subparts answers nothing itself: each of its Subparts
+  // is laid out, and leaves room, under its own id and name.
+  const answering = answeringPartsIn(question.parts ?? [])
+  for (const { name, part } of answering) {
     if (part.type !== 'multiple-choice') continue
     answerFormat.push(
       columnsMenu(
-        `Part ${part.letter} · Answer columns`,
+        `Part ${name} · Answer columns`,
         part.grid?.columns ?? DEFAULT_COLUMNS,
         (next) => onSetColumns([part.id], next),
       ),
@@ -419,13 +422,13 @@ function questionMenuItems({
   }
   // A Short Answer Part leaves room under its own id, as a Short Answer
   // question does under its.
-  for (const part of question.parts ?? []) {
+  for (const { name, part } of answering) {
     if (part.type === 'multiple-choice') continue
     items.push(
       { kind: 'separator' },
       ...workSpaceMenu(
-        `Part ${part.letter} · Work space`,
-        `Part ${part.letter} · Fill rest of page`,
+        `Part ${name} · Work space`,
+        `Part ${name} · Fill rest of page`,
         workSpaceOfPart(part.id),
         [part.id],
         onSetWorkSpace,
@@ -712,32 +715,39 @@ function QuestionView({
     previewHeight === null || !item.workSpace
       ? item
       : { ...item, workSpace: previewed(item.workSpace, previewHeight) }
+  const previewedPart = <Part extends { id: string; workSpace: PlannedWorkSpace | null }>(part: Part): Part =>
+    partPreview !== null && part.id === partPreview.partId && part.workSpace
+      ? { ...part, workSpace: previewed(part.workSpace, partPreview.height) }
+      : part
   const shown: QuestionItem =
     partPreview === null || !withQuestionPreview.parts
       ? withQuestionPreview
       : {
           ...withQuestionPreview,
-          parts: withQuestionPreview.parts.map((part) =>
-            part.id === partPreview.partId && part.workSpace
-              ? { ...part, workSpace: previewed(part.workSpace, partPreview.height) }
-              : part,
-          ),
+          parts: withQuestionPreview.parts.map((part) => ({
+            ...previewedPart(part),
+            subparts: part.subparts.map(previewedPart),
+          })),
         }
-  // A Short Answer Part's work space, with the bar that sizes it in the gap
-  // below the Part, exactly as a Short Answer question's bar sits below it.
-  const renderPartWorkSpace = (part: PlannedPart, space: PlannedWorkSpace) => (
-    <div className="part-work-space">
-      <WorkSpaceView space={space} />
-      <WorkSpaceHandle
-        label={`Work space for question ${numberLabelOf(question)} part ${part.letter}`}
-        space={item.parts?.find(({ id }) => id === part.id)?.workSpace ?? space}
-        max={maxWorkSpace}
-        onPreview={(height) =>
-          setPartPreview(height === null ? null : { partId: part.id, height })}
-        onCommit={(height) => onSetWorkSpace([part.id], { height, fill: false })}
-      />
-    </div>
-  )
+  // A Short Answer Part's or Subpart's work space, with the bar that sizes it
+  // in the gap below it, exactly as a Short Answer question's bar sits below it.
+  const answeringHere = answeringPartsIn(item.parts ?? [])
+  const renderPartWorkSpace = (partId: string, space: PlannedWorkSpace) => {
+    const here = answeringHere.find(({ part }) => part.id === partId)
+    return (
+      <div className="part-work-space">
+        <WorkSpaceView space={space} />
+        <WorkSpaceHandle
+          label={`Work space for question ${numberLabelOf(question)} part ${here?.name ?? ''}`}
+          space={here?.part.workSpace ?? space}
+          max={maxWorkSpace}
+          onPreview={(height) =>
+            setPartPreview(height === null ? null : { partId, height })}
+          onCommit={(height) => onSetWorkSpace([partId], { height, fill: false })}
+        />
+      </div>
+    )
+  }
 
   const releasePointer = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {

@@ -30,6 +30,7 @@ import {
 } from './export-media'
 import {
   CHOICE_INDENT,
+  closingWorkSpaceOf,
   MATCHING_BANK_INSET,
   headerHeightOf,
   MATCHING_BANK_WIDTH,
@@ -871,15 +872,34 @@ function drawMatching(context: DrawContext, set: MatchingSet): void {
 const PARTS_GAP_ABOVE = 14
 const PARTS_GAP_BETWEEN = 18
 
+// A Part draws its letter and stem, then its grid or work space — or, for a
+// Part that holds Subparts, each Subpart the same way one level further in,
+// spaced as Parts are (`.multipart-subparts-print`). A piece continued from an
+// earlier page draws only its Subparts, where they would stand under the lead-in.
 function drawPart(context: DrawContext, part: PlannedPart, x: number, width: number): void {
   const indent = pt(PART_INDENT)
   const bodyX = x + indent
   const bodyWidth = width - indent
-  drawTextLine(
-    context,
-    `${part.letter}.`,
-    { font: 'bold', x, width: indent - 5 },
-  )
+  if (!part.continued) drawAnswering(context, `${part.letter}.`, part, x, width)
+  for (const [index, subpart] of part.subparts.entries()) {
+    if (index > 0 || !part.continued) {
+      context.y -= pt(index === 0 ? PARTS_GAP_ABOVE : PARTS_GAP_BETWEEN)
+    }
+    drawAnswering(context, `${subpart.label}.`, subpart, bodyX, bodyWidth)
+  }
+}
+
+function drawAnswering(
+  context: DrawContext,
+  label: string,
+  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace'>,
+  x: number,
+  width: number,
+): void {
+  const indent = pt(PART_INDENT)
+  const bodyX = x + indent
+  const bodyWidth = width - indent
+  drawTextLine(context, label, { font: 'bold', x, width: indent - 5 })
   context.y += BODY_LINE
   if (part.stem.length > 0) drawBlocks(context, part.stem, { x: bodyX, width: bodyWidth })
   else context.y -= BODY_LINE
@@ -910,7 +930,8 @@ function drawQuestion(context: DrawContext, item: QuestionItem): void {
     context.y -= pt(index === 0 ? PARTS_GAP_ABOVE : PARTS_GAP_BETWEEN)
     drawPart(context, part, bodyX, bodyWidth)
   }
-  if (parts.at(-1)?.workSpace?.fill) return
+  const last = parts.at(-1)
+  if (last && closingWorkSpaceOf(last)?.fill) return
   context.y -= QUESTION_GAP
 }
 
@@ -1031,25 +1052,28 @@ function drawAnswerKeyEntry(context: DrawContext, item: AnswerKeyEntryItem): voi
   }
   // A Multipart question's Parts each take a line under its number, the Part's letter
   // where a question's number goes and its answer on the blank beside it.
+  // An entry with a Subpart's line, labelled `b (iii)`, sets every line's
+  // blank further along, as print's `.answer-key-parts--subparts` does.
+  const label = (item.parts ?? []).some((part) => part.subpart) ? pt(56) : 18
   for (const part of item.parts ?? []) {
     ensureRoom(context, BODY_LINE + 2)
     const partY = context.y
     const partX = context.x + ANSWER_KEY_ANSWER_X
-    drawTextLine(context, `${part.letter}.`, { x: partX, width: 18 })
+    drawTextLine(context, `${part.letter}.`, { x: partX, width: label })
     context.y = partY
-    if (part.answer) drawTextLine(context, part.answer, { font: 'bold', x: partX + 24, width: 42 })
+    if (part.answer) drawTextLine(context, part.answer, { font: 'bold', x: partX + label + 6, width: 42 })
     else context.y -= BODY_LINE
     context.page.drawLine({
-      start: { x: partX + 22, y: partY - BODY_LINE + 3 },
-      end: { x: partX + 64, y: partY - BODY_LINE + 3 },
+      start: { x: partX + label + 4, y: partY - BODY_LINE + 3 },
+      end: { x: partX + label + 46, y: partY - BODY_LINE + 3 },
       thickness: 0.6,
       color: INK,
     })
     context.y = partY - BODY_LINE - 2
     if (part.suggestedAnswer) {
       drawBlocks(context, part.suggestedAnswer, {
-        x: partX + 24,
-        width: context.width - ANSWER_KEY_ANSWER_X - 24,
+        x: partX + label + 6,
+        width: context.width - ANSWER_KEY_ANSWER_X - label - 6,
       })
       context.y -= 4
     }

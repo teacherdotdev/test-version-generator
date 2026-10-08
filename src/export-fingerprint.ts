@@ -553,16 +553,23 @@ function planQuestion(item: QuestionItem, images: ImageOrdinals): ContentLine[] 
   ]
 }
 
-// A Multipart question's Part reads as a question of its kind does: its blank and letter
-// open its stem, and its grid or work space follows.
+// A Multipart question's Part reads as a question of its kind does: its letter
+// opens its stem, and its grid or work space follows — or, for a Part that
+// holds Subparts, each Subpart read the same way under its own label. A piece
+// continued from an earlier page carries no letter or lead-in, only Subparts.
 function planPart(part: PlannedPart, images: ImageOrdinals): ContentLine[] {
-  const opener: Segment[] = [
-    {
-      kind: 'text',
-      text: `${part.letter}. `,
-      marks: [],
-    },
+  return [
+    ...(part.continued ? [] : planAnswering(`${part.letter}. `, part, images)),
+    ...part.subparts.flatMap((subpart) => planAnswering(`${subpart.label}. `, subpart, images)),
   ]
+}
+
+function planAnswering(
+  label: string,
+  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace'>,
+  images: ImageOrdinals,
+): ContentLine[] {
+  const opener: Segment[] = [{ kind: 'text', text: label, marks: [] }]
   const stem = planBlocks(part.stem, { opener }, images)
   return [
     ...(stem.length > 0 ? stem : [line('para', renderInline(opener))]),

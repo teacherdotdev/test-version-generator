@@ -17,9 +17,9 @@
 import { bankLetter } from './matching'
 import { encoded } from './export-media'
 import { keptPixels, legacyRatioOf, pictureCropOf, pictureKey, pictureSizeOf, printedPictureWidth, type CropBox } from './picture-geometry'
-import { layOutColumns, MATCHING_BESIDE_LIMIT, TRUE_FALSE_MARKS } from './export-plan'
+import { layOutColumns, MATCHING_BESIDE_LIMIT, subpartLabelAt, TRUE_FALSE_MARKS } from './export-plan'
 import { pendingImageOf, stemNodesOf, type ProseMirrorJSON } from './question-doc'
-import { choicesOf, partsOf, promptsOf, type ColumnSetting, type Question } from './exam'
+import { choicesOf, partsOf, promptsOf, type ColumnSetting, type Part, type Question } from './exam'
 import { mathJaxTools } from './mathjax'
 
 /** One paragraph's worth of a copied Question: blocks of Question Content,
@@ -150,12 +150,26 @@ export function copyBlocksOf(question: Question, format: CopyFormat = {}): CopyB
       return [
         ...(stem.length > 0 ? [line(stem)] : []),
         ...partsOf(question).flatMap((part, index) => {
-          const partFormat = format.parts?.[part.id] ?? {}
+          // Answers and lines one level in under what they answer: a Part's
+          // under the Part, a Subpart's under the Subpart, itself one level in
+          // under its Part's lead-in. Each is formatted under its own id.
+          const answering = (
+            one: Pick<Part, 'id' | 'type' | 'choices' | 'columns'>,
+            level: number,
+          ): CopyBlock[] => {
+            const own = format.parts?.[one.id] ?? {}
+            if (one.type === 'subparts') return []
+            return one.type === 'multiple-choice'
+              ? answersOf(one.choices.map(({ node }) => content(node)), own.columns ?? one.columns, level)
+              : rulesOf(own.lines, level)
+          }
           return [
             line(part.stem, `${bankLetter(index).toLowerCase()}. `),
-            ...(part.type === 'multiple-choice'
-              ? answersOf(part.choices.map(({ node }) => content(node)), partFormat.columns ?? part.columns, 1)
-              : rulesOf(partFormat.lines, 1)),
+            ...answering(part, 1),
+            ...part.subparts.flatMap((subpart, subpartIndex) => [
+              line(subpart.stem, `${subpartLabelAt(subpartIndex)}. `, 1),
+              ...answering(subpart, 2),
+            ]),
           ]
         }),
       ]
