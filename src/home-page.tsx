@@ -26,6 +26,7 @@ export function HomePage({
   onOpenBank,
   onExportBank,
   onDeleteBank,
+  onDeleteExam,
   onImport,
 }: {
   exams: readonly RecentExam[]
@@ -38,6 +39,7 @@ export function HomePage({
   onOpenBank: (id: string) => void
   onExportBank: (bank: QuestionBankCollectionItem) => void
   onDeleteBank: (bank: QuestionBankCollectionItem) => void
+  onDeleteExam: (exam: RecentExam) => void
   onImport: () => void
 }) {
   const recentExams = homePreview(exams)
@@ -73,7 +75,7 @@ export function HomePage({
           >
             {recentExams.map((exam) => (
               <div role="listitem" key={exam.id}>
-                <ExamCard exam={exam} onOpen={onOpen} />
+                <ExamCard exam={exam} onOpen={onOpen} onDelete={onDeleteExam} />
               </div>
             ))}
             <div role="listitem">

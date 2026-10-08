@@ -177,6 +177,7 @@ import { LandingPage, OnboardingPage } from './landing-page'
 import { ConvertPage } from './convert-page'
 import { hasBeenWelcomed } from './welcomed'
 import type { ExamWorkspaceService, QuestionDeletionImpact, QuestionUsage, RecentExam } from './exam-workspaces'
+import { examDeletionMessage, type ExamDeletionSummary } from './exam-deletion'
 import {
   type QuestionBankResource,
   type QuestionBankSummary,
@@ -1138,6 +1139,24 @@ function BankDeletionConfirmation({ bank, impact, onCancel, onConfirm }: {
   </DestructiveConfirmation>
 }
 
+/** Deleting an Exam takes its Export History with it (ADR-0047). */
+function ExamDeletionConfirmation({ summary, onCancel, onConfirm }: {
+  summary: ExamDeletionSummary
+  onCancel: () => void
+  onConfirm: () => Promise<void>
+}) {
+  const message = examDeletionMessage(summary)
+  return <DestructiveConfirmation
+    label="Delete Exam"
+    title={message.title}
+    confirmLabel="Delete Exam"
+    onCancel={onCancel}
+    onConfirm={onConfirm}
+  >
+    <p>{message.body}</p>
+  </DestructiveConfirmation>
+}
+
 function ResourcePicker({
   title,
   closeLabel,
@@ -1948,6 +1967,7 @@ function ExamEditor({
   onHome,
   onOpenExam,
   onSaveAs,
+  onDelete,
   launchError,
   bankLibraryRevision = 0,
   onImportBank,
@@ -1960,6 +1980,8 @@ function ExamEditor({
   onHome: () => void
   onOpenExam: (id: string) => void
   onSaveAs: () => Promise<void>
+  /** Asks to delete this Exam (ADR-0047); the confirmation is the app's. */
+  onDelete: () => void
   launchError: string | null
   /** Bumped when something outside the bank pane — an import from the
    *  page-wide file drop — has opened a tab in this Exam's workspace, so the
@@ -2667,6 +2689,14 @@ function ExamEditor({
             icon: <History />,
             onSelect: () => setHistoryOpen(true),
           },
+          { kind: 'separator' },
+          {
+            kind: 'action',
+            label: 'Delete Exam',
+            icon: <Trash2 />,
+            destructive: true,
+            onSelect: onDelete,
+          },
         ] : [
           {
             kind: 'action',
@@ -3055,6 +3085,7 @@ export default function App({
   const [editorStore, setEditorStore] = useState(store)
   const [editorId, setEditorId] = useState(initialEditorId)
   const [deletingBank, setDeletingBank] = useState<{ bank: QuestionBankCollectionItem; impact: QuestionDeletionImpact[] } | null>(null)
+  const [deletingExam, setDeletingExam] = useState<ExamDeletionSummary | null>(null)
   const [exportingBank, setExportingBank] = useState<QuestionBankResource | null>(null)
   const [inspectingBankFile, setInspectingBankFile] = useState(false)
   const [droppedBankFile, setDroppedBankFile] = useState<File | null>(null)
@@ -3181,6 +3212,35 @@ export default function App({
       setBankCollection((current) => current.filter(({ id }) => id !== bank.id))
       setExams(await workspaces.recent())
       setDeletingBank(null)
+    }}
+  />
+  // The editor names its Exam by what its title field says now, which may be
+  // ahead of the last backup.
+  const requestExamDeletion = useCallback((id: string, title?: string) => {
+    void workspaces.deletionSummary(id).then((summary) => {
+      if (summary) setDeletingExam(title === undefined ? summary : { ...summary, title })
+    })
+  }, [workspaces])
+  const examDeletionConfirmation = deletingExam && <ExamDeletionConfirmation
+    summary={deletingExam}
+    onCancel={() => setDeletingExam(null)}
+    onConfirm={async () => {
+      const { examId } = deletingExam
+      const open = examId === editorId
+      // A backup still on its way must land before the database goes, not
+      // after, where it would find the Exam gone.
+      if (open && editorStore) await editorStore.whenSettled().catch(() => undefined)
+      await workspaces.deleteExam(examId)
+      // An Exam deleted from its own editor leaves it for Home.
+      if (open) {
+        window.location.assign('/')
+        return
+      }
+      setDeletingExam(null)
+      const [recent, recentBanks] = await Promise.all([workspaces.recent(), bankWorkspaces.recent()])
+      setExams(recent)
+      // Its banks are used in one Exam fewer.
+      setBankCollection(await questionBankCollection(recentBanks, bankWorkspaces, workspaces))
     }}
   />
   const saveAs = useCallback(async () => {
@@ -3318,7 +3378,8 @@ export default function App({
     onOpenExam={openExam}
     onOpenBank={openBank}
     onNewExam={newExam}
-  />{bankDeletionConfirmation}</>
+    onDeleteExam={(exam) => requestExamDeletion(exam.id)}
+  />{bankDeletionConfirmation}{examDeletionConfirmation}</>
   if (route === '/question-banks') return <>{globalChrome}<ResourceCollectionPage
     kind="question-banks"
     exams={exams}
@@ -3356,8 +3417,9 @@ export default function App({
     onOpenBank={openBank}
     onExportBank={requestBankExport}
     onDeleteBank={requestBankDeletion}
+    onDeleteExam={(exam) => requestExamDeletion(exam.id)}
     onImport={() => openImport()}
-  />{bankExportDialog}{bankDeletionConfirmation}</>
+  />{bankExportDialog}{bankDeletionConfirmation}{examDeletionConfirmation}</>
   if (route === '/question-bank') return pageBank && pageBankReady ? <>{globalChrome}<QuestionBankPage
     key={pageBank.bank.id}
     bank={pageBank.bank}
@@ -3378,6 +3440,7 @@ export default function App({
     bankLibraryRevision={bankLibraryRevision}
     onImportBank={(file) => openImport(file)}
     onSaveAs={saveAs}
+    onDelete={() => requestExamDeletion(editorId, editorStore.getState().workingCopy.title)}
     onOpenExam={(id) => {
       void (async () => {
         await bankWorkspaces.carryWorkspace({ examId: editorId }, { examId: id })
@@ -3391,5 +3454,5 @@ export default function App({
       if (id) await workspaces.removePristine(id)
       window.location.assign('/')
     })
-  }} /></> : globalChrome
+  }} />{examDeletionConfirmation}</> : globalChrome
 }

@@ -2483,6 +2483,11 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
 }
 .bank-card-menu svg { width: 16px; height: 16px; }
 .bank-card-menu:hover, .bank-card-menu:focus-visible { color: var(--paper-accent); border-color: #ddcdb9; background: #f7eee3; }
+/* An Exam's mark sits at the end of its caption, under the sheet, so it never
+   covers the page the thumbnail draws. */
+.exam-card-frame { position: relative; }
+.exam-card-frame .exam-card-caption { padding-right: 28px; }
+.exam-card-menu { top: auto; right: -4px; bottom: 0; }
 .bank-card-usage { margin: 10px 0 0; color: #6e5b4d; font-size: 13px; }
 /* The mark in the editor's document bar is the way home. */
 .editor-home-mark {

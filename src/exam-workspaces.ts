@@ -5,6 +5,8 @@ import { createIndexedDBAuthoringBackend } from './indexeddb-authoring'
 import { withCanonicalQuestionProjection } from './canonical-question-projection'
 import { withoutQuestions } from './question-deletion'
 import { createWorkingCopy } from './question-bank'
+import { collectUnusedMediaAssets } from './local-images'
+import type { ExamDeletionSummary } from './exam-deletion'
 import {
   CANONICAL_QUESTION_STORE,
   EDITOR_WORKSPACE_STORE,
@@ -109,6 +111,15 @@ function openRegistry(): Promise<IDBDatabase> {
   })
 }
 export function examDatabaseName(id: string) { return `${STORAGE_NAME}-exam-${id}` }
+/** Every connection to an Exam's database closes when asked (see
+ *  `indexeddb-authoring`), so this waits for the deletion to finish. */
+function deleteExamDatabase(id: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(examDatabaseName(id))
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(request.error ?? new Error('The Exam could not be deleted.'))
+  })
+}
 function previewOf(state: AuthoringState): readonly (readonly ProseMirrorJSON[])[] | null {
   const byId = new Map(state.questionBank.questions.map((question) => [question.id, question]))
   const documents = state.workingCopy.questionIds.flatMap((id) => {
@@ -136,6 +147,28 @@ export function createExamWorkspaceService(options: { now?: () => Date; createId
       await completed.catch(() => undefined)
       throw error
     }
+  }
+  /** The registry stops naming the Exam, and nothing remembered by its id
+   *  survives (the Exam to reopen, the editor to restore, its bank tabs)
+   *  before its own database, with its saved state, Working Copy and Export
+   *  History, is deleted. */
+  const forget = async (id: string) => {
+    await transact(
+      [EXAM_STORE, EXAM_WORKSPACE_STORE, EDITOR_WORKSPACE_STORE, QUESTION_BANK_WORKSPACE_STORE],
+      'readwrite',
+      async (transaction) => {
+        transaction.objectStore(EXAM_STORE).delete(id)
+        // The Question Bank workspace keys an Exam's tabs this way.
+        transaction.objectStore(QUESTION_BANK_WORKSPACE_STORE).delete(`exam:${id}`)
+        const [active, editor] = await Promise.all([
+          requestOf(transaction.objectStore(EXAM_WORKSPACE_STORE).get('active')) as Promise<ActiveWorkspace | undefined>,
+          requestOf(transaction.objectStore(EDITOR_WORKSPACE_STORE).get('active')) as Promise<{ resourceId?: string } | undefined>,
+        ])
+        if (active?.examId === id) transaction.objectStore(EXAM_WORKSPACE_STORE).delete('active')
+        if (editor?.resourceId === id) transaction.objectStore(EDITOR_WORKSPACE_STORE).delete('active')
+      },
+    )
+    await deleteExamDatabase(id)
   }
   const service = {
     backendFor,
@@ -356,6 +389,8 @@ export function createExamWorkspaceService(options: { now?: () => Date; createId
       }
     },
     async removePristine(id: string): Promise<boolean> {
+      // Reading a missing Exam's database would create it again.
+      if (!await service.exists(id)) return false
       const backend = backendFor(id)
       const [state, saved, history] = await Promise.all([
         backend.read(),
@@ -363,16 +398,37 @@ export function createExamWorkspaceService(options: { now?: () => Date; createId
         backend.readExportHistory(),
       ])
       if (!isPristineExam(state, saved, history)) return false
-      await transact([EXAM_STORE, EXAM_WORKSPACE_STORE], 'readwrite', async (transaction) => {
-        transaction.objectStore(EXAM_STORE).delete(id)
-        const active = await requestOf(transaction.objectStore(EXAM_WORKSPACE_STORE).get('active')) as ActiveWorkspace | undefined
-        if (active?.examId === id) transaction.objectStore(EXAM_WORKSPACE_STORE).delete('active')
-      })
-      await new Promise<void>((resolve) => {
-        const request = indexedDB.deleteDatabase(examDatabaseName(id))
-        request.onsuccess = request.onblocked = () => resolve()
-        request.onerror = () => resolve()
-      })
+      await forget(id)
+      return true
+    },
+    /** The Exam by name, and how many Export Records deleting it takes. */
+    async deletionSummary(id: string): Promise<ExamDeletionSummary | null> {
+      if (!await service.exists(id)) return null
+      const backend = backendFor(id)
+      try {
+        const [working, saved, history] = await Promise.all([
+          backend.read(),
+          backend.readSaved(),
+          backend.readExportHistory(),
+        ])
+        return {
+          examId: id,
+          title: working?.workingCopy.title ?? saved?.workingCopy.title ?? 'Untitled Exam',
+          exportCount: history.records.length,
+        }
+      } finally {
+        await backend.close()
+      }
+    },
+    /**
+     * Permanently deletes an Exam and its Export History (ADR-0047). Its
+     * Questions stay in their banks; Media Assets nothing else references
+     * are collected afterwards. False when there was no such Exam.
+     */
+    async deleteExam(id: string): Promise<boolean> {
+      if (!await service.exists(id)) return false
+      await forget(id)
+      await collectUnusedMediaAssets().catch((error) => console.error('Could not collect unused media', error))
       return true
     },
     /** Removes abandoned placeholders. A bare editor reload retains its active

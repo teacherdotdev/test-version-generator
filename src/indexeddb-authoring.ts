@@ -74,7 +74,12 @@ function openDatabase(databaseName: string): Promise<IDBDatabase> {
         database.createObjectStore(EXAM_WORKSPACE_STORE, { keyPath: 'key' })
       }
     }
-    request.onsuccess = () => resolve(request.result)
+    request.onsuccess = () => {
+      // Deleting an Exam deletes its database (ADR-0047). A connection still
+      // held by the editor or a reader must not hold that deletion up.
+      request.result.onversionchange = () => request.result.close()
+      resolve(request.result)
+    }
     request.onerror = () => reject(request.error)
     request.onblocked = () => reject(new Error(`Could not open ${databaseName}`))
   })

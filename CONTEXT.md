@@ -104,7 +104,7 @@ One area of a Side-by-Side, holding any rich text a stem can except another Side
 _Avoid_: Cell, column
 
 **Exam**:
-A mutable composition with a stable identity and a name, made from live references to Question Bank records. A new Exam is named “Untitled Exam” by default; Save updates it, while Save As moves the current Working Copy into a separate Exam and restores the source Exam to its last saved state. An untouched, empty Untitled Exam is disposable rather than durable.
+A mutable composition with a stable identity and a name, made from live references to Question Bank records. A new Exam is named “Untitled Exam” by default; Save updates it, while Save As moves the current Working Copy into a separate Exam and restores the source Exam to its last saved state. An untouched, empty Untitled Exam is disposable rather than durable. Deleting an Exam deletes its Export History too, but never its Questions.
 _Avoid_: Exam project, exam family, Version, Draft
 
 **Working Copy**:
@@ -112,7 +112,7 @@ The locally backed-up editing state currently open for an Exam. It may differ fr
 _Avoid_: Exam Draft, Draft, autosaved Exam, local save
 
 **Export Record**:
-An immutable, undeletable record attached to an Exam and created each time its Working Copy or a previous Export Record is exported. It retains only the exact Content Selection, format, any Versions, question state, and Layout Plans produced by that event; repeated and historical re-exports produce separate Export Records, and export does not save the Exam. A historical re-export reproduces some or all of the record's Versions exactly and never creates new ones.
+An immutable record attached to an Exam, deleted only with that Exam, and created each time its Working Copy or a previous Export Record is exported. It retains only the exact Content Selection, format, any Versions, question state, and Layout Plans produced by that event; repeated and historical re-exports produce separate Export Records, and export does not save the Exam. A historical re-export reproduces some or all of the record's Versions exactly and never creates new ones.
 _Avoid_: Version, saved Exam, deduplicated export
 
 **Export Artifact**:
@@ -124,14 +124,14 @@ One shuffled arrangement of an Exam's Questions and answers, produced by an expo
 _Avoid_: Form, Variant, Version History, saved Exam
 
 **Export History**:
-The permanent chronological collection of an Exam's Export Records. Export History preserves what the teacher produced without making the Exam immutable.
+The chronological collection of an Exam's Export Records, kept for as long as the Exam is. Export History preserves what the teacher produced without making the Exam immutable.
 _Avoid_: Version History, audit log
 
 **Remove**:
 To exclude Question Content from an Exam while leaving it in its Question Bank.
 
 **Delete**:
-To permanently remove Question Content from its Question Bank, every Exam that references it, and their Working Copies. Deletion requires showing the affected Exams and explicit confirmation; existing Export Records remain unchanged.
+To permanently remove Question Content from its Question Bank, every Exam that references it, and their Working Copies. Deletion requires showing the affected Exams and explicit confirmation; existing Export Records remain unchanged. Deleting an Exam permanently removes it and its Export History after a confirmation naming the Exam and how many Export Records go with it.
 
 **Question Type**:
 What a Question asks for, settled when it is created and never changed afterwards: Multiple Choice, True/False, Matching, Short Answer, or Multipart. It decides how the Question is answered and laid out, the wording a new Question Section of only Questions of this type begins with, and what its Answer Key entry records.
