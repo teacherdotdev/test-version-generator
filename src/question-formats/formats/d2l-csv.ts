@@ -1,5 +1,5 @@
 import { htmlBlocks, richBlocks } from '../rich-text'
-import { excerpt, plainStructure } from '../text'
+import { excerpt, plainStructure, pointsIn } from '../text'
 import type { Blocks, ForeignChoice, ForeignQuestion, FormatInput, FormatSpec, ImportIssue, ParseResult } from '../types'
 import { isBlankRow, readSheet, type SheetRow } from './sheet'
 
@@ -11,10 +11,12 @@ import { isBlankRow, readSheet, type SheetRow } from './sheet'
  *
  * Keys are read in any case, with the spaces around them ignored (D2L's own
  * sample writes `Feedback ,`). A text cell followed by `HTML` is HTML; any
- * other text is read as HTML only if it plainly is. Title, points,
- * difficulty, hints and feedback have no place in a Test Parrot question
- * and are left out; a picture named by an `Image` row lives outside the
- * file, so the teacher is told to add it.
+ * other text is read as HTML only if it plainly is. A `Points` row is the
+ * question's points, kept as its Marks when a whole number (an `Option` or
+ * `Answer` row's number is a different thing: the percentage that answer
+ * earns, which says which is right). Title, difficulty, hints and feedback
+ * have no place in a Test Parrot question and are left out; a picture named
+ * by an `Image` row lives outside the file, so the teacher is told to add it.
  */
 
 const TYPES: Record<string, string> = {
@@ -64,7 +66,9 @@ function parseBlock(block: Block, warn: (code: string, message: string) => void)
   const rowsWith = (key: string) => block.rows.filter((row) => keyOf(row) === key)
   const textRow = rowsWith('questiontext')[0]
   const stem = textBlocks(textRow ? cell(textRow, 1) : '', textRow ? cell(textRow, 2) : undefined, onMissing)
-  const base = { line: block.line, sourceType: code, stem }
+  const pointsRow = rowsWith('points')[0]
+  const points = pointsRow ? pointsIn(cell(pointsRow, 1)) : undefined
+  const base = { line: block.line, sourceType: code, stem, ...(points !== undefined ? { points } : {}) }
   for (const image of rowsWith('image')) {
     if (cell(image, 1).trim()) {
       warn('picture-not-imported', `its picture “${excerpt(cell(image, 1), 40)}” is a separate file, so it was not brought in. Add it after importing.`)

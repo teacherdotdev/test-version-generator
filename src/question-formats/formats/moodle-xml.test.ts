@@ -32,6 +32,8 @@ describe('Moodle XML', () => {
     ])
 
     const [cell, primes, sun, capital, matching, essay, pi, cloze, ordering] = questions
+    // A <defaultgrade> of 1.0000000 is one Mark; a question with none is unmarked.
+    expect(questions.map((question) => question.marks)).toEqual([1, 1, 1, undefined, undefined, undefined, undefined, undefined, undefined])
     expect(text(cell!.stem)).toBe('Which organelle makes ATP?')
     expect(cell!.choices!.map((choice) => [text(choice.content), choice.correct])).toEqual([
       ['Nucleus', false], ['Mitochondrion', true], ['Ribosome', false],
@@ -108,5 +110,30 @@ describe('Moodle XML', () => {
     const input = (source: string) => ({ name: 'x.xml', bytes: new Uint8Array(), text: () => source, zip: async () => null })
     expect(moodleXml.detect(input('<questestinterop><item/></questestinterop>'))).toBe(0)
     expect(moodleXml.detect(input('1. What is 2 + 2?\n*a) 4\nb) 5'))).toBe(0)
+  })
+
+  test('keeps a whole-number <defaultgrade> as Marks, a Matching set’s for the set, and drops any other', async () => {
+    const { questions } = await read('q.xml', quiz(`
+      <question type="essay">
+        <questiontext format="html"><text>Describe the water cycle.</text></questiontext>
+        <defaultgrade>4.0000000</defaultgrade>
+      </question>
+      <question type="essay">
+        <questiontext format="html"><text>Describe a cloud.</text></questiontext>
+        <defaultgrade>0.5000000</defaultgrade>
+      </question>
+      <question type="essay">
+        <questiontext format="html"><text>Describe rain.</text></questiontext>
+        <defaultgrade>0</defaultgrade>
+      </question>
+      <question type="matching">
+        <questiontext format="html"><text>Match each animal to its home.</text></questiontext>
+        <defaultgrade>3</defaultgrade>
+        <subquestion format="html"><text>Bee</text><answer><text>Hive</text></answer></subquestion>
+        <subquestion format="html"><text>Fox</text><answer><text>Den</text></answer></subquestion>
+      </question>`))
+    expect(questions.map((question) => [question.type, question.marks])).toEqual([
+      ['short-answer', 4], ['short-answer', undefined], ['short-answer', undefined], ['matching', 3],
+    ])
   })
 })

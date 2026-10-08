@@ -1,5 +1,5 @@
 import { blocksText, htmlBlocks, looksLikeHtml, plainBlocks } from '../rich-text'
-import { decodeText, excerpt } from '../text'
+import { decodeText, excerpt, pointsIn } from '../text'
 import type { Blocks, ForeignImage, ForeignQuestion, FormatInput, FormatSpec, ImportIssue, ParseResult, ZipFiles } from '../types'
 import {
   attributeOf,
@@ -40,8 +40,12 @@ import { imageMimeType, resolveEntryPath, safeEntryPath, zipFile } from '../zip'
  * Blackboard pool or test export is QTI 1.2 too, but is left to its own
  * reader, which knows Blackboard's ways.
  *
- * Points, feedback and partial credit are not kept: Test Parrot questions
- * have one correct answer and no scores.
+ * An item's points are kept as its Marks when they are a whole number:
+ * QTI 1.2's Canvas `points_possible`, Blackboard `qmd_absolutescore_max`,
+ * `qmd_weighting`, or failing those its SCORE's `maxvalue`; QTI 2 and 3's
+ * `MAXSCORE` outcome, or failing that its SCORE's `normalMaximum`. Feedback
+ * and partial credit are not kept: Test Parrot questions have one correct
+ * answer.
  */
 
 // ——— Reading items into questions, shared with Blackboard's own QTI ———
@@ -427,9 +431,38 @@ const number = (value: string) => {
 
 const tidy = (value: number) => String(Number(value.toPrecision(12)))
 
-/** One QTI 1.2 `item` as a question. `html` reads the item's HTML, its
- *  pictures resolved; `solution` is an essay's model answer, if any. */
+/** A reading's question with the points its item gives it, if any. */
+const withPoints = (reading: Reading, points: number | undefined): Reading =>
+  'question' in reading && points !== undefined ? { ...reading, question: { ...reading.question, points } } : reading
+
+/** What a QTI 1.2 item is worth, from the first of these it gives: Canvas's
+ *  `points_possible`, Blackboard's `qmd_absolutescore_max`, a non-zero
+ *  `qmd_weighting`, or its SCORE variable's `maxvalue`. A Canvas item's
+ *  SCORE always runs to 100, a percentage, so it is never read there. */
+export function qti12Points(item: XmlElement): number | undefined {
+  const metadata = childOf(item, 'itemmetadata')
+  const canvas = metadataField(metadata, 'points_possible')
+  if (canvas !== undefined) return pointsIn(canvas)
+  if (metadataField(metadata, 'question_type') !== undefined) return undefined
+  const field = (name: string) => textOf(descendantOf(metadata, name)).trim() || metadataField(metadata, name)
+  const absolute = pointsIn(field('qmd_absolutescore_max'))
+  if (absolute !== undefined) return absolute
+  const weighting = pointsIn(field('qmd_weighting'))
+  if (weighting) return weighting
+  const score = descendantsOf(childOf(item, 'resprocessing'), 'decvar')
+    .find((variable) => (attributeOf(variable, 'varname') ?? 'SCORE').toUpperCase() === 'SCORE')
+  return score ? pointsIn(attributeOf(score, 'maxvalue')) : undefined
+}
+
+/** One QTI 1.2 `item` as a question, with its points. `html` reads the
+ *  item's HTML, its pictures resolved. */
 export function readQti12Item(item: XmlElement, html: (source: string) => Blocks): Reading {
+  return withPoints(readQti12Question(item, html), qti12Points(item))
+}
+
+/** One QTI 1.2 `item` as a question; `solution` is an essay's model answer,
+ *  if any. */
+function readQti12Question(item: XmlElement, html: (source: string) => Blocks): Reading {
   const presentation = childOf(item, 'presentation')
   if (!presentation) return { error: 'it has no question text or answers, so it was left out.' }
   const responses = responsesOf(presentation)
@@ -649,8 +682,22 @@ function declarationsOf(item: XmlElement): Map<string, Declaration> {
 
 const INTERACTION = /Interaction$/
 
-/** One QTI 2.x or 3.0 `assessmentItem` as a question. */
+/** What a QTI 2.x or 3.0 item is worth: its `MAXSCORE` outcome's default
+ *  value, or failing that its SCORE outcome's `normalMaximum`. */
+function qti2Points(item: XmlElement): number | undefined {
+  const outcomes = kids(item, 'outcomeDeclaration')
+  const named = (identifier: string) => outcomes.find((outcome) => attr(outcome, 'identifier') === identifier)
+  const max = named('MAXSCORE')
+  if (max) return pointsIn(textOf(kid(kid(max, 'defaultValue'), 'value')))
+  return pointsIn(attr(named('SCORE'), 'normalMaximum'))
+}
+
+/** One QTI 2.x or 3.0 `assessmentItem` as a question, with its points. */
 export function readQti2Item(item: XmlElement, html: (source: string) => Blocks): Reading {
+  return withPoints(readQti2Question(item, html), qti2Points(item))
+}
+
+function readQti2Question(item: XmlElement, html: (source: string) => Blocks): Reading {
   const body = kid(item, 'itemBody')
   if (!body) return { error: 'it has no item body, so it was left out.' }
   const declarations = declarationsOf(item)

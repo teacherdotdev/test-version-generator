@@ -1,5 +1,5 @@
 import { richBlocks } from '../rich-text'
-import { excerpt, plainStructure } from '../text'
+import { excerpt, plainStructure, pointsIn } from '../text'
 import type { ForeignQuestion, FormatInput, FormatSpec, ImportIssue, ParseResult } from '../types'
 import { isBlankRow, readSheet, type SheetRow } from './sheet'
 
@@ -13,14 +13,15 @@ import { isBlankRow, readSheet, type SheetRow } from './sheet'
  * Choice 1). A correct answer is a letter A–J or a number 1–10; for MR a
  * list of them, such as `"a,c"` or `"a c"`; for TF also `true` or `false`.
  * A header row, which Respondus lets a teacher skip, is skipped here too.
- * Feedback, points and titles are left out; the Topic becomes a topic.
+ * Points are kept as Marks when a whole number; the Topic becomes a topic.
+ * Feedback and titles are left out.
  */
 
 const TYPES: Record<string, string> = {
   MC: 'Multiple Choice', TF: 'True/False', MR: 'Multiple Response', FB: 'Fill in the Blank', ES: 'Essay',
 }
 
-const COLUMN = { type: 0, wording: 3, correct: 4, choices: 5, topic: 28 } as const
+const COLUMN = { type: 0, points: 2, wording: 3, correct: 4, choices: 5, topic: 28 } as const
 
 const typeOf = (row: SheetRow) => plainStructure(row.fields[0] ?? '').trim().toUpperCase()
 const isHeader = (row: SheetRow) => /^type$/i.test(plainStructure(row.fields[0] ?? '').trim())
@@ -37,11 +38,13 @@ function parseRow(row: SheetRow): ForeignQuestion | string {
   const code = typeOf(row)
   const field = (index: number) => row.fields[index] ?? ''
   const topic = field(COLUMN.topic).trim()
+  const points = pointsIn(field(COLUMN.points))
   const base = {
     line: row.line,
     sourceType: code,
     stem: richBlocks(field(COLUMN.wording)),
     ...(topic ? { topics: [topic] } : {}),
+    ...(points !== undefined ? { points } : {}),
   }
   const choiceTexts = Array.from({ length: 10 }, (_, index) => field(COLUMN.choices + index))
   const correct = field(COLUMN.correct).trim()

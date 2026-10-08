@@ -1,5 +1,5 @@
 import { richBlocks } from '../rich-text'
-import { excerpt, plainStructure } from '../text'
+import { excerpt, plainStructure, pointsIn } from '../text'
 import type { ForeignChoice, ForeignQuestion, FormatInput, FormatSpec, ImportIssue, ParseResult } from '../types'
 import { isBlankRow, readSheet, type SheetRow } from './sheet'
 
@@ -9,8 +9,9 @@ import { isBlankRow, readSheet, type SheetRow } from './sheet'
  * is a question. Columns are known by their usual names — `Question`,
  * `Prompt` or `Stem`; `Option A`, `Choice 1`, `Answer B` and the like;
  * `Correct answer`, `Answer` or `Key`; `Type`; `Topic`, `Category` or
- * `Tags` — in any case and order. Explanations, feedback, difficulty and
- * points have no place in a Test Parrot question and are left out.
+ * `Tags`; `Points` or `Marks` — in any case and order. Points are kept as
+ * the question's Marks when a whole number. Explanations, feedback and
+ * difficulty have no place in a Test Parrot question and are left out.
  *
  * The correct answer may be a letter, a 1-based number, the answer's own
  * text, or a list such as `A, C`. The type column is optional: a question
@@ -31,6 +32,7 @@ export type SpreadsheetHeader = {
   type: number
   correct: number
   topics: number[]
+  points: number
   options: Option[]
   /** Whether the options are the wrong answers, the right one given apart. */
   distractors: boolean
@@ -48,6 +50,7 @@ const QUESTION = /^(question|questions|question text|question stem|question word
 const TYPE = /^(type|question type|qtype|item type|format)$/
 const CORRECT = /^(correct|correct answers?|correct options?|correct choices?|correct letter|answers?|answer key|key|right answer|solution)$/
 const TOPICS = /^(topics?|category|categories|tags?|subject|unit|chapter)$/
+const POINTS = /^(points?|pts|point value|marks?)$/
 const OPTION = /^(?:(option|choice|answer|alternative|response)s? ?([a-j]|10|[1-9])|(incorrect answer|wrong answer|distractor|incorrect) ?([a-j]|10|[1-9])?|([a-j]))$/
 
 /** The header row among the first rows: a question column, and options or
@@ -82,6 +85,7 @@ export function spreadsheetHeader(rows: SheetRow[]): SpreadsheetHeader | null {
       type: labels.findIndex((text) => TYPE.test(text)),
       correct,
       topics: labels.flatMap((text, column) => (TOPICS.test(text) ? [column] : [])),
+      points: labels.findIndex((text) => POINTS.test(text)),
       options: kept,
       distractors: distractors && kept.length > 0,
     }
@@ -136,10 +140,12 @@ function parseRow(row: SheetRow, header: SpreadsheetHeader): ForeignQuestion | s
   const kind = kindOf(typeText)
   if (kind === 'unsupported') return `Test Parrot does not read “${excerpt(typeText, 30)}” questions from a spreadsheet.`
   const topics = header.topics.flatMap((column) => field(column).split(/[,;]/)).map((topic) => topic.trim()).filter(Boolean)
+  const points = pointsIn(field(header.points))
   const base = {
     line: row.line,
     ...(typeText ? { sourceType: typeText } : {}),
     ...(topics.length ? { topics } : {}),
+    ...(points !== undefined ? { points } : {}),
     stem: richBlocks(field(header.question).trim()),
   }
   const answer = field(header.correct).trim()

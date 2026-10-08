@@ -66,6 +66,8 @@ describe('Blackboard Test Generator pool download', () => {
     const answerOf = (index: number) =>
       text(matching.wordBank!.find((answer) => answer.id === matching.prompts![index]!.answer)?.content)
     expect([0, 1, 2, 3].map(answerOf)).toEqual(['twelve', 'one', 'three', 'four'])
+    // A Blackboard 5 pool gives no points, so nothing is marked.
+    expect(questions.every((question) => question.marks === undefined)).toBe(true)
   })
 
   test('reads the pool’s .dat on its own, and without assuming its name', async () => {
@@ -111,6 +113,8 @@ describe('Blackboard QTI pool and test export', () => {
     ])
 
     const [choice, multiple, trueFalse, essay, matching, blank, numeric, ordering, blanks] = questions
+    // Each item's qmd_absolutescore_max of 10 is its Marks, the Matching set's for the set.
+    expect(questions.map((question) => question.marks)).toEqual(questions.map(() => 10))
     expect(text(choice!.stem)).toBe('Which planet is shown?')
     expect(choice!.choices!.map((each) => [text(each.content), each.correct])).toEqual([
       ['Venus', false], ['Mars', true], ['Jupiter', false],
@@ -142,6 +146,15 @@ describe('Blackboard QTI pool and test export', () => {
     const hotSpot = reading.issues.find((issue) => issue.code === 'unsupported-type')
     expect(hotSpot?.severity).toBe('error')
     expect(hotSpot?.message).toBe('Question 10: Test Parrot has no “Hot Spot” questions, so it was left out.')
+  })
+
+  test('an item worth a fraction of a point comes in unmarked', async () => {
+    const dat = new TextDecoder().decode(pool())
+    const first = dat.indexOf('<qmd_absolutescore_max>10.000000000000000</qmd_absolutescore_max>', dat.indexOf('<item '))
+    const halved = dat.slice(0, first) + '<qmd_absolutescore_max>2.500000000000000</qmd_absolutescore_max>'
+      + dat.slice(first + '<qmd_absolutescore_max>10.000000000000000</qmd_absolutescore_max>'.length)
+    const { questions } = await read('res00001.dat', encode(halved))
+    expect(questions.map((question) => question.marks).slice(0, 2)).toEqual([undefined, 10])
   })
 
   test('a Random Block brings in its pool’s questions once', async () => {

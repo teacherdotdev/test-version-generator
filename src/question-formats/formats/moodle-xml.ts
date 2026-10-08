@@ -1,5 +1,5 @@
 import { htmlBlocks, plainBlocks, richBlocks, type HtmlOptions } from '../rich-text'
-import { excerpt } from '../text'
+import { excerpt, pointsIn } from '../text'
 import type { Blocks, ForeignChoice, ForeignImage, ForeignQuestion, FormatInput, FormatSpec, ImportIssue, ParseResult } from '../types'
 import {
   attributeOf,
@@ -36,7 +36,9 @@ import {
  *   as `@@PLUGINFILE@@/name`; Moodle 1.9 wrote one `<image_base64>` per
  *   question instead.
  *
- * Descriptions, which are text and not questions, are skipped and noted.
+ * A question's `<defaultgrade>`, its points in a quiz, is kept as its Marks
+ * when a whole number. Descriptions, which are text and not questions, are
+ * skipped and noted.
  */
 
 type Context = {
@@ -411,7 +413,13 @@ export function parseMoodleXml(text: string): ParseResult {
     if ('skip' in read) return
     const tags = childrenOf(childOf(element, 'tags'), 'tag').map((tag) => plainText(textOf(childOf(tag, 'text')))).filter(Boolean)
     const topics = [...(topic ? [topic] : []), ...tags]
-    questions.push({ ...read.question, number: found, ...(topics.length ? { topics } : {}) })
+    const points = pointsIn(textOf(childOf(element, 'defaultgrade')))
+    questions.push({
+      ...read.question,
+      number: found,
+      ...(topics.length ? { topics } : {}),
+      ...(points !== undefined ? { points } : {}),
+    })
     if (context.missing.length) {
       const count = context.missing.length
       report(

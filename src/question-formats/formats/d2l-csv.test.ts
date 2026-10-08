@@ -27,7 +27,10 @@ describe('Brightspace (D2L) question CSV', () => {
     ])
     const [written, short, matching, choice, trueFalse, multiSelect, ordering] = questions
 
-    // Titles, points, hints and feedback are not part of the question.
+    // Each question's Points row is its Marks, the Matching set's for the set.
+    expect(questions.map((question) => question.marks)).toEqual([1, 5, 2, 1, 1, 10, 2])
+
+    // Titles, hints and feedback are not part of the question.
     expect(text(written!.stem)).toBe('This is the question text for WR1')
     expect(text(written!.suggestedAnswer)).toBe('This is the answer key text')
 
@@ -102,5 +105,25 @@ describe('Brightspace (D2L) question CSV', () => {
       severity: 'error',
       message: 'Question 2 (line 5): “LK” is not a Brightspace question type Test Parrot reads.',
     }))
+  })
+
+  test('keeps whole-number Points as Marks, and drops fractional, zero or missing ones', async () => {
+    const { reading, questions } = await read('quiz.csv', encode([
+      'NewQuestion,WR',
+      'QuestionText,Describe a volcano.',
+      'Points,3',
+      'NewQuestion,WR',
+      'QuestionText,Describe a glacier.',
+      'Points,2.5',
+      'NewQuestion,WR',
+      'QuestionText,Describe a delta.',
+      'Points,0',
+      'NewQuestion,MC',
+      'QuestionText,Which is a gas?',
+      'Option,100,Steam',
+      'Option,0,Ice',
+    ].join('\n')))
+    expect(reading.format).toBe('d2l-csv')
+    expect(questions.map((question) => question.marks)).toEqual([3, undefined, undefined, undefined])
   })
 })

@@ -30,6 +30,8 @@ describe('text2qti', () => {
       'short-answer', 'short-answer', 'multiple-choice', 'short-answer',
     ])
     const [addition, dinosaurs, root2, root3, five, santa, essay, upload, wrapped, solution] = questions
+    // `Points: 2` is the first question's Marks alone; the rest give none.
+    expect(questions.map((question) => question.marks)).toEqual([2, ...questions.slice(1).map(() => undefined)])
 
     // Feedback is not part of the question or its choices.
     expect(text(addition!.stem)).toBe('What is 2+3?')
@@ -105,5 +107,30 @@ describe('text2qti', () => {
   test('a plain numbered file with no text2qti markers is left to the Blackboard Test Generator', async () => {
     const { reading } = await read('plain.txt', encode('1.  What is 2+3?\na)  6\nb)  1\n*c) 5\n'))
     expect(reading.format).toBe('bb-generator')
+  })
+
+  test('keeps a group’s points per question, unless a question gives its own', async () => {
+    const { reading, questions } = await read('quiz.txt', encode([
+      'Quiz title: Rivers',
+      '',
+      'GROUP',
+      'pick: 1',
+      'points per question: 3',
+      '1.  Which river is longest?',
+      '*a)  The Nile',
+      'b)  The Thames',
+      '',
+      'Points: 1',
+      '2.  Which river is shortest?',
+      'a)  The Nile',
+      '*b)  The Thames',
+      'END_GROUP',
+      '',
+      'Points: 1.5',
+      '3.  Describe a river.',
+      '____',
+    ].join('\n')))
+    expect(reading.format).toBe('text2qti')
+    expect(questions.map((question) => question.marks)).toEqual([3, 1, undefined])
   })
 })
