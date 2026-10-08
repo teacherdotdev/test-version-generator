@@ -113,6 +113,13 @@ Layout Plan resolves a space that fills its page to its final height, so print,
 DOCX and PDF draw the same room; DOCX marks its work-space paragraphs with the
 `WorkSpace` and `WorkSpaceLines` paragraph styles so they read back as one.
 
+An Answer Key line's Marks are text after its answer, ` [n]`, before any
+Question Metadata, and the paper's total shares the key heading's line, so it
+reads `heading:1 Answer Section Total: 9 marks`. Print, PDF and DOCX each set
+the total against the right margin; where it stands is geometry and is not
+compared. No current Question Style prints Marks on the test, so a test line
+never carries them.
+
 Inline content uses plain text, marked spans, links, math source, stable image
 ordinals, and authored-break markers. Fingerprints are adapter diagnostics only:
 they compare semantic and structural output and never identify, name, reuse, or

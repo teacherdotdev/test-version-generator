@@ -73,6 +73,16 @@ import {
 } from './exam'
 import type { Difficulty, Question, QuestionType, SectionTarget } from './exam'
 import { DifficultyBadge, TopicBadge } from './badges'
+import {
+  marksLabel,
+  marksOfQuestion,
+  marksOnQuestion,
+  parseMarksInput,
+  totalMarksOf,
+  unmarkedCountOf,
+  withPartMarks,
+  withQuestionMarks,
+} from './marks'
 import { bankQuestionById } from './question-bank'
 import { createExamStore, loadExamStore, type ExamStore } from './exam-store'
 import { ExamPage } from './exam-page'
@@ -112,6 +122,7 @@ import { storedPicture } from './resolved-pictures'
 import { pendingImagesOfQuestions, withStoredPictures, type PendingImageResolution, type StoredPicture } from './pending-images'
 import {
   AlignLeft,
+  Award,
   BookOpenText,
   Captions,
   Check,
@@ -458,6 +469,29 @@ function FrontMatterSelect({
   )
 }
 
+/**
+ * The Exam's total Marks, beside its save state: counted from its Questions
+ * whenever they change, so it follows every question added, removed or
+ * re-marked (ADR-0042). Nothing shows until some Question is marked; a
+ * partly marked Exam says how many have none, as a note rather than a
+ * warning, since an Exam is never kept from export for it.
+ */
+function MarksSummary({ questions }: { questions: readonly Question[] }) {
+  const total = totalMarksOf(questions)
+  if (total === undefined) return null
+  const unmarked = unmarkedCountOf(questions)
+  return (
+    <span className="exam-marks-summary" role="status" aria-live="polite">
+      <span className="exam-marks-total">{marksLabel(total)}</span>
+      {unmarked > 0 && (
+        <span className="exam-marks-note">
+          {unmarked} {unmarked === 1 ? 'question has' : 'questions have'} no marks
+        </span>
+      )}
+    </span>
+  )
+}
+
 function CrepeQuestion({
   value,
   onChange,
@@ -718,6 +752,15 @@ function QuestionDialog({
   )
   const [difficulty, setDifficulty] = useState<Difficulty | ''>(question.difficulty ?? '')
   const [topics, setTopics] = useState<readonly string[]>(topicsOf(question))
+  // What the Marks field holds as typed; read when the question is saved, so
+  // a half-typed value is never mistaken for one (see `parseMarksInput`).
+  const [marksText, setMarksText] = useState(
+    question.marks !== undefined && marksOnQuestion(question) ? String(question.marks) : '',
+  )
+  const marksValue = parseMarksInput(marksText)
+  // A Multipart question's Marks are its Parts' and Subparts' sum, kept up to
+  // date as they are typed in the editor below (ADR-0042).
+  const [partsMarks, setPartsMarks] = useState(() => marksOfQuestion(question))
   const latestDoc = useRef(doc)
   const readEditorDocument = useRef<(() => ProseMirrorJSON) | null>(null)
   const dialog = useRef<HTMLElement>(null)
@@ -775,6 +818,12 @@ function QuestionDialog({
       else delete saved.difficulty
       if (topics.length > 0) saved.topics = [...topics]
       else delete saved.topics
+      // Marks live on the Question for every type but Multipart, whose Parts
+      // carry theirs in the document. What cannot be read as Marks keeps the
+      // Marks the question had.
+      if (!marksOnQuestion(saved)) delete saved.marks
+      else if (marksValue === null) delete saved.marks
+      else if (marksValue !== undefined) saved.marks = marksValue
       if (type === 'open') {
         const answer = suggestedAnswerDocumentOf(edited)
         if (answer) saved.suggestedAnswer = await ownDocumentMedia(answer)
@@ -913,6 +962,43 @@ function QuestionDialog({
             onCreate={(value) => setTopics(withTopicAdded(topics, value))}
             renderValue={(value) => <TopicBadge topic={value} />}
           />
+          <div className="front-matter-field">
+            <span className="front-matter-label">
+              <Award />
+              Marks
+            </span>
+            {marksOnQuestion(question) ? (
+              <span className="front-matter-marks">
+                <input
+                  className="front-matter-marks-input"
+                  type="text"
+                  inputMode="numeric"
+                  aria-label="Marks"
+                  aria-invalid={marksValue === undefined ? true : undefined}
+                  placeholder="–"
+                  size={2}
+                  value={marksText}
+                  onChange={(event) => setMarksText(event.target.value)}
+                  onBlur={() => {
+                    // Put back what was there when the field is left holding
+                    // something that is not Marks.
+                    if (marksValue === undefined) {
+                      setMarksText(question.marks !== undefined ? String(question.marks) : '')
+                    }
+                  }}
+                />
+                {question.type === 'matching' ? 'for the whole set' : null}
+              </span>
+            ) : (
+              <span className="front-matter-value front-matter-stated">
+                {partsMarks === undefined ? (
+                  <span className="front-matter-blank">Set on each Part</span>
+                ) : (
+                  `${marksLabel(partsMarks)}, from its Parts`
+                )}
+              </span>
+            )}
+          </div>
         </div>
         <div className="dialog-editor">
           <CrepeQuestion
@@ -926,6 +1012,7 @@ function QuestionDialog({
             }}
             onChange={(next) => {
               latestDoc.current = next
+              if (type === 'multipart') setPartsMarks(marksOfQuestion({ ...question, doc: next }))
             }}
           />
         </div>
@@ -2022,6 +2109,38 @@ function ExamEditor({
     setVarySummary('Shuffled answer order.')
   }
 
+  // Marks belong to the Question, not to this Exam (ADR-0042): set on the
+  // sheet, they are a bank edit, committed through the owning Question Bank
+  // and saved at once like a save from the question editor, never an
+  // undoable change to the Working Copy. `partId` names a Part or Subpart of
+  // a Multipart question; `null` the question itself.
+  const setMarks = (questionId: string, partId: string | null, marks: number | null) => {
+    void (async () => {
+      const question = bankQuestionById(store.getState().questionBank, questionId)
+      if (!question) return
+      const saved = partId === null
+        ? withQuestionMarks(question, marks)
+        : withPartMarks(question, partId, marks)
+      if (JSON.stringify(saved) === JSON.stringify(question)) return
+      try {
+        const owner = await bankWorkspaces.ownerOfQuestion(questionId)
+        if (!owner) throw new Error('The owning Question Bank is unavailable on this device.')
+        await store.whenSettled()
+        await bankWorkspaces.commitCanonicalQuestion(
+          owner.id,
+          saved,
+          (canonical) => workspaces.propagateCanonicalQuestion(canonical),
+        )
+        store.syncCanonicalQuestions([saved])
+        setBankRevision((revision) => revision + 1)
+      } catch (error) {
+        setStorageNotice(
+          `The Marks could not be saved${error instanceof Error ? `: ${error.message}` : '.'}`,
+        )
+      }
+    })()
+  }
+
   // Where a released gesture goes. Each branch is one store call, so one drag
   // is one dirty flag, one mirrored write and one undo step — and the store
   // itself refuses a cross-section or duplicating drop, so the geometry above
@@ -2386,6 +2505,7 @@ function ExamEditor({
               reflowing under the teacher's hands while they type. The text is
               still there — in the tooltip, and announced to a screen reader —
               but the slot it lives in never changes size. */}
+          <MarksSummary questions={exam.questions} />
           <WorkingCopyStatus dirty={state.dirty} backupStatus={backupStatus} />
           <button
             ref={historyButton}
@@ -2759,6 +2879,7 @@ function ExamEditor({
             onSetWorkSpace={(questionIds, patch) =>
               store.setQuestionWorkSpace(questionIds, patch)
             }
+            onSetMarks={isHistoricalBrowsing ? undefined : setMarks}
                 unsavedDraft={!store.hasSavedExam()}
               />
             </div>

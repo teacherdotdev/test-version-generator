@@ -126,6 +126,13 @@ type Reader = {
   nextImage: () => number
 }
 
+/** Whether a toggle property is on: present, unless its value turns it off —
+ *  `0` or `false`, either of which OOXML allows. */
+function isOn(property: XmlNode): boolean {
+  const value = property.attrs['w:val']
+  return value !== '0' && value !== 'false'
+}
+
 function runMarks(run: XmlNode, extra: readonly string[]): string[] {
   const properties = child(run, 'w:rPr')
   const marks = [...extra]
@@ -133,13 +140,13 @@ function runMarks(run: XmlNode, extra: readonly string[]): string[] {
   for (const property of properties.children) {
     switch (property.name) {
       case 'w:b':
-        if (property.attrs['w:val'] !== '0') marks.push('strong')
+        if (isOn(property)) marks.push('strong')
         break
       case 'w:i':
-        if (property.attrs['w:val'] !== '0') marks.push('emphasis')
+        if (isOn(property)) marks.push('emphasis')
         break
       case 'w:strike':
-        if (property.attrs['w:val'] !== '0') marks.push('strike_through')
+        if (isOn(property)) marks.push('strike_through')
         break
       case 'w:vertAlign':
         if (property.attrs['w:val'] === 'subscript') marks.push('subscript')

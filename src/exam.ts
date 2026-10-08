@@ -21,6 +21,7 @@ import {
   partAnswerNodeOf,
   partStemNodesOf,
   promptAnswerIdOf,
+  readMarks,
   multipartPartNodesOf,
   subpartNodesOf,
   withFreshChoiceIds,
@@ -119,6 +120,13 @@ export type Question = {
   // record written before either existed still reads as a valid question.
   difficulty?: Difficulty
   topics?: string[]
+  /** What answering it is worth, for a Multiple Choice, True/False, Short
+   *  Answer or Matching question; absent when it is unmarked. A Multipart
+   *  question never stores Marks of its own: its Parts and Subparts carry
+   *  theirs on their document nodes, and its worth is their sum (see
+   *  `marks.ts`, ADR-0042). Owned by the Question, so it is the same on every
+   *  Exam that uses it. */
+  marks?: number
 }
 
 export type Exam = {
@@ -356,6 +364,9 @@ export type Subpart = {
   columns: ColumnSetting
   /** A Short Answer one's Suggested Answer as a document, when it has one. */
   suggestedAnswer?: ProseMirrorJSON
+  /** What answering it is worth; absent when it is unmarked. A Part that
+   *  holds Subparts has none of its own (ADR-0043). */
+  marks?: number
 }
 
 // One Part of a Multipart question, read out of its document. A Part either
@@ -1046,6 +1057,8 @@ function answeringPartOf(node: ProseMirrorJSON): Subpart {
         : [],
     columns: partColumnsOf(node),
   }
+  const marks = readMarks(((node.attrs ?? {}) as Record<string, unknown>).marks)
+  if (marks !== undefined) part.marks = marks
   if (type === 'open' && answer) {
     const suggested: ProseMirrorJSON = {
       type: 'doc',

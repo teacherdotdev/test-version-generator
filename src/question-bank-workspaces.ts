@@ -5,6 +5,7 @@ import { NO_FILTER, type QuestionBankFilter } from './question-bank-view'
 import { examDatabaseName } from './exam-workspaces'
 import { createIndexedDBAuthoringBackend } from './indexeddb-authoring'
 import { upgradeStoredQuestion } from './stored-upgrade'
+import { marksOnQuestion, readMarks } from './marks'
 import {
   CANONICAL_QUESTION_STORE,
   EDITOR_WORKSPACE_STORE,
@@ -157,7 +158,9 @@ export type BankChange =
   | { kind: 'update-question'; question: Question }
   | { kind: 'duplicate-question'; questionId: string }
 
-function questionOf(stored: StoredQuestion): Question {
+/** A Question as the bank's store holds it, read into the shape the app
+ *  uses. Exported for its tests. */
+export function questionOf(stored: Question & { bankId?: string }): Question {
   const question: Question = {
     id: stored.id,
     type: stored.type,
@@ -167,6 +170,10 @@ function questionOf(stored: StoredQuestion): Question {
   }
   if (stored.difficulty) question.difficulty = stored.difficulty
   if (stored.topics) question.topics = [...stored.topics]
+  // A question stored before Marks existed has none, and is simply unmarked;
+  // a Multipart question's worth is its Parts', never a field of its own.
+  const marks = readMarks(stored.marks)
+  if (marks !== undefined && marksOnQuestion(stored)) question.marks = marks
   // Written by an earlier build, perhaps: see `stored-upgrade.ts`.
   return upgradeStoredQuestion(question)
 }

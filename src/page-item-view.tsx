@@ -16,12 +16,16 @@ import { TITLE_PX, sectionHeadingStyles } from './export-typography'
 import { Check, Lock, RotateCcw } from 'lucide-react'
 import { DifficultyBadge, TopicBadge } from './badges'
 import { DocView } from './doc-view'
+import { marksLabel } from './marks'
 import {
   hasAnswerBlank,
   headerHeightOf,
   numberColumnOf,
   printsNumberLine,
   type AnswerKeyEntryItem,
+  type AnswerKeyHeadingItem,
+  answerKeyMarksText,
+  answerKeyTotalText,
   type AnswerKeySectionItem,
   type ChoiceGrid,
   type MatchingSet,
@@ -229,10 +233,14 @@ export function PartContent({
   part,
   showCorrectness = false,
   renderWorkSpace,
+  renderMarks,
 }: {
   part: PlannedPart
   showCorrectness?: boolean
   renderWorkSpace?: (partId: string, space: PlannedWorkSpace) => ReactNode
+  /** The sheet's Marks control for a Part or Subpart that answers; drawn
+   *  nowhere else, and taking no height where it is. */
+  renderMarks?: (partId: string, marks: number | undefined) => ReactNode
 }) {
   // A piece continued from an earlier page keeps the letter column, empty, so
   // its Subparts stand where they would have under the lead-in.
@@ -246,6 +254,7 @@ export function PartContent({
       <div className="part-letter">
         {!part.continued && <span className="part-count">{part.letter}.</span>}
       </div>
+      {renderMarks && !part.continued && part.type !== 'subparts' && renderMarks(part.id, part.marks)}
       <div className="part-body">
         {!part.continued && <DocView className="question-stem" content={part.stem} />}
         {part.grid && <ChoiceGridView grid={part.grid} showCorrectness={showCorrectness} />}
@@ -261,6 +270,7 @@ export function PartContent({
                 subpart={subpart}
                 showCorrectness={showCorrectness}
                 renderWorkSpace={renderWorkSpace}
+                renderMarks={renderMarks}
               />
             ))}
           </div>
@@ -276,10 +286,12 @@ function SubpartContent({
   subpart,
   showCorrectness,
   renderWorkSpace,
+  renderMarks,
 }: {
   subpart: PlannedSubpart
   showCorrectness: boolean
   renderWorkSpace?: (partId: string, space: PlannedWorkSpace) => ReactNode
+  renderMarks?: (partId: string, marks: number | undefined) => ReactNode
 }) {
   return (
     <div
@@ -290,6 +302,7 @@ function SubpartContent({
       <div className="part-letter">
         <span className="part-count">{subpart.label}.</span>
       </div>
+      {renderMarks?.(subpart.id, subpart.marks)}
       <div className="part-body">
         <DocView className="question-stem" content={subpart.stem} />
         {subpart.grid && <ChoiceGridView grid={subpart.grid} showCorrectness={showCorrectness} />}
@@ -310,6 +323,7 @@ export function QuestionContent({
   item,
   showCorrectness = false,
   renderPartWorkSpace,
+  renderPartMarks,
 }: {
   item: QuestionItem
   /** Correct-answer feedback is authoring chrome, never export content. */
@@ -317,6 +331,8 @@ export function QuestionContent({
   /** The sheet's own drawing of a Short Answer Part's work space, with its
    *  sizing handle; everywhere else the space is drawn plain. */
   renderPartWorkSpace?: (partId: string, space: PlannedWorkSpace) => ReactNode
+  /** The sheet's Marks control for each Part or Subpart that answers. */
+  renderPartMarks?: (partId: string, marks: number | undefined) => ReactNode
 }) {
   const numbered = printsNumberLine(item)
   const column = numberColumnOf(item.question)
@@ -357,6 +373,7 @@ export function QuestionContent({
                 part={part}
                 showCorrectness={showCorrectness}
                 renderWorkSpace={renderPartWorkSpace}
+                renderMarks={renderPartMarks}
               />
             ))}
           </div>
@@ -386,8 +403,26 @@ export function SectionHeadingContent({ item }: { item: SectionHeadingItem }) {
   )
 }
 
-export function AnswerKeyHeading() {
-  return <h2 className="answer-key-heading">Answer Section</h2>
+// The paper's total Marks stand at the right of the heading's own line, so
+// the heading measures the same height with a total as without one.
+export function AnswerKeyHeading({ item }: { item: AnswerKeyHeadingItem }) {
+  return (
+    <h2 className="answer-key-heading">
+      Answer Section
+      {item.totalMarks !== undefined && (
+        <>
+          {' '}
+          <span className="answer-key-total">{answerKeyTotalText(item.totalMarks)}</span>
+        </>
+      )}
+    </h2>
+  )
+}
+
+/** Marks as the Answer Key prints them after an answer: `[2]`. */
+function AnswerKeyMarks({ marks }: { marks: number | undefined }) {
+  if (marks === undefined) return null
+  return <span className="answer-key-marks" aria-label={marksLabel(marks)}>{answerKeyMarksText(marks)}</span>
 }
 
 export function AnswerKeySection({ item }: { item: AnswerKeySectionItem }) {
@@ -396,11 +431,14 @@ export function AnswerKeySection({ item }: { item: AnswerKeySectionItem }) {
 
 export function AnswerKeyEntry({ item }: { item: AnswerKeyEntryItem }) {
   return (
-    <div className="answer-key-entry">
+    <div
+      className={item.marks !== undefined ? 'answer-key-entry answer-key-entry--marked' : 'answer-key-entry'}
+    >
       <span>{item.number}.</span>
       <span className="answer-key-answer" aria-label={item.letter ?? 'Blank answer'}>
         {item.letter}
       </span>
+      <AnswerKeyMarks marks={item.marks} />
       {(item.difficulty || (item.topics?.length ?? 0) > 0) && (
         <span className="answer-key-metadata" aria-label="Question Metadata">
           {item.difficulty && <DifficultyBadge difficulty={item.difficulty} />}
@@ -427,6 +465,7 @@ export function AnswerKeyEntry({ item }: { item: AnswerKeyEntryItem }) {
               >
                 {part.answer}
               </span>
+              <AnswerKeyMarks marks={part.marks} />
               {part.suggestedAnswer && (
                 <DocView className="answer-key-suggested" content={part.suggestedAnswer} />
               )}
@@ -610,7 +649,7 @@ export function PageItemMeasureView({ item }: { item: PageItem }) {
         </section>
       )
     case 'answer-key-heading':
-      return <AnswerKeyHeading />
+      return <AnswerKeyHeading item={item} />
     case 'answer-key-section':
       return <AnswerKeySection item={item} />
     case 'answer-key-entry':

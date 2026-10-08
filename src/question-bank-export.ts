@@ -10,9 +10,11 @@ import {
   type Subpart,
 } from './exam'
 import { bankLetter } from './matching'
+import { marksOnQuestion } from './marks'
 import {
   choiceLockOf,
   pendingImageOf,
+  readMarks,
   stemNodesOf,
   type PendingImageReference,
   type ProseMirrorJSON,
@@ -181,6 +183,8 @@ export type QuestionBankRecordAnsweringPart = {
   stem: SemanticDocument
   choices?: QuestionBankRecordChoice[]
   suggestedAnswer?: SemanticDocument
+  /** What answering it is worth, when it is marked. Added in 0.9.0. */
+  marks?: number
 }
 
 /** A Subpart of a Part, numbered (i), (ii)…: shaped as a Part that answers,
@@ -233,6 +237,10 @@ export type QuestionBankRecordQuestion = {
   stem: SemanticDocument
   difficulty?: Difficulty
   topics?: string[]
+  /** What answering it is worth, on any type but `multipart`, whose worth is
+   *  its Parts' and Subparts' sum and never written (ADR-0042). Added in
+   *  0.9.0. */
+  marks?: number
   choices?: QuestionBankRecordChoice[]
   prompts?: QuestionBankRecordPrompt[]
   wordBank?: { id: string; content: SemanticDocument }[]
@@ -549,6 +557,7 @@ function portableQuestion(
     ...(topicsOf(question).length > 0
       ? { topics: [...topicsOf(question)] }
       : {}),
+    ...marksOf(marksOnQuestion(question) ? question.marks : undefined),
   }
   if (question.type === 'open') {
     return {
@@ -666,6 +675,7 @@ function recordAnsweringPart(
       ...(part.suggestedAnswer
         ? { suggestedAnswer: semanticDocument(childNodes(part.suggestedAnswer), mediaIds) }
         : {}),
+      ...marksOf(part.marks),
     }
   }
   if (part.choices.length < 2) {
@@ -684,7 +694,14 @@ function recordAnsweringPart(
       correct: choice.correct,
       ...recordLockOf(choice),
     })),
+    ...marksOf(part.marks),
   }
+}
+
+/** `marks` as a record writes it: present only when something is marked. */
+function marksOf(value: unknown): { marks?: number } {
+  const marks = readMarks(value)
+  return marks === undefined ? {} : { marks }
 }
 
 /** A choice's `locked` as a record writes it: `true` for every Locked Answer,

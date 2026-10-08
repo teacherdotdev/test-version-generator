@@ -21,6 +21,8 @@ import { planImport } from './package-commit'
 import { inspectImportFile, inspectImportRecord, type ExamRecord } from './package-import'
 import { selectedExam } from './selected-exam'
 import { shownChoices } from './hidden-answers'
+import { marksOfQuestion } from './marks'
+import { importedQuestionsFromRecord } from './question-bank-import'
 import type { QuestionBankResource } from './question-bank-workspaces'
 
 const fontFiles = {
@@ -445,6 +447,40 @@ describe('a Multipart question in an Exam package', () => {
         ],
       }],
     })
+  })
+
+  test('carries Marks in its bank record, on a question and on a Part, and imports them again', async () => {
+    const pond: Question = {
+      id: 'pond-1',
+      type: 'multipart',
+      columns: 2,
+      doc: {
+        type: 'doc',
+        content: [paragraph('A pond freezes over in winter.'), {
+          type: 'multipartParts',
+          content: [{
+            type: 'multipartPart',
+            attrs: { id: 'pond-1-a', columns: 2, marks: 2 },
+            content: [
+              { type: 'multipartPartStem', content: [paragraph('Why does ice float?')] },
+              { type: 'suggestedAnswer', content: [paragraph('It is less dense than water.')] },
+            ],
+          }],
+        }],
+      },
+    }
+    const sheet: Exam = {
+      title: 'Ponds',
+      questions: [{ ...multipleChoice('frog-1', 'What does a tadpole become?', ['A frog', 'A fish']), marks: 1 }, pond],
+    }
+    const order: Arrangement = { id: 'exam-draft', letter: 'A', questionOrder: ['frog-1', 'pond-1'], choiceOrder: {} }
+    const carried = (await examPackage({ exam: sheet, arrangement: order, ownerOf: async () => null, loadMedia: noImages })).package
+    const proposal = await inspectImportRecord(new TextEncoder().encode(JSON.stringify(carried)))
+    const [frog, carriedPond] = proposal.banks[0]!.record.bank.questions
+    expect(frog!.marks).toBe(1)
+    expect(carriedPond).not.toHaveProperty('marks')
+    expect(carriedPond!.parts![0]).toMatchObject({ marks: 2 })
+    expect(importedQuestionsFromRecord(proposal.banks[0]!.record).map(marksOfQuestion)).toEqual([1, 2])
   })
 
   test('carries a derived Exam’s legacy section wording on its Sections, with heading size and header lines, and imports them again', async () => {

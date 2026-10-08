@@ -78,6 +78,8 @@ import {
   type MediaLoader,
 } from './export-media'
 import {
+  answerKeyMarksText,
+  answerKeyTotalText,
   CHOICE_INDENT,
   choiceAreaWidth,
   matchingAreaWidth,
@@ -1110,6 +1112,11 @@ function answerKeySection(item: AnswerKeySectionItem): Paragraph {
   })
 }
 
+/** An Answer Key line's `[n]`, after its answer, when it is marked. */
+function marksRuns(marks: number | undefined): TextRun[] {
+  return marks === undefined ? [] : [new TextRun({ text: ` ${answerKeyMarksText(marks)}` })]
+}
+
 function answerKeyEntry(item: AnswerKeyEntryItem, build: BuildContext): (Paragraph | Table)[] {
   const metadata = [
     ...(item.difficulty ? [{ label: DIFFICULTY_LABELS[item.difficulty], fill: 'E6F0E3' }] : []),
@@ -1121,6 +1128,7 @@ function answerKeyEntry(item: AnswerKeyEntryItem, build: BuildContext): (Paragra
       // A free-response question still takes a line, so the key's numbering
       // matches the paper's; it simply has no letter to print.
       ...(item.letter ? [new TextRun({ text: item.letter, bold: true })] : []),
+      ...marksRuns(item.marks),
       ...metadata.map(({ label, fill }) =>
         new TextRun({ text: ` ${label} `, size: 18, shading: { fill } }),
       ),
@@ -1138,6 +1146,7 @@ function answerKeyEntry(item: AnswerKeyEntryItem, build: BuildContext): (Paragra
       children: [
         new TextRun({ text: `${part.letter}. ` }),
         ...(part.answer ? [new TextRun({ text: part.answer, bold: true })] : []),
+        ...marksRuns(part.marks),
       ],
     }),
     ...(part.suggestedAnswer
@@ -1198,7 +1207,21 @@ function itemContent(
       return [
         new Paragraph({
           // Larger than a section title in print, so larger than Heading 1.
-          children: [new TextRun({ text: ANSWER_KEY_TITLE, size: halfPointsOf('answerKeyHeading') })],
+          children: [
+            new TextRun({ text: ANSWER_KEY_TITLE, size: halfPointsOf('answerKeyHeading') }),
+            // The paper's total, on the heading's own line against the right
+            // margin in body type, as print sets it.
+            ...(item.totalMarks !== undefined
+              ? [new TextRun({
+                  children: [new Tab(), answerKeyTotalText(item.totalMarks)],
+                  size: halfPointsOf('body'),
+                  bold: false,
+                })]
+              : []),
+          ],
+          ...(item.totalMarks !== undefined
+            ? { tabStops: [{ type: TabStopType.RIGHT, position: twips(build.contentWidth) }] }
+            : {}),
           heading: HeadingLevel.HEADING_1,
           spacing: { before: 120, after: 60, ...headingLine(halfPointsOf('answerKeyHeading'), HEADING_LINE_HEIGHT) },
         }),

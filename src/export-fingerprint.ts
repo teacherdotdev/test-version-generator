@@ -17,6 +17,8 @@
 // first differing line, and that line says what the document says.
 
 import {
+  answerKeyMarksText,
+  answerKeyTotalText,
   printsNumberLine,
   type ChoiceGrid,
   type ExportDocument,
@@ -580,6 +582,11 @@ function planAnswering(
   ]
 }
 
+/** An Answer Key line's `[n]`, after its answer, when it is marked. */
+export function marksSegments(marks: number | undefined): Segment[] {
+  return marks === undefined ? [] : [{ kind: 'text', text: ` ${answerKeyMarksText(marks)}`, marks: [] }]
+}
+
 export function planItemLines(
   item: PageItem,
   images: ImageOrdinals,
@@ -601,7 +608,12 @@ export function planItemLines(
     case 'question':
       return planQuestion(item, images)
     case 'answer-key-heading':
-      return ['heading:1 Answer Section']
+      // The paper's total shares the heading's line in every adapter.
+      return [
+        item.totalMarks !== undefined
+          ? `heading:1 Answer Section ${answerKeyTotalText(item.totalMarks)}`
+          : 'heading:1 Answer Section',
+      ]
     case 'answer-key-section':
       return [`heading:2 ${item.title}`]
     case 'answer-key-entry': {
@@ -619,6 +631,7 @@ export function planItemLines(
             ...(item.letter
               ? [{ kind: 'text' as const, text: item.letter, marks: ['strong'] }]
               : []),
+            ...marksSegments(item.marks),
             ...(metadata.length > 0
               ? [{ kind: 'text' as const, text: ` ${metadata.join(' ')}`, marks: [] }]
               : []),
@@ -633,6 +646,7 @@ export function planItemLines(
               ...(part.answer
                 ? [{ kind: 'text' as const, text: part.answer, marks: ['strong'] }]
                 : []),
+              ...marksSegments(part.marks),
             ]),
           ),
           ...(part.suggestedAnswer ? planBlocks(part.suggestedAnswer, {}, images) : []),

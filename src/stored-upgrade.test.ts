@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import { createMemoryBackend, loadExamStore, type AuthoringState } from './exam-store'
 import { upgradeStoredQuestion } from './stored-upgrade'
+import { questionOf } from './question-bank-workspaces'
+import { marksOfQuestion } from './marks'
 import type { Question } from './exam'
 import type { ProseMirrorJSON } from './question-doc'
 
@@ -94,5 +96,19 @@ describe('a draft stored by an earlier build', () => {
       createMemoryBackend({ dirty: true, questionBank: {}, workingCopy: 'nope' } as unknown as AuthoringState),
     )
     expect(store.getState().workingCopy.questionIds).toEqual([])
+  })
+})
+
+describe('Marks in a stored Question', () => {
+  test('a question stored before Marks existed reads as unmarked, needing no upgrade', () => {
+    const read = questionOf({ ...shortAnswer, bankId: 'b' })
+    expect('marks' in read).toBe(false)
+    expect(marksOfQuestion(read)).toBeUndefined()
+  })
+
+  test('stored Marks are read back, and anything that is not Marks is dropped', () => {
+    expect(questionOf({ ...shortAnswer, marks: 3, bankId: 'b' }).marks).toBe(3)
+    expect('marks' in questionOf({ ...shortAnswer, marks: 0, bankId: 'b' })).toBe(false)
+    expect('marks' in questionOf({ ...shortAnswer, marks: 1.5, bankId: 'b' })).toBe(false)
   })
 })

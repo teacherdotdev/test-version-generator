@@ -40,6 +40,7 @@ import {
 } from './question-bank-import'
 import { mediaFilePath } from './package-zip'
 import { choicesOf, partsOf } from './exam'
+import { marksOfQuestion } from './marks'
 import type { QuestionBankResource } from './question-bank-workspaces'
 
 function fixtureRootFor(version: string): string {
@@ -117,6 +118,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       'complete-rich-text.json',
       'cropped-picture.json',
       'locked-answers.json',
+      'marks.json',
       'matching.json',
       'media-rich.json',
       'minimal-multiple-choice.json',
@@ -416,13 +418,77 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     expect(partsOf(importedQuestionsFromRecord(proposal.record)[0]!)[1]!.type).toBe('open')
   })
 
+  test('Marks reach the editor on a question, a whole Matching set, a Part and a Subpart', async () => {
+    const proposal = await inspectFixture(exampleRoot, 'marks.json')
+    const questions = importedQuestionsFromRecord(proposal.record)
+    expect(questions.map((question) => question.marks)).toEqual([1, 1, 2, 3, undefined, undefined])
+    expect(questions.map(marksOfQuestion)).toEqual([1, 1, 2, 3, undefined, 4])
+    const [a, b] = partsOf(questions[5]!)
+    expect(a!.marks).toBe(1)
+    expect(b!.marks).toBeUndefined()
+    expect(b!.subparts.map((subpart) => subpart.marks)).toEqual([1, 2, undefined])
+  })
+
+  test('Marks are refused on a Multipart Question and on a Part that holds Subparts, by name', async () => {
+    for (const [name, message] of [
+      ['marks-on-multipart.json', 'Multipart Question “q6” is worth what its Parts and Subparts are, so it cannot have Marks of its own; give them to its Parts and Subparts.'],
+      ['marks-on-lead-in.json', 'Part b (“q6-s2”) of Multipart Question “q6” holds Subparts, so it cannot also have a type, choices, a Suggested Answer or Marks of its own; each Subpart carries its own.'],
+    ] as const) {
+      try {
+        await inspectFixture(invalidRoot, name)
+        throw new Error(`${name} unexpectedly conformed`)
+      } catch (error) {
+        expect((error as QuestionBankImportError).message, name).toBe(message)
+      }
+    }
+  })
+
+  test('a record older than 0.9.0 has no Marks: every Question it holds is unmarked', async () => {
+    const record = (await fixture(exampleRoot, 'marks.json')) as {
+      formatVersion: string
+      bank: { questions: Record<string, unknown>[] }
+    }
+    record.formatVersion = '0.8.0'
+    // An older record has no Subparts either, so the lead-in answers.
+    const multipart = record.bank.questions[5] as { parts: Record<string, unknown>[] }
+    multipart.parts[1] = { id: 'q6-s2', type: 'short-answer', stem: multipart.parts[1]!.stem, marks: 3 }
+    const proposal = await inspectQuestionBankRecordValue(record)
+    expect(JSON.stringify(proposal.record)).not.toContain('"marks"')
+    expect(importedQuestionsFromRecord(proposal.record).map(marksOfQuestion)).toEqual(
+      [undefined, undefined, undefined, undefined, undefined, undefined],
+    )
+  })
+
+  test('Marks are written where a student answers, validate, and import back as they were', async () => {
+    const proposal = await inspectFixture(exampleRoot, 'marks.json')
+    const questions = importedQuestionsFromRecord(proposal.record)
+    // A Multipart question's stored `marks`, should one carry any, is never written.
+    questions[5] = { ...questions[5]!, marks: 9 }
+    const prepared = await prepareQuestionBankExport({
+      id: 'local-bank',
+      name: 'Marks',
+      createdAt: 'not-public',
+      lastUpdatedAt: 'not-public',
+      questions,
+    })
+    const generated = JSON.parse(decoder.decode(prepared.recordBytes)) as QuestionBankRecord
+    const validate = new Ajv2020({ strict: true }).compile(publicSchema)
+    expect(validate(generated), JSON.stringify(validate.errors)).toBe(true)
+    expect(generated.bank.questions.map((question) => question.marks)).toEqual([1, 1, 2, 3, undefined, undefined])
+    const parts = generated.bank.questions[5]!.parts!
+    expect(parts.map((part) => (part as { marks?: number }).marks)).toEqual([1, undefined])
+    expect((parts[1] as { subparts: { marks?: number }[] }).subparts.map((subpart) => subpart.marks)).toEqual([1, 2, undefined])
+    const again = importedQuestionsFromRecord((await inspectQuestionBankRecord(prepared.recordBytes)).record)
+    expect(again.map(marksOfQuestion)).toEqual([1, 1, 2, 3, undefined, 4])
+  })
+
   test('a Part that holds Subparts and answers too is refused, by name', async () => {
     try {
       await inspectFixture(invalidRoot, 'subparts-and-answers.json')
       throw new Error('unexpectedly conformed')
     } catch (error) {
       expect((error as QuestionBankImportError).message).toBe(
-        'Part b (“q1-s2”) of Multipart Question “q1” holds Subparts, so it cannot also have a type, choices or a Suggested Answer of its own; each Subpart carries its own.',
+        'Part b (“q1-s2”) of Multipart Question “q1” holds Subparts, so it cannot also have a type, choices, a Suggested Answer or Marks of its own; each Subpart carries its own.',
       )
     }
   })
@@ -471,6 +537,10 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       'malformed-multipart.json',
       'malformed-question.json',
       'malformed-true-false.json',
+      'marks-fraction.json',
+      'marks-on-lead-in.json',
+      'marks-on-multipart.json',
+      'marks-zero.json',
       'missing-media-file.json',
       'pending-empty.json',
       'pending-image-and-page.json',
@@ -493,7 +563,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     const validate = new Ajv2020({ allErrors: true, strict: true }).compile(publicSchema)
     for (const [name, code] of Object.entries(manifest)) {
       // An inverted crop is well-formed: only the importer can compare its sides.
-      if (/^(?:pending-|side-by-side-|crop-(?!inverted)|base64-|locked-|subparts-)/.test(name))
+      if (/^(?:pending-|side-by-side-|crop-(?!inverted)|base64-|locked-|subparts-|marks-)/.test(name))
         expect(validate(await fixture(invalidRoot, name)), name).toBe(false)
       // Only the importer can compare a crop's sides, or look for a file.
       if (['crop-inverted.json', 'missing-media-file.json', 'invalid-media.json'].includes(name))

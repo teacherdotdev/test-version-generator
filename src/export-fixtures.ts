@@ -519,6 +519,67 @@ export const FIXTURES: readonly Fixture[] = [
     { answerKey: true },
   ),
 
+  // Marks on everything a student answers (ADR-0042): a Multiple Choice
+  // question with Question Metadata beside its `[n]`, an unmarked True/False
+  // one, a Matching set marked as a whole, and a Multipart question whose
+  // Part and Subparts carry their own. No current Paper Style prints Marks on
+  // the test; the key prints each `[n]` and the paper's total.
+  fixture(
+    'a marked paper',
+    {
+      title: 'Rivers',
+      questions: [
+        {
+          ...multipleChoice(
+            'mk1',
+            2,
+            [paragraph(text('Where does a river begin?'))],
+            [
+              choice('mk1-a', true, paragraph(text('Its source'))),
+              choice('mk1-b', false, paragraph(text('Its mouth'))),
+            ],
+          ),
+          marks: 1,
+          difficulty: 'easy',
+          topics: ['Rivers'],
+        },
+        trueFalse('mk2', [paragraph(text('A delta forms at a river’s source.'))], 'false'),
+        {
+          ...matching(
+            'mk3',
+            [paragraph(text('Match each word to its meaning.'))],
+            [
+              prompt('mk3-p1', 'mk3-a1', paragraph(text('Tributary'))),
+              prompt('mk3-p2', 'mk3-a2', paragraph(text('Meander'))),
+            ],
+            [
+              bankAnswer('mk3-a1', paragraph(text('A stream that joins a river'))),
+              bankAnswer('mk3-a2', paragraph(text('A bend in a river'))),
+            ],
+          ),
+          marks: 2,
+        },
+        multipart(
+          'mk4',
+          [paragraph(text('A river floods its valley every spring.'))],
+          [
+            { ...part('mk4-a', [paragraph(text('Name the flat land that floods.'))], suggestedAnswer(paragraph(text('The floodplain.')))), attrs: { id: 'mk4-a', columns: DEFAULT_COLUMNS, marks: 1 } },
+            partWithSubparts(
+              'mk4-b',
+              [paragraph(text('Farmers grow crops on the flooded land.'))],
+              [
+                { ...subpart('mk4-b-i', [paragraph(text('What does a flood leave behind?'))], suggestedAnswer(paragraph(text('Silt.')))), attrs: { id: 'mk4-b-i', columns: DEFAULT_COLUMNS, marks: 2 } },
+                { ...subpart('mk4-b-ii', [paragraph(text('Give one danger of farming there.'))], suggestedAnswer()), attrs: { id: 'mk4-b-ii', columns: DEFAULT_COLUMNS, marks: 3 } },
+              ],
+            ),
+          ],
+        ),
+      ],
+    },
+    arrangement(['mk1', 'mk2', 'mk3', 'mk4']),
+    { answerKey: true },
+  ),
+
   // A Part's Subparts may break across pages: the lead-in stays with
   // Subpart (i), and the Subparts after the break continue on the next page
   // without the Part's letter or lead-in printed again.

@@ -55,6 +55,7 @@ import {
   type WorkSpaceStyle,
 } from './exam'
 import { stemNodesOf, type ProseMirrorJSON } from './question-doc'
+import { marksOfQuestion, sumOfMarks } from './marks'
 import { answerVisibilityOf, shownChoices, type AnswerVisibility } from './hidden-answers'
 import { headerLineOf, type ExamHeader, type HeaderLine } from './page-header'
 import { DEFAULT_MARGIN, marginPx, marginsOf, sameMargins, type MarginSide, type PageMargins } from './page-margins'
@@ -275,6 +276,11 @@ export type PlannedSubpart = {
   workSpace: PlannedWorkSpace | null
   /** A Short Answer one's Suggested Answer, for the Answer Key only. */
   suggestedAnswer?: ProseMirrorJSON[]
+  /** What answering it is worth, when it is marked (ADR-0042). Planned as
+   *  data whether or not the Paper Style prints it: the Answer Key does, and
+   *  where the test does is the style's to decide. A Part that holds
+   *  Subparts never has any of its own. */
+  marks?: number
 }
 
 // One Part of a Multipart question as it prints: lettered `a`, `b`, … in authored order
@@ -387,6 +393,13 @@ export type PlannedQuestion = {
   /** A Multipart question's Parts, lettered, in authored order; `null` for every other
    *  Question Type. A Multipart question's `stem` is the shared material its Parts are asked about. */
   parts: PlannedPart[] | null
+  /** What the whole question is worth, when anything in it is marked: its
+   *  own Marks, or a Multipart question's Parts' and Subparts' sum
+   *  (ADR-0042). Not to be confused with `marks`, which is what prints in
+   *  the number column. No current Paper Style prints it on the test; the
+   *  Answer Key counts its total from it. Absent on a plan recorded before
+   *  Marks existed, which therefore reprints as it always did. */
+  totalMarks?: number
 }
 
 /** How many numbers a question takes on the test: one, or one per prompt for
@@ -468,7 +481,12 @@ export function printsNumberLine(item: QuestionItem): boolean {
 // key page, since the key carries only one header variant. What does pack is
 // the "Answer Section" heading, one grouping heading per section that holds a
 // question, and one line per question.
-export type AnswerKeyHeadingItem = { kind: 'answer-key-heading' }
+export type AnswerKeyHeadingItem = {
+  kind: 'answer-key-heading'
+  /** The paper's total Marks, printed beside the heading, when any of its
+   *  questions are marked (ADR-0042). Under every Paper Style. */
+  totalMarks?: number
+}
 
 export type AnswerKeySectionItem = {
   kind: 'answer-key-section'
@@ -491,6 +509,10 @@ export type AnswerKeyEntryItem = {
   /** A Multipart question's one line per Part — or per Subpart, where a Part
    *  holds them — under its one number. */
   parts?: AnswerKeyPartLine[]
+  /** What the question is worth, printed `[n]` after its answer, when it is
+   *  marked. A Multipart question's Marks print on its Part lines instead, and
+   *  a Matching set's — one for the whole set — on its first Item's line. */
+  marks?: number
 }
 
 /** What the Answer Key records for one Part or Subpart: the correct letter for
@@ -504,6 +526,18 @@ export type AnswerKeyPartLine = {
   subpart?: true
   answer: string | null
   suggestedAnswer?: ProseMirrorJSON[]
+  /** What the Part or Subpart is worth, printed `[n]`, when it is marked. */
+  marks?: number
+}
+
+/** Marks as the Answer Key prints them after an answer, in every adapter. */
+export function answerKeyMarksText(marks: number): string {
+  return `[${marks}]`
+}
+
+/** The paper's total as the Answer Key prints it beside its heading. */
+export function answerKeyTotalText(marks: number): string {
+  return `Total: ${marks} ${marks === 1 ? 'mark' : 'marks'}`
 }
 
 // One thing that occupies vertical space on a page, in print order.
@@ -1000,6 +1034,7 @@ function deriveAnswering(
     ...(!multipleChoice && suggestedBlocks.length > 0 && !blankBlocks(suggestedBlocks)
       ? { suggestedAnswer: structuredClone(suggestedBlocks) }
       : {}),
+    ...(part.marks !== undefined ? { marks: part.marks } : {}),
   }
 }
 
@@ -1050,6 +1085,7 @@ function deriveQuestion(
   const answerVisibility = question.type === 'multiple-choice'
     ? answerVisibilityOf(question, arrangement)
     : undefined
+  const totalMarks = marksOfQuestion(question)
   const choices: PlannedChoice[] = ordered.map((choice, index) => ({
     id: choice.id,
     // A True/False answer is written the way the student circles it, so the
@@ -1088,6 +1124,7 @@ function deriveQuestion(
       ? { suggestedAnswer: suggestedAnswerOf(question) }
       : {}),
     parts: multipart ? deriveParts(exam, question, arrangement) : null,
+    ...(totalMarks !== undefined ? { totalMarks } : {}),
   }
 }
 
@@ -1509,7 +1546,7 @@ function paginate(
 /** The Answer Key's line for a Part or Subpart that answers. */
 function answerKeyPartLine(
   letter: string,
-  part: Pick<PlannedSubpart, 'type' | 'choices' | 'suggestedAnswer'>,
+  part: Pick<PlannedSubpart, 'type' | 'choices' | 'suggestedAnswer' | 'marks'>,
 ): AnswerKeyPartLine {
   return {
     letter,
@@ -1518,6 +1555,7 @@ function answerKeyPartLine(
         ? part.choices.find((choice) => choice.correct)?.letter ?? null
         : null,
     ...(part.suggestedAnswer ? { suggestedAnswer: part.suggestedAnswer } : {}),
+    ...(part.marks !== undefined ? { marks: part.marks } : {}),
   }
 }
 
@@ -1533,7 +1571,16 @@ function deriveAnswerKey(testItems: readonly PageItem[]): PageItem[] {
   // names its group here: the key is a teacher's reference, and a run of
   // answers with no label is not one. A Section with no questions has no
   // group.
-  const items: PageItem[] = [{ kind: 'answer-key-heading' }]
+  // The paper's total is counted from the very questions the key lists, so
+  // it is the sum of the Marks printed beneath it.
+  const totalMarks = sumOfMarks(
+    [...new Map(
+      testItems.flatMap((item) => (item.kind === 'question' ? [[item.question.id, item.question.totalMarks] as const] : [])),
+    ).values()],
+  )
+  const items: PageItem[] = [
+    { kind: 'answer-key-heading', ...(totalMarks !== undefined ? { totalMarks } : {}) },
+  ]
   const seen = new Set<string>()
   let heading: SectionHeadingItem | null = null
   let grouped: string | null = null
@@ -1571,15 +1618,19 @@ function deriveAnswerKey(testItems: readonly PageItem[]): PageItem[] {
       })
       continue
     }
+    const marks = item.question.totalMarks !== undefined ? { marks: item.question.totalMarks } : {}
     if (item.question.matching) {
-      for (const prompt of item.question.matching.prompts) {
+      // A Matching set is marked as a whole, so its Marks print once, on
+      // its first Item's line.
+      item.question.matching.prompts.forEach((prompt, index) => {
         items.push({
           kind: 'answer-key-entry',
           number: prompt.number,
           letter: prompt.letter,
           ...metadata,
+          ...(index === 0 ? marks : {}),
         })
-      }
+      })
       continue
     }
     items.push({
@@ -1587,6 +1638,7 @@ function deriveAnswerKey(testItems: readonly PageItem[]): PageItem[] {
       number: item.question.number,
       letter: item.question.choices.find((choice) => choice.correct)?.letter ?? null,
       ...metadata,
+      ...marks,
       ...(item.question.suggestedAnswer
         ? { suggestedAnswer: item.question.suggestedAnswer }
         : {}),

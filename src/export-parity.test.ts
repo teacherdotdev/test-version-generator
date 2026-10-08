@@ -129,6 +129,31 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     expectSameDocument(planned, printFingerprint(planOf(fixture)))
   })
 
+  test('carries Marks on the Answer Key under every Question Style, and never on the test', async () => {
+    const marked = FIXTURES.find((item) => item.name === 'a marked paper')!
+    for (const questionStyle of QUESTION_STYLES) {
+      const fixture = { ...marked, exam: { ...marked.exam, questionStyle } }
+      const plans = planOf(fixture)
+      const planned = layoutFingerprint(plans)
+      const [test, key] = [0, 1].map((stream) =>
+        layoutFingerprint([plans[stream]!]).pages.flatMap((page) => page.content))
+      // The test says nothing of Marks under any style yet.
+      expect(test!.some((line) => /\[\d+\]|marks?\b/.test(line))).toBe(false)
+      // The key gives the paper's total, each marked line its `[n]`, a
+      // Matching set's once on its first Item, and an unmarked line none.
+      expect(key).toContain('heading:1 Answer Section Total: 9 marks')
+      expect(key).toContain('para 1. «strong»A«/» [1] Easy Rivers')
+      expect(key).toContain('para 2. «strong»F«/»')
+      expect(key).toContain('para 3. «strong»A«/» [2]')
+      expect(key).toContain('para 4. «strong»B«/»')
+      expect(key).toContain('para a. [1]')
+      expect(key).toContain('para b (i). [2]')
+      expect(key).toContain('para b (ii). [3]')
+      expectSameDocument(planned, await docxOf(fixture))
+      expectSameDocument(planned, printFingerprint(plans))
+    }
+  })
+
   test('continues a Part’s later Subparts on the next page without its letter or lead-in', async () => {
     const fixture = FIXTURES.find((item) => item.name === 'a part whose later subparts continue on the next page')!
     const planned = layoutFingerprint(planOf(fixture))

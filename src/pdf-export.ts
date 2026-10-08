@@ -35,6 +35,8 @@ import {
   headerHeightOf,
   MATCHING_BANK_WIDTH,
   PART_INDENT,
+  answerKeyMarksText,
+  answerKeyTotalText,
   printsNumberLine,
   questionIndentOf,
   MATCHING_INDENT,
@@ -964,14 +966,25 @@ function drawItem(context: DrawContext, item: PageItem): void {
     case 'question':
       drawQuestion(context, item)
       return
-    case 'answer-key-heading':
-      drawTextLine(context, 'Answer Section', {
-        font: 'bold',
-        size: ANSWER_KEY_HEADING_SIZE,
-        line: ANSWER_KEY_HEADING_SIZE * HEADING_LINE_HEIGHT,
-      })
+    case 'answer-key-heading': {
+      const line = ANSWER_KEY_HEADING_SIZE * HEADING_LINE_HEIGHT
+      drawTextLine(context, 'Answer Section', { font: 'bold', size: ANSWER_KEY_HEADING_SIZE, line })
+      // The paper's total, on the heading's own baseline against the right
+      // margin in body type, as print sets it.
+      if (item.totalMarks !== undefined) {
+        const total = answerKeyTotalText(item.totalMarks)
+        assertSupported(total, context.fonts.regular)
+        context.page.drawText(total, {
+          x: context.x + context.width - context.fonts.regular.widthOfTextAtSize(total, BODY_SIZE),
+          y: context.y + line - ANSWER_KEY_HEADING_SIZE,
+          font: context.fonts.regular,
+          size: BODY_SIZE,
+          color: INK,
+        })
+      }
       context.y -= 8
       return
+    }
     case 'answer-key-section':
       drawTextLine(context, item.title, { font: 'bold', size: HEADING_SIZE, line: HEADING_SIZE * HEADING_LINE_HEIGHT })
       context.y -= 4
@@ -982,13 +995,31 @@ function drawItem(context: DrawContext, item: PageItem): void {
   }
 }
 
+/** An Answer Key line's `[n]`, just past its blank at `x`, on the line that
+ *  starts at `rowY`; the line has already been drawn, so it moves nothing. */
+function drawAnswerKeyMarks(context: DrawContext, marks: number | undefined, x: number, rowY: number): void {
+  if (marks === undefined) return
+  const text = answerKeyMarksText(marks)
+  context.page.drawText(text, {
+    x,
+    y: rowY - BODY_SIZE,
+    font: context.fonts.regular,
+    size: BODY_SIZE,
+    color: INK,
+  })
+}
+
 function drawAnswerKeyEntry(context: DrawContext, item: AnswerKeyEntryItem): void {
   const metadata = [
     ...(item.difficulty ? [DIFFICULTY_LABELS[item.difficulty]] : []),
     ...(item.topics ?? []),
   ]
-  const tagStart = context.x + 88
-  const tagWidth = context.width - 88
+  // A marked entry's `[n]` follows its blank, and its tags follow that.
+  const marksWidth = item.marks === undefined
+    ? 0
+    : context.fonts.regular.widthOfTextAtSize(answerKeyMarksText(item.marks), BODY_SIZE) + 6
+  const tagStart = context.x + 88 + marksWidth
+  const tagWidth = context.width - 88 - marksWidth
   const gap = 5
   const padding = 5
   let tagX = tagStart
@@ -1015,6 +1046,7 @@ function drawAnswerKeyEntry(context: DrawContext, item: AnswerKeyEntryItem): voi
   context.y = rowY
   if (item.letter) drawTextLine(context, item.letter, { font: 'bold', x: context.x + ANSWER_KEY_ANSWER_X, width: 42 })
   else context.y -= BODY_LINE
+  drawAnswerKeyMarks(context, item.marks, context.x + 84, rowY)
   context.page.drawLine({
     start: { x: context.x + 36, y: rowY - BODY_LINE + 3 },
     end: { x: context.x + 78, y: rowY - BODY_LINE + 3 },
@@ -1063,6 +1095,7 @@ function drawAnswerKeyEntry(context: DrawContext, item: AnswerKeyEntryItem): voi
     context.y = partY
     if (part.answer) drawTextLine(context, part.answer, { font: 'bold', x: partX + label + 6, width: 42 })
     else context.y -= BODY_LINE
+    drawAnswerKeyMarks(context, part.marks, partX + label + 52, partY)
     context.page.drawLine({
       start: { x: partX + label + 4, y: partY - BODY_LINE + 3 },
       end: { x: partX + label + 46, y: partY - BODY_LINE + 3 },

@@ -95,6 +95,24 @@ describe('PDF Export Adapter', () => {
     expect(text).toContain('Titration')
   })
 
+  test('prints the Answer Key’s Marks and total, and no Marks on the test', async () => {
+    const { plans } = plansOf('a marked paper')
+    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const document = await getDocument({ data: bytes, disableWorker: true }).promise
+    const pages = await Promise.all(
+      Array.from({ length: document.numPages }, async (_, index) =>
+        (await (await document.getPage(index + 1)).getTextContent()).items
+          .map((item) => ('str' in item ? item.str : ''))
+          .join(' '),
+      ),
+    )
+    const testPages = pages.slice(0, plans[0]!.pages.length).join(' ')
+    const keyPages = pages.slice(plans[0]!.pages.length).join(' ')
+    expect(testPages).not.toMatch(/\[\d+\]|Total/)
+    expect(keyPages).toContain('Total: 9 marks')
+    for (const marks of ['[1]', '[2]', '[3]']) expect(keyPages).toContain(marks)
+  })
+
   test('writes authored hyperlinks as PDF link annotations', async () => {
     const { plans } = plansOf('a link and its destination')
     const bytes = await createPublicationPdf(plans, noImages, fonts)
