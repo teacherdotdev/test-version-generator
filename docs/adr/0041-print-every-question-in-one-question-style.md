@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, amended by ADR-0044 (renamed Paper Style; changing style no longer re-places a Word Bank the teacher chose)
 ---
 
 # Print every question in one Question Style
