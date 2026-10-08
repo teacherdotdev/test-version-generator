@@ -243,7 +243,7 @@ describe('an Exam PDF carrying its Exam', () => {
       prepared({ format: 'pdf', selection: { test: true, answerKey: true } }),
       { exam, arrangement, ownerOf, loadMedia: noImages },
     )
-    const pdf = await createPublicationPdf(withPackage.documents, noImages, fonts, withPackage.record.examPackage)
+    const { bytes: pdf } = await createPublicationPdf(withPackage.documents, noImages, fonts, withPackage.record.examPackage)
 
     const proposal = await inspectImportFile(pdf)
 
@@ -302,7 +302,7 @@ describe('an Exam PDF carrying its Exam', () => {
       { exam, arrangement, ownerOf, loadMedia: noImages },
     )
     expect(shuffled.record.versions).toHaveLength(3)
-    const pdf = await createPublicationPdf(shuffled.documents, noImages, fonts, shuffled.record.examPackage)
+    const { bytes: pdf } = await createPublicationPdf(shuffled.documents, noImages, fonts, shuffled.record.examPackage)
 
     const proposal = await inspectImportFile(pdf)
     expect(proposal.exams).toHaveLength(1)
@@ -321,7 +321,7 @@ describe('an Exam PDF carrying its Exam', () => {
       { exam, arrangement, ownerOf, loadMedia: noImages },
     )
     expect(studentOnly.record.examPackage).toBeUndefined()
-    const pdf = await createPublicationPdf(studentOnly.documents, noImages, fonts, studentOnly.record.examPackage)
+    const { bytes: pdf } = await createPublicationPdf(studentOnly.documents, noImages, fonts, studentOnly.record.examPackage)
     await expect(inspectImportFile(pdf)).rejects.toMatchObject({ code: 'missing-attachment' })
 
     const docx = await withExamPackage(

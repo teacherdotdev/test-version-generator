@@ -3,8 +3,10 @@
 // It consumes retained Layout Plans exactly like the DOCX adapter: one PDF page
 // per planned page, in selected-plan order, with no measurement or pagination.
 // Text is emitted as font-backed PDF text, links as annotations, and Media
-// Assets as image XObjects. Any content that would escape its planned content
-// box stops publication instead of being clipped, shrunk, or repaginated.
+// Assets as image XObjects. Content that runs past its planned content box is
+// still drawn where the plan put it, into the bottom margin, rather than
+// clipped, shrunk or repaginated, and the pages it does so on are reported so
+// the teacher is told to check them (ADR-0046).
 
 import fontkit from '@pdf-lib/fontkit'
 import {
@@ -142,24 +144,29 @@ export class PdfUnsupportedCharacterError extends Error {
   }
 }
 
-export class PdfLayoutError extends Error {
-  constructor(pageNumber: number) {
-    super(
-      `PDF content does not fit its planned page ${pageNumber}. `
-      + 'Shorten the affected content or change its layout, then try again.',
-    )
-    this.name = 'PdfLayoutError'
-  }
-}
-
 export function isPdfUnsupportedCharacterError(
   error: unknown,
 ): error is PdfUnsupportedCharacterError {
   return error instanceof PdfUnsupportedCharacterError
 }
 
-export function isPdfLayoutError(error: unknown): error is PdfLayoutError {
-  return error instanceof PdfLayoutError
+/** A PDF for publication, and the pages of it — counted from 1 across the
+ *  whole file, as a PDF viewer counts them — whose content runs past their
+ *  planned bottom margin. */
+export type PublicationPdf = {
+  bytes: Uint8Array
+  pagesPastMargin: number[]
+}
+
+/** What to tell the teacher about pages that run past their bottom margin,
+ *  or null when none do. */
+export function pastMarginWarning(pages: readonly number[]): string | null {
+  if (pages.length === 0) return null
+  if (pages.length === 1) {
+    return `Page ${pages[0]} of the PDF runs past its bottom margin. Check it before printing.`
+  }
+  const named = `${pages.slice(0, -1).join(', ')} and ${pages.at(-1)}`
+  return `Pages ${named} of the PDF run past their bottom margin. Check them before printing.`
 }
 
 type EmbeddedFonts = {
@@ -179,7 +186,9 @@ type DrawContext = {
   y: number
   width: number
   bottom: number
-  pageNumber: number
+  /** Where a page that draws past `bottom` is recorded: its place in the
+   *  whole file, counted from 1. */
+  pastMargin: { pages: Set<number>; page: number }
   /** An equation typeset, or null when MathJax cannot typeset it. */
   typeset: (source: string, display: boolean) => TypesetMath | null
 }
@@ -229,9 +238,11 @@ function assertSupported(text: string, font: PDFFont): void {
   }
 }
 
+// Content the plan put on a page is drawn on it, even where it runs past the
+// foot of the content box; the page is recorded so the teacher can be told.
 function ensureRoom(context: DrawContext, height: number): void {
   if (context.y - height < context.bottom - 0.5) {
-    throw new PdfLayoutError(context.pageNumber)
+    context.pastMargin.pages.add(context.pastMargin.page)
   }
 }
 
@@ -1361,7 +1372,7 @@ async function createPdf(
   fontLoader: PdfFontLoader,
   strictMedia: boolean,
   attachment?: Uint8Array | string,
-): Promise<Uint8Array> {
+): Promise<PublicationPdf> {
   if (typeof Uint8Array === 'undefined' || typeof Promise === 'undefined') {
     throw new Error('This browser does not support local PDF generation. Choose DOCX instead.')
   }
@@ -1390,6 +1401,7 @@ async function createPdf(
   const typeset = await mathTypesetterFor(plans)
   document.setTitle(plans[0]?.title ?? '')
   document.setCreator('Test Parrot')
+  const pastMargin = new Set<number>()
 
   try {
     for (const plan of plans) {
@@ -1418,7 +1430,7 @@ async function createPdf(
           y: top,
           width: pt(plan.pageSize.contentWidth),
           bottom: pt(margins.bottom) + footerHeight,
-          pageNumber: planned.number,
+          pastMargin: { pages: pastMargin, page: document.getPageCount() },
           typeset,
         }
         drawFurniture(context, planned.furniture, top, top - headerHeight)
@@ -1442,7 +1454,10 @@ async function createPdf(
       afRelationship: AFRelationship.Source,
     })
   }
-  return document.save({ useObjectStreams: false })
+  return {
+    bytes: await document.save({ useObjectStreams: false }),
+    pagesPastMargin: [...pastMargin].sort((a, b) => a - b),
+  }
 }
 
 /** Tolerant adapter entry point for diagnostics. Publication uses the strict
@@ -1452,7 +1467,7 @@ export function createExamPdf(
   media: MediaLoader = browserMedia,
   fonts: PdfFontLoader = browserPdfFonts,
 ): Promise<Uint8Array> {
-  return createPdf(plans, media, fonts, false)
+  return createPdf(plans, media, fonts, false).then((pdf) => pdf.bytes)
 }
 
 export function createPublicationPdf(
@@ -1461,7 +1476,7 @@ export function createPublicationPdf(
   fonts: PdfFontLoader = browserPdfFonts,
   /** The Test Parrot Package to embed, as `exam-package-export` made it. */
   examPackage?: Uint8Array | string,
-): Promise<Uint8Array> {
+): Promise<PublicationPdf> {
   return createPdf(plans, media, fonts, true, examPackage)
 }
 

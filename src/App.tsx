@@ -2018,6 +2018,9 @@ function ExamEditor({
   ) ?? null
   const isHistoricalBrowsing = historyOpen
   const [storageNotice, setStorageNotice] = useState<string | null>(null)
+  // Pages of an exported PDF that run past their bottom margin (ADR-0046):
+  // the export went ahead, and this stays until the teacher dismisses it.
+  const [exportWarning, setExportWarning] = useState<string | null>(null)
   const [choosingExam, setChoosingExam] = useState(false)
   const [documentMenu, setDocumentMenu] = useState<{
     kind: DocumentMenuKind
@@ -2333,15 +2336,18 @@ function ExamEditor({
   const runPreparedExport = async (prepared: PreparedExport) => {
     const format = prepared.record.format
     let blob: Blob
+    let warning: string | null = null
     try {
       if (format === 'pdf') {
         const pdf = await import('./pdf-export')
-        blob = pdf.pdfBlob(await pdf.createPublicationPdf(
+        const created = await pdf.createPublicationPdf(
           prepared.documents,
           undefined,
           undefined,
           prepared.record.examPackage,
-        ))
+        )
+        blob = pdf.pdfBlob(created.bytes)
+        warning = pdf.pastMarginWarning(created.pagesPastMargin)
       } else {
         const docx = await import('./docx-export')
         blob = await docx.createPublicationDocx(prepared.documents)
@@ -2353,7 +2359,6 @@ function ExamEditor({
       if (
         media.isRequiredMediaError(error)
         || pdf?.isPdfUnsupportedCharacterError(error)
-        || pdf?.isPdfLayoutError(error)
       ) throw error
       throw new Error(
         format === 'pdf'
@@ -2405,6 +2410,8 @@ function ExamEditor({
       console.error(`Could not start the ${format.toUpperCase()} download`, error)
       throw new Error('The download could not be started. The Export Record remains in History.')
     }
+    // Told once the file is the teacher's, and only about this export.
+    setExportWarning(warning)
   }
 
   let exportPreview: PreparedExport | null = null
@@ -2917,6 +2924,20 @@ function ExamEditor({
         <p className="vary-summary" role="status" aria-live="polite">
           {varySummary}
         </p>
+      )}
+
+      {exportWarning && (
+        <div className="storage-notice storage-notice--warning" role="alert">
+          <p>{exportWarning}</p>
+          <button
+            type="button"
+            className="toolbar-icon-button"
+            aria-label="Dismiss PDF warning"
+            onClick={() => setExportWarning(null)}
+          >
+            ×
+          </button>
+        </div>
       )}
 
       {storageNotice && (

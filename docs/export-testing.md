@@ -194,7 +194,9 @@ The implementations are:
   starts it left of its container, and every table's grid columns are its
   cells' widths.
 - `src/pdf-export.test.ts` — PDF pages, metadata, links, media, embedded fonts,
-  unsupported-character rejection, overflow rejection, every matching
+  unsupported-character rejection, content that runs past its planned page
+  drawn there and its page named (ADR-0046), a wrapped line taking one line
+  of room, every matching
   prompt and Word Bank answer on its planned page, equations drawn as outlines
   with school notation as their searchable text, a Blockquote's black border,
   and a Side-by-Side's pictures beside

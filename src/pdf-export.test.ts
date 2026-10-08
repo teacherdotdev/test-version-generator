@@ -5,6 +5,7 @@ import { getDocument, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import {
   createPublicationPdf,
   isPdfUnsupportedCharacterError,
+  pastMarginWarning,
   type PdfFontLoader,
 } from './pdf-export'
 import { FIXTURES, PIXEL_PNG } from './export-fixtures'
@@ -61,7 +62,7 @@ function plansOf(fixtureName: string) {
 describe('PDF Export Adapter', () => {
   test('creates one PDF with planned pages, metadata, selectable text, and independent stream numbering', async () => {
     const { fixture, plans } = plansOf('both sections with the answer key')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await PDFDocument.load(bytes)
 
     expect(document.getPageCount()).toBe(plans.reduce((sum, plan) => sum + plan.pages.length, 0))
@@ -79,7 +80,7 @@ describe('PDF Export Adapter', () => {
 
   test('prints Difficulty and Topic tags beside Answer Key entries', async () => {
     const { plans } = plansOf('both sections with the answer key')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
     const text = (await Promise.all(
       Array.from({ length: document.numPages }, async (_, index) =>
@@ -97,7 +98,7 @@ describe('PDF Export Adapter', () => {
 
   test('prints the Answer Key’s Marks and total, and no Marks on the test', async () => {
     const { plans } = plansOf('a marked paper')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
     const pages = await Promise.all(
       Array.from({ length: document.numPages }, async (_, index) =>
@@ -115,7 +116,7 @@ describe('PDF Export Adapter', () => {
 
   test('writes authored hyperlinks as PDF link annotations', async () => {
     const { plans } = plansOf('a link and its destination')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const source = new TextDecoder('latin1').decode(bytes)
 
     expect(source).toContain('/Subtype /Link')
@@ -124,7 +125,7 @@ describe('PDF Export Adapter', () => {
 
   test('embeds inline and block image bytes', async () => {
     const { plans } = plansOf('inline and block images')
-    const bytes = await createPublicationPdf(plans, pixel, fonts)
+    const { bytes } = await createPublicationPdf(plans, pixel, fonts)
     const source = new TextDecoder('latin1').decode(bytes)
 
     // The fixture references one inline image and one block image. Both are
@@ -137,7 +138,7 @@ describe('PDF Export Adapter', () => {
   // the question's blank and number, instead of in the column its block is in.
   test('draws a picture in the column of the block that holds it', async () => {
     const { plans } = plansOf('pictures in a multiple-choice stem and choice')
-    const bytes = await createPublicationPdf(plans, pixel, fonts)
+    const { bytes } = await createPublicationPdf(plans, pixel, fonts)
     const page = await (await getDocument({ data: bytes, disableWorker: true }).promise).getPage(1)
     const operators = await page.getOperatorList()
     // pdf-lib draws an image as save, translate to its corner, scale, paint;
@@ -163,7 +164,7 @@ describe('PDF Export Adapter', () => {
   // invisibly, so the PDF's text still holds them for search and copying.
   test('keeps inline and display math searchable, never as LaTeX commands', async () => {
     const { plans } = plansOf('inline and display mathematics')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
     const pages = await Promise.all(
       Array.from({ length: document.numPages }, async (_, index) =>
@@ -186,7 +187,7 @@ describe('PDF Export Adapter', () => {
   // searchable text over the drawn one.
   test('writes school notation as notation, never as LaTeX command names', async () => {
     const { plans } = plansOf('school mathematics notation')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
     const text = (await (await document.getPage(1)).getTextContent()).items
       .map((item) => ('str' in item ? item.str : ''))
@@ -211,7 +212,7 @@ describe('PDF Export Adapter', () => {
   // fractions; the PDF now fills the same outlines print's typesetting draws.
   test('draws equations as typeset outlines rather than as text', async () => {
     const { plans } = plansOf('school mathematics notation')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const page = await (await getDocument({ data: bytes, disableWorker: true }).promise).getPage(1)
     const operators = await page.getOperatorList()
     const paths = operators.fnArray.filter((op) => op === OPS.constructPath).length
@@ -222,7 +223,7 @@ describe('PDF Export Adapter', () => {
 
   test('draws Subparts numbered beneath their Part’s lead-in, one level further in, and keys each', async () => {
     const { plans } = plansOf('a multipart whose part holds subparts')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
     const items = async (page: number) =>
       (await (await document.getPage(page)).getTextContent()).items.flatMap((item) =>
@@ -242,7 +243,7 @@ describe('PDF Export Adapter', () => {
 
   test('draws an Exam Board paper on A4: its Cover Page, labels, Marks at the right margin and running furniture', async () => {
     const { plans } = plansOf('a marked paper in the exam board paper style')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const pdf = await PDFDocument.load(bytes)
     for (const page of pdf.getPages()) {
       const { width, height } = page.getSize()
@@ -285,7 +286,7 @@ describe('PDF Export Adapter', () => {
 
   test('draws a boxed passage inside a black border around its text', async () => {
     const { plans } = plansOf('a boxed passage that opens its question')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const page = await (await getDocument({ data: bytes, disableWorker: true }).promise).getPage(1)
     const text = (await page.getTextContent()).items
       .map((item) => ('str' in item ? item.str : ''))
@@ -306,7 +307,7 @@ describe('PDF Export Adapter', () => {
 
   test('draws a Side-by-Side’s pictures beside one another, each centred in its Panel', async () => {
     const { plans } = plansOf('side-by-side panels of pictures, tables and text')
-    const bytes = await createPublicationPdf(plans, pixel, fonts)
+    const { bytes } = await createPublicationPdf(plans, pixel, fonts)
     const page = await (await getDocument({ data: bytes, disableWorker: true }).promise).getPage(1)
     const operators = await page.getOperatorList()
     // pdf-lib draws an image as save, translate to its corner, scale to its
@@ -376,7 +377,7 @@ describe('PDF Export Adapter', () => {
 
   test('rules a lined work space and lets a filled one reach the foot of its page', async () => {
     const { plans } = plansOf('Short Answer work space, lined, blank and filling its page')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await PDFDocument.load(bytes)
 
     // The fill moves the last question on; nothing overflows the test's pages.
@@ -389,24 +390,49 @@ describe('PDF Export Adapter', () => {
     expect(rules).toBeGreaterThan(5)
   })
 
-  test('fails instead of emitting content outside a planned page', async () => {
+  // Content the plan put on a page is drawn there even when it runs past
+  // the foot of the page (ADR-0046): the export goes ahead, and the pages it
+  // ran past are named, counted across the whole file.
+  test('still draws content that runs past its planned page, and names the page', async () => {
     const { plans } = plansOf('a plain short-answer question')
     const changed = structuredClone(plans)
     const item = changed[0]!.pages[0]!.items.find((candidate) => candidate.kind === 'question')!
     if (item.kind !== 'question') throw new Error('fixture has no question')
-    item.stem = Array.from({ length: 100 }, () => ({
+    item.stem = Array.from({ length: 24 }, (_unused, index) => ({
       type: 'paragraph',
-      content: [{ type: 'text', text: 'This content was not in the measured Layout Plan.' }],
+      content: [{ type: 'text', text: `Line ${index + 1} was not in the measured Layout Plan.` }],
     }))
 
-    await expect(createPublicationPdf(changed, noImages, fonts)).rejects.toThrow(
-      'does not fit its planned page',
+    const { bytes, pagesPastMargin } = await createPublicationPdf(changed, noImages, fonts)
+
+    expect(pagesPastMargin).toEqual([1])
+    const document = await getDocument({ data: bytes.slice(), disableWorker: true }).promise
+    expect(document.numPages).toBe(changed.reduce((sum, plan) => sum + plan.pages.length, 0))
+    const drawn = (await (await document.getPage(1)).getTextContent()).items
+      .map((item) => ('str' in item ? item.str : '')).join(' ')
+    // Every line is drawn where the plan put it, the last ones in the margin.
+    expect(drawn).toContain('Line 24 was')
+    expect(pastMarginWarning(pagesPastMargin)).toBe(
+      'Page 1 of the PDF runs past its bottom margin. Check it before printing.',
     )
+  })
+
+  test('names every page that runs past its margin, and says nothing when none does', async () => {
+    expect(pastMarginWarning([])).toBeNull()
+    expect(pastMarginWarning([2, 5])).toBe(
+      'Pages 2 and 5 of the PDF run past their bottom margin. Check them before printing.',
+    )
+    expect(pastMarginWarning([1, 3, 4])).toBe(
+      'Pages 1, 3 and 4 of the PDF run past their bottom margin. Check them before printing.',
+    )
+    const { plans } = plansOf('both sections with the answer key')
+    expect((await createPublicationPdf(plans, noImages, fonts)).pagesPastMargin).toEqual([])
   })
 
   // A paragraph that wraps takes one line of the page per line it wraps
   // onto. Each line once asked for room for every line above it as well, so
-  // a cell wrapping over many lines, well inside its planned page, failed.
+  // a cell wrapping over many lines, well inside its planned page, was taken
+  // to run past it.
   test('draws a table cell that wraps over many lines on the page planned for it', async () => {
     const { plans } = plansOf('a wrapping table under a picture in an exam board part')
     const test = plans[0]!
@@ -414,8 +440,9 @@ describe('PDF Export Adapter', () => {
     // The Cover Page, then the question with its table.
     expect(test.pages.map((page) => page.items.map((item) => item.kind))).toEqual([['cover'], ['section-heading', 'question']])
 
-    const bytes = await createPublicationPdf(plans, pixel, fonts)
+    const { bytes, pagesPastMargin } = await createPublicationPdf(plans, pixel, fonts)
 
+    expect(pagesPastMargin).toEqual([])
     const document = await getDocument({ data: bytes.slice(), disableWorker: true }).promise
     expect(document.numPages).toBe(plans.reduce((sum, plan) => sum + plan.pages.length, 0))
     const page = await document.getPage(2)
@@ -445,7 +472,7 @@ describe('PDF Export Adapter', () => {
       selection: { test: true, answerKey: false },
       measure: unmeasured,
     })
-    const bytes = await createPublicationPdf([plan], noImages, fonts)
+    const { bytes } = await createPublicationPdf([plan], noImages, fonts)
     const page = await (await getDocument({ data: bytes.slice(), disableWorker: true }).promise).getPage(1)
     const directions = /Read|question|carefully|spaces|working|finished|paper/
     const baselines = [...new Set((await page.getTextContent()).items
@@ -463,7 +490,7 @@ describe('PDF Export Adapter', () => {
   // not — neither the words nor the default they replaced.
   test('draws reworded section headings and nothing for a cleared one', async () => {
     const { plans } = plansOf('reworded, cleared and large section headings')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
     let drawn = ''
     for (let index = 1; index <= document.numPages; index += 1) {
@@ -484,7 +511,7 @@ describe('PDF Export Adapter', () => {
   // still prints beside it.
   test('draws a reworded header line beside the Version name', async () => {
     const plans = versionPlansOf('a reworded header line', 'Curly Fox')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
     const drawn = (await (await document.getPage(1)).getTextContent()).items
       .map((item) => ('str' in item ? item.str : ''))
@@ -497,7 +524,7 @@ describe('PDF Export Adapter', () => {
 
   test('prints no label on the Working Copy’s own arrangement', async () => {
     const { plans } = plansOf('a reworded header line')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
     const drawn = (await (await document.getPage(1)).getTextContent()).items
       .map((item) => ('str' in item ? item.str : ''))
@@ -510,7 +537,7 @@ describe('PDF Export Adapter', () => {
   // header line stays at the sheet's own type.
   test('draws the Exam’s text and title at the sizes it chose', async () => {
     const plans = versionPlansOf('large text under small headings', 'Brave Otter')
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
     const items = (await (await document.getPage(1)).getTextContent()).items as {
       str: string
@@ -529,7 +556,7 @@ describe('PDF Export Adapter', () => {
     ['condensed', 'T F 2.', 'B. Carbon dioxide'],
   ] as const)('draws the %s paper style’s blanks and letters', async (style, blank, answer) => {
     const { plans } = plansOf(`every question type in the ${style} paper style`)
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
     let drawn = ''
     for (let index = 1; index <= document.numPages; index += 1) {
@@ -553,7 +580,7 @@ describe('PDF Export Adapter', () => {
     'a matching set too long for one page, its word bank on every piece',
   ])('draws every prompt and Word Bank answer of %s', async (name) => {
     const { plans } = plansOf(name)
-    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
     const plainText = (node: { text?: string; content?: unknown[] }): string =>
       node.text ?? (node.content ?? []).map((child) => plainText(child as typeof node)).join('')

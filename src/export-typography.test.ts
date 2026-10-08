@@ -232,7 +232,7 @@ describe('DOCX sets print’s type rather than Word’s defaults', () => {
 
 describe('the PDF draws print’s type', () => {
   test('stems at the body size and the title at the title size', async () => {
-    const bytes = await createPublicationPdf(plansOfFixture(FIXTURE), async () => null, fonts)
+    const { bytes } = await createPublicationPdf(plansOfFixture(FIXTURE), async () => null, fonts)
     const page = await (await getDocument({ data: bytes }).promise).getPage(1)
     const items = (await page.getTextContent()).items as { str: string; transform: number[] }[]
     const sizeOfText = (text: string) => items.find((item) => item.str.includes(text))?.transform[0]
@@ -241,7 +241,7 @@ describe('the PDF draws print’s type', () => {
   })
 
   test('lines, list items and paragraphs at print’s spacing', async () => {
-    const bytes = await createPublicationPdf(
+    const { bytes } = await createPublicationPdf(
       plansOfFixture('a multipart with a multiple-choice part and a short-answer part'),
       async () => null,
       fonts,

@@ -243,6 +243,10 @@ button { cursor: pointer; }
 }
 .storage-notice p { flex: 1; margin: 0; line-height: 1.45; }
 .storage-notice .toolbar-icon-button { flex: none; width: 26px; height: 26px; margin: -3px -4px -3px 0; }
+/* A PDF that ran past a page's bottom margin (ADR-0046): it stays until
+   dismissed, and a notice shown with it stands above it. */
+.storage-notice--warning { border-color: #d9a441; background: #fff6e0; }
+.storage-notice--warning ~ .storage-notice { bottom: 96px; }
 .export-dialog-body {
   min-height: 0; padding: 16px 18px; display: grid; gap: 16px; overflow-y: auto;
 }
