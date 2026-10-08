@@ -279,6 +279,17 @@ function blockLines(
   // choice grid or work space, or the Subparts it holds, each read the same
   // way. A Part continued from an earlier page prints neither letter nor
   // lead-in, so only its Subparts are read.
+  //
+  // Parts that open on the question's number line, and Subparts that open on
+  // their Part's letter line, say so by their stylesheet class: the number,
+  // or the letter, then opens their first line rather than a line of its own.
+  if (has(node, 'multipart-parts-print') || has(node, 'multipart-subparts-print')) {
+    const opening = has(node, 'multipart-parts-print--opening') || has(node, 'multipart-subparts-print--opening')
+    return [
+      ...(!opening && opener.length > 0 ? [line('para', renderInline(opener))] : []),
+      ...childBlocks(node, reader, opening ? opener : []),
+    ]
+  }
   if (has(node, 'multipart-part-print')) {
     if (node.attrs['data-continued'] !== undefined) {
       const body = find(node, 'part-body')
@@ -292,15 +303,16 @@ function blockLines(
           normalizeSpace(textOf(letter)).trim(),
         ].filter(Boolean).join(' ')
       : ''
-    const partOpener: Segment[] = text ? [{ kind: 'text', text: `${text} `, marks: [] }] : []
+    const partOpener: Segment[] = [...opener, ...(text ? [{ kind: 'text' as const, text: `${text} `, marks: [] }] : [])]
     const stem = body?.children.find((child) => has(child, 'question-stem'))
     const stemLines = stem ? childBlocks(stem, reader, partOpener) : []
-    return [
-      ...(stemLines.length > 0 ? stemLines : [line('para', renderInline(partOpener))]),
-      ...(body
-        ? childBlocks({ ...body, children: body.children.filter((child) => child !== stem) }, reader)
-        : []),
-    ]
+    const rest = body ? { ...body, children: body.children.filter((child) => child !== stem) } : undefined
+    if (stemLines.length > 0) return [...stemLines, ...(rest ? childBlocks(rest, reader) : [])]
+    // No stem: the letter is handed to the Subparts, which open on its line
+    // or not, or takes a line of its own above its answers.
+    const next = rest?.children.find((child) => !isHoisted(child))
+    if (rest && next && has(next, 'multipart-subparts-print')) return childBlocks(rest, reader, partOpener)
+    return [line('para', renderInline(partOpener)), ...(rest ? childBlocks(rest, reader) : [])]
   }
   if (has(node, 'doc-figure')) {
     const lines: ContentLine[] = []

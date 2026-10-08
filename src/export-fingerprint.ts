@@ -21,10 +21,12 @@ import {
   answerKeyTotalText,
   COVER_INSTRUCTIONS_HEADING,
   printedLabel,
+  partsOpenNumberLine,
   printedNumberOf,
   printsNumberLine,
   runningFootOf,
   runningHeadOf,
+  subpartsOpenLabelLine,
   type ChoiceGrid,
   type ExportDocument,
   type LayoutPlan,
@@ -558,10 +560,13 @@ function planQuestion(item: QuestionItem, images: ImageOrdinals): ContentLine[] 
         },
       ]
     : []
+  // A Multipart question with no stem opens with Part (a) on its number's
+  // line, so the number opens the Part's first line instead.
+  const opening = partsOpenNumberLine(item)
   const stem =
     item.stem.length > 0
       ? planBlocks(item.stem, { opener }, images)
-      : opener.length > 0
+      : opener.length > 0 && !opening
         ? [line('para', renderInline(opener))]
         : []
   return [
@@ -569,7 +574,8 @@ function planQuestion(item: QuestionItem, images: ImageOrdinals): ContentLine[] 
     ...(item.grid ? planGrid(item.grid, images) : []),
     ...(item.matching ? planMatching(item.matching, images) : []),
     ...plannedSpaceLines(item.workSpace),
-    ...(item.parts ?? []).flatMap((part) => planPart(part, images)),
+    ...(item.parts ?? []).flatMap((part, index) =>
+      planPart(part, images, opening && index === 0 ? opener : [])),
     ...pointsLines(item.closingPoints),
   ]
 }
@@ -578,20 +584,31 @@ function planQuestion(item: QuestionItem, images: ImageOrdinals): ContentLine[] 
 // opens its stem, and its grid or work space follows — or, for a Part that
 // holds Subparts, each Subpart read the same way under its own label. A piece
 // continued from an earlier page carries no letter or lead-in, only Subparts.
-function planPart(part: PlannedPart, images: ImageOrdinals): ContentLine[] {
+// `lead` is what opens the Part's first line before its own letter: the
+// question's number, when the Part prints on the number's line. A Part with
+// no lead-in passes its letter on, with the lead, to its first Subpart.
+function planPart(part: PlannedPart, images: ImageOrdinals, lead: Segment[] = []): ContentLine[] {
+  const letter: Segment[] = [...lead, { kind: 'text', text: `${printedLabel(part.letter, part.printed)} `, marks: [] }]
+  const opening = subpartsOpenLabelLine(part)
   return [
-    ...(part.continued ? [] : planAnswering(`${printedLabel(part.letter, part.printed)} `, part, images)),
-    ...part.subparts.flatMap((subpart) =>
-      planAnswering(`${printedLabel(subpart.label, subpart.printed)} `, subpart, images)),
+    ...(part.continued || opening ? [] : planAnswering(letter, part, images)),
+    ...part.subparts.flatMap((subpart, index) =>
+      planAnswering(
+        [
+          ...(opening && index === 0 ? letter : []),
+          { kind: 'text', text: `${printedLabel(subpart.label, subpart.printed)} `, marks: [] },
+        ],
+        subpart,
+        images,
+      )),
   ]
 }
 
 function planAnswering(
-  label: string,
+  opener: Segment[],
   part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'pointsAfter'>,
   images: ImageOrdinals,
 ): ContentLine[] {
-  const opener: Segment[] = [{ kind: 'text', text: label, marks: [] }]
   const stem = planBlocks(part.stem, { opener }, images)
   return [
     ...(stem.length > 0 ? stem : [line('para', renderInline(opener))]),

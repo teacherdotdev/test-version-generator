@@ -537,6 +537,21 @@ export function printsNumberLine(item: QuestionItem): boolean {
   return item.numbered && item.question.matching === null
 }
 
+/** Whether this piece's first Part prints on the question's number line —
+ *  `1 (a) Fig. 1.1 shows…` — because the Multipart question has no stem of
+ *  its own: the first piece, with nothing above its Parts. Every adapter
+ *  draws, and reads back, the number and the Part's letter as one line. */
+export function partsOpenNumberLine(item: QuestionItem): boolean {
+  const first = item.parts?.[0]
+  return printsNumberLine(item) && item.stem.length === 0 && first !== undefined && !first.continued
+}
+
+/** Whether a Part's first Subpart prints on the Part's own letter line —
+ *  `(b) (i) Name…` — because the Part has no lead-in. */
+export function subpartsOpenLabelLine(part: PlannedPart): boolean {
+  return !part.continued && part.stem.length === 0 && part.subparts.length > 0
+}
+
 // The answer key's own content items. The repeated title lives in the page's
 // furniture (see `PageHeader`'s `'answer-key'` variant) rather than packing
 // as an item — it is drawn the same way the test's own title is, on every
@@ -1233,7 +1248,9 @@ function deriveParts(
       letter,
       ...printed,
       type: 'subparts',
-      stem: part.stem,
+      // A lead-in of only empty paragraphs is none: Subpart (i) then opens
+      // on the Part's own line (`subpartsOpenLabelLine`).
+      stem: blankBlocks(part.stem) ? [] : part.stem,
       choices: [],
       grid: null,
       workSpace: null,
@@ -1282,7 +1299,9 @@ function deriveQuestion(
     marks: trueFalse
       ? rules.trueFalseMarks
       : question.type === 'multiple-choice' ? rules.multipleChoiceMarks : [],
-    stem: stemNodesOf(question.doc),
+    // A Multipart question whose stem is only empty paragraphs has none: its
+    // Part (a) opens on its number's line (`partsOpenNumberLine`).
+    stem: multipart && blankBlocks(stemNodesOf(question.doc)) ? [] : stemNodesOf(question.doc),
     choices,
     // A True/False question never prints its pair as lettered answers: its
     // marks are the T and F a student circles beside its number, or the blank

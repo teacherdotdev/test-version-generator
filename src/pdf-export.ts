@@ -43,7 +43,9 @@ import {
   COVER_INSTRUCTIONS_HEADING,
   printedLabel,
   printedNumberOf,
+  partsOpenNumberLine,
   printsNumberLine,
+  subpartsOpenLabelLine,
   questionIndentOf,
   MATCHING_INDENT,
   type AnswerKeyEntryItem,
@@ -939,11 +941,16 @@ function drawPart(
   const bodyX = x + indent
   const bodyWidth = width - indent
   const last = part.subparts.length - 1
-  if (!part.continued) {
+  // A Part with no lead-in prints its letter on Subpart (i)'s line.
+  const opening = subpartsOpenLabelLine(part)
+  if (opening) {
+    drawTextLine(context, printedLabel(part.letter, part.printed), { font: 'bold', x, width: indent - 5 })
+    context.y += BODY_LINE
+  } else if (!part.continued) {
     drawAnswering(context, printedLabel(part.letter, part.printed), part, x, width, last < 0 ? reserve : 0)
   }
   for (const [index, subpart] of part.subparts.entries()) {
-    if (index > 0 || !part.continued) {
+    if (index > 0 || (!part.continued && !opening)) {
       context.y -= pt(index === 0 ? PARTS_GAP_ABOVE : PARTS_GAP_BETWEEN)
     }
     drawAnswering(context, printedLabel(subpart.label, subpart.printed), subpart, bodyX, bodyWidth, index === last ? reserve : 0)
@@ -992,8 +999,10 @@ function drawQuestion(context: DrawContext, item: QuestionItem): void {
   const reserve = closing.length * pointsLineHeight()
   if (item.workSpace) drawWorkSpace(context, item.workSpace, bodyX, bodyWidth, reserve)
   const parts = item.parts ?? []
+  // With no stem above them, Part (a) prints on the number's line.
+  const opening = partsOpenNumberLine(item)
   for (const [index, part] of parts.entries()) {
-    context.y -= pt(index === 0 ? PARTS_GAP_ABOVE : PARTS_GAP_BETWEEN)
+    if (index > 0 || !opening) context.y -= pt(index === 0 ? PARTS_GAP_ABOVE : PARTS_GAP_BETWEEN)
     drawPart(context, part, bodyX, bodyWidth, index === parts.length - 1 ? reserve : 0)
   }
   drawPointsAfter(context, closing, context.x, context.width)

@@ -107,6 +107,15 @@ tables — a one-cell bordered one and a borderless one-row one that cannot spli
 — marked with the `Blockquote` and `SideBySide` table styles so they read back
 as a box and Panels rather than as tables.
 
+A Multipart question with no stem of its own — none, or only empty
+paragraphs — prints Part (a) on its number's line, and a Part with no lead-in
+prints Subpart (i) on its letter's: the number and letters open that first
+line, `para 1 (a) (i) Name…` (`para 1. a. i. …` under Standard), and never
+take a `para 1` line of their own. Print marks it with the
+`multipart-parts-print--opening` and `multipart-subparts-print--opening`
+classes, which its fingerprint reads; DOCX steps the number and letters
+through tab stops on one hanging line.
+
 A Short Answer question's Work Space is a `space:` line: blank, or ruled with
 the plan's own count of lines. Its height is geometry and is not compared, nor
 are the rows it is ruled in — its `pitch`, closer under Condensed, and its

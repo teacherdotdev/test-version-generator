@@ -21,7 +21,9 @@ import {
   hasAnswerBlank,
   headerHeightOf,
   numberColumnOf,
+  partsOpenNumberLine,
   printsNumberLine,
+  subpartsOpenLabelLine,
   type AnswerKeyEntryItem,
   type AnswerKeyHeadingItem,
   answerKeyPointsText,
@@ -294,8 +296,15 @@ export function PartContent({
             : <WorkSpaceView space={part.workSpace} />)}
         {!part.continued && part.pointsAfter
           && printedPoints(part.pointsAfter, part.id, part.points, renderPoints)}
+        {/* A Part with no lead-in opens with Subpart (i) on its own line. */}
         {part.subparts.length > 0 && (
-          <div className="multipart-subparts-print">
+          <div
+            className={
+              subpartsOpenLabelLine(part)
+                ? 'multipart-subparts-print multipart-subparts-print--opening'
+                : 'multipart-subparts-print'
+            }
+          >
             {part.subparts.map((subpart) => (
               <SubpartContent
                 key={subpart.id}
@@ -399,8 +408,15 @@ export function QuestionContent({
           <ChoiceGridView grid={item.grid} showCorrectness={showCorrectness} />
         )}
         {item.workSpace && <WorkSpaceView space={item.workSpace} />}
+        {/* With no stem above them, Part (a) opens on the number's line. */}
         {item.parts && item.parts.length > 0 && (
-          <div className="multipart-parts-print">
+          <div
+            className={
+              partsOpenNumberLine(item)
+                ? 'multipart-parts-print multipart-parts-print--opening'
+                : 'multipart-parts-print'
+            }
+          >
             {item.parts.map((part) => (
               <PartContent
                 key={part.id}

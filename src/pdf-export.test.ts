@@ -241,6 +241,25 @@ describe('PDF Export Adapter', () => {
     expect(key).toContain('b (ii).')
   })
 
+  test('draws a stemless Multipart question’s Part (a) on its number’s line, and a lead-in-less Part’s Subpart (i) on its letter’s', async () => {
+    const { plans } = plansOf('a multipart with no stem, and a part with no lead-in')
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
+    const document = await getDocument({ data: bytes, disableWorker: true }).promise
+    // The Cover Page is page 1; the question opens page 2.
+    const items = (await (await document.getPage(2)).getTextContent()).items.flatMap((item) =>
+      'str' in item && item.str.trim() ? [{ text: item.str.trim(), x: item.transform[4] as number, y: item.transform[5] as number }] : [])
+    const at = (text: string) => items.find((item) => item.text.startsWith(text))!
+    expect(at('(a)').y).toBeCloseTo(at('1').y, 1)
+    expect(at('Fig. 1.1').y).toBeCloseTo(at('1').y, 1)
+    expect(at('(a)').x).toBeGreaterThan(at('1').x)
+    expect(at('(i)').y).toBeCloseTo(at('(b)').y, 1)
+    expect(at('Name the force').y).toBeCloseTo(at('(b)').y, 1)
+    expect(at('(i)').x).toBeGreaterThan(at('(b)').x)
+    // (ii) stands under (i), on a line of its own.
+    expect(at('(ii)').x).toBeCloseTo(at('(i)').x, 1)
+    expect(at('(ii)').y).toBeLessThan(at('(i)').y)
+  })
+
   test('draws an Exam Board paper on A4: its Cover Page, labels, Points at the right margin and running furniture', async () => {
     const { plans } = plansOf('a paper with points in the exam board paper style')
     const { bytes } = await createPublicationPdf(plans, noImages, fonts)

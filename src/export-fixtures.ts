@@ -1780,6 +1780,52 @@ export const FIXTURES: readonly Fixture[] = [
     { images: true },
   ),
 
+  // A Multipart question with no stem of its own — only an empty paragraph —
+  // opens with Part (a) on its number's line, and a Part with no lead-in
+  // opens with Subpart (i) on its letter's line: `1 (a) Fig. 1.1 shows…`,
+  // `(b) (i) Name…`, as structured papers print them.
+  fixture(
+    'a multipart with no stem, and a part with no lead-in',
+    {
+      title: 'Ramps',
+      paperStyle: 'exam-board',
+      questions: [
+        multipart(
+          'ns',
+          [paragraph()],
+          [
+            part(
+              'ns-a',
+              [paragraph(text('Fig. 1.1 shows a ball rolling down a ramp. State the energy it gains.'))],
+              suggestedAnswer(paragraph(text('Kinetic energy.'))),
+            ),
+            partWithSubparts(
+              'ns-b',
+              [paragraph()],
+              [
+                subpart(
+                  'ns-b-i',
+                  [paragraph(text('Name the force that slows the ball.'))],
+                  suggestedAnswer(paragraph(text('Friction.'))),
+                ),
+                subpart(
+                  'ns-b-ii',
+                  [paragraph(text('Which unit is energy measured in?'))],
+                  choicesOf(
+                    choice('ns-b-ii-a', true, paragraph(text('Joule'))),
+                    choice('ns-b-ii-b', false, paragraph(text('Newton'))),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    },
+    arrangement(['ns']),
+    { answerKey: true },
+  ),
+
   // Each Paper Style over every Question Type, so every adapter prints its
   // blanks, its letters, its Word Bank and its default Work Space the way the
   // plan resolved them. Two questions to a page, so the PDF has room to draw

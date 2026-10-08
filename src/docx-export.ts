@@ -91,7 +91,9 @@ import {
   MATCHING_INDENT,
   questionIndentOf,
   MATCHING_BANK_WIDTH,
+  partsOpenNumberLine,
   printsNumberLine,
+  subpartsOpenLabelLine,
   PART_INDENT,
   type AnswerKeyEntryItem,
   type AnswerKeySectionItem,
@@ -365,6 +367,9 @@ type BlockContext = {
   /** Blocks that sit close, as a choice's or a list item's do in print: no
    *  paragraph gap opens between them. */
   tight?: boolean
+  /** Tab stops the prefix steps through, in twips: where a Part's letter and
+   *  a Subpart's label stand when they open on the number's line. */
+  tabStops?: number[]
 }
 
 // Body text's spacing, from the one table in `export-typography.ts`, at the
@@ -413,6 +418,9 @@ function paragraphOptions(
       ...(context.before ? { before: context.before } : {}),
     },
     indent: indent?.left || indent?.hanging ? indent : undefined,
+    ...(context.prefix && context.tabStops?.length
+      ? { tabStops: context.tabStops.map((position) => ({ type: TabStopType.LEFT, position })) }
+      : {}),
     numbering: context.list
       ? { reference: context.list.reference, level: context.list.level }
       : undefined,
@@ -1041,10 +1049,13 @@ function questionContent(
     prefix: numbered ? prefix : undefined,
   }
 
+  // A Multipart question with no stem opens with Part (a) on its number's
+  // line: the number leads the Part's first paragraph instead.
+  const opening = partsOpenNumberLine(item)
   const stem =
     item.stem.length > 0
       ? blocks(item.stem, context, build)
-      : numbered
+      : numbered && !opening
         ? [new Paragraph(paragraphOptions(context, { children: prefix }))]
         : []
 
@@ -1063,8 +1074,8 @@ function questionContent(
       : []),
     ...(item.matching ? matchingContent(item.matching, build) : []),
     ...(item.workSpace ? workSpaceParagraphs(item.workSpace, indent) : []),
-    ...(item.parts ?? []).flatMap((part) =>
-      partContent(part, indentPx, build),
+    ...(item.parts ?? []).flatMap((part, index) =>
+      partContent(part, indentPx, build, opening && index === 0 ? { prefix, start: 0, stops: [indent] } : undefined),
     ),
     ...(item.closingPoints ?? []).map(pointsAfterParagraph),
   ]
@@ -1085,17 +1096,39 @@ function pointsAfterParagraph(text: string): Paragraph {
 // then its choice grid or its work space, as a question of its kind prints —
 // or, for a Part that holds Subparts, each Subpart the same way one level
 // further in. A piece continued from an earlier page carries only Subparts.
+// What opens a Part's or Subpart's first line before its own label, when it
+// prints on a line above it: the question's number, or a Part's letter. Its
+// runs, where the line starts in px, and the tab stops (twips) it steps
+// through to reach the label.
+type LineLead = { prefix: ParagraphChild[]; start: number; stops: number[] }
+
+// A Part with no lead-in opens its first Subpart on its own letter's line,
+// handing its letter, after any lead of its own, to that Subpart.
 function partContent(
   part: PlannedPart,
   multipartIndentPx: number,
   build: BuildContext,
+  lead?: LineLead,
 ): (Paragraph | Table)[] {
+  const label = printedLabel(part.letter, part.printed)
+  const opening = subpartsOpenLabelLine(part)
+  const letterLead: LineLead = {
+    prefix: [...(lead?.prefix ?? []), new TextRun({ text: `${label}\t` })],
+    start: lead?.start ?? multipartIndentPx,
+    stops: [...(lead?.stops ?? []), twips(multipartIndentPx + PART_INDENT)],
+  }
   return [
-    ...(part.continued
+    ...(part.continued || opening
       ? []
-      : answeringContent(printedLabel(part.letter, part.printed), part, multipartIndentPx, build)),
-    ...part.subparts.flatMap((subpart) =>
-      answeringContent(printedLabel(subpart.label, subpart.printed), subpart, multipartIndentPx + PART_INDENT, build),
+      : answeringContent(label, part, multipartIndentPx, build, lead)),
+    ...part.subparts.flatMap((subpart, index) =>
+      answeringContent(
+        printedLabel(subpart.label, subpart.printed),
+        subpart,
+        multipartIndentPx + PART_INDENT,
+        build,
+        opening && index === 0 ? letterLead : undefined,
+      ),
     ),
   ]
 }
@@ -1105,14 +1138,17 @@ function answeringContent(
   part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'pointsAfter'>,
   outerIndentPx: number,
   build: BuildContext,
+  lead?: LineLead,
 ): (Paragraph | Table)[] {
   const indentPx = outerIndentPx + PART_INDENT
   const indent = twips(indentPx)
-  const prefix: ParagraphChild[] = [new TextRun({ text: `${label}\t` })]
+  const prefix: ParagraphChild[] = [...(lead?.prefix ?? []), new TextRun({ text: `${label}\t` })]
   const context: BlockContext = {
     indent,
-    hanging: twips(PART_INDENT),
+    // A lead starts the first line further out, at the number or letter.
+    hanging: lead ? twips(indentPx - lead.start) : twips(PART_INDENT),
     prefix,
+    ...(lead ? { tabStops: lead.stops } : {}),
   }
   const stem = blocks(part.stem, context, { ...build, contentWidth: build.pageWidth - indentPx })
   return [

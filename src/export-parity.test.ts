@@ -130,6 +130,32 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     expectSameDocument(planned, printFingerprint(planOf(fixture)))
   })
 
+  test('puts a stemless Multipart question’s Part (a) on its number’s line, and a lead-in-less Part’s Subpart (i) on its letter’s, under every Paper Style', async () => {
+    const stemless = FIXTURES.find((item) => item.name === 'a multipart with no stem, and a part with no lead-in')!
+    for (const paperStyle of PAPER_STYLES) {
+      const fixture = { ...stemless, exam: { ...stemless.exam, paperStyle } }
+      const plans = planOf(fixture)
+      // A stem of only empty paragraphs is no stem, and so is such a lead-in.
+      const item = plans[0]!.pages.flatMap((page) => page.items).find((candidate) => candidate.kind === 'question')
+      expect(item?.kind === 'question' && item.stem).toEqual([])
+      expect(item?.kind === 'question' && item.parts![1]!.stem).toEqual([])
+      const planned = layoutFingerprint(plans)
+      const lines = layoutFingerprint([plans[0]!]).pages.flatMap((page) => page.content)
+      // `1 (a) Fig. 1.1…` under Exam Board, `1. a. Fig. 1.1…` under the rest.
+      const [number, a, b, i, ii] = paperStyle === 'exam-board'
+        ? ['1', '(a)', '(b)', '(i)', '(ii)']
+        : ['1.', 'a.', 'b.', 'i.', 'ii.']
+      expect(lines).toContain(`para ${number} ${a} Fig. 1.1 shows a ball rolling down a ramp. State the energy it gains.`)
+      expect(lines).toContain(`para ${b} ${i} Name the force that slows the ball.`)
+      expect(lines).toContain(`para ${ii} Which unit is energy measured in?`)
+      // Neither the number nor a letter is left on a line of its own.
+      expect(lines).not.toContain(`para ${number}`)
+      expect(lines).not.toContain(`para ${b}`)
+      expectSameDocument(planned, await docxOf(fixture))
+      expectSameDocument(planned, printFingerprint(plans))
+    }
+  })
+
   test('carries Points on the Answer Key under every Paper Style, and on the test only where its style prints them', async () => {
     const pointed = FIXTURES.find((item) => item.name === 'a paper with points')!
     for (const paperStyle of PAPER_STYLES.filter((style) => style !== 'exam-board')) {
