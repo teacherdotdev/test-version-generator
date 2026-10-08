@@ -97,23 +97,23 @@ function attrsOf(value: unknown): Record<string, unknown> | undefined {
   return { ...(attrs as Record<string, unknown>) }
 }
 
-/** Marks a stored or imported value gives, when it gives any: a positive
+/** Points a stored or imported value gives, when it gives any: a positive
  *  whole number. Anything else — absent, zero, a fraction, a string — reads as
- *  unmarked, so a record written before Marks existed, or one an older build
+ *  unpointed, so a record written before Points existed, or one an older build
  *  stored, needs no upgrade to be read (ADR-0042). The one guard, so the
- *  editor, the sheet, storage and import agree on what Marks are. */
-export function readMarks(value: unknown): number | undefined {
+ *  editor, the sheet, storage and import agree on what Points are. */
+export function readPoints(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined
 }
 
-/** What a teacher typed into a Marks field, read: a positive whole number,
- *  `null` for an empty field — which clears the Marks — or `undefined` for
+/** What a teacher typed into a Points field, read: a positive whole number,
+ *  `null` for an empty field — which clears the Points — or `undefined` for
  *  anything else, which changes nothing. */
-export function parseMarksInput(text: string): number | null | undefined {
+export function parsePointsInput(text: string): number | null | undefined {
   const trimmed = text.trim()
   if (trimmed === '') return null
   if (!/^\d+$/.test(trimmed)) return undefined
-  return readMarks(Number(trimmed))
+  return readPoints(Number(trimmed))
 }
 
 // Strip a document down to the shapes the editor schema accepts, so a document
@@ -189,15 +189,15 @@ export function cleanDocument(value: ProseMirrorJSON): ProseMirrorJSON {
         Array.isArray(clean.content) ? (clean.content as ProseMirrorJSON[]) : [],
         node.type === 'multipartPart',
       )
-      // Marks belong to a Part that answers, never to one holding Subparts,
-      // and an unmarked one keeps no `marks` at all — not the editor's null —
-      // so a document saved before Marks existed is saved unchanged.
-      const marks = readMarks(attrs.marks)
+      // Points belong to a Part that answers, never to one holding Subparts,
+      // and an unpointed one keeps no `points` at all — not the editor's null —
+      // so a document saved before Points existed is saved unchanged.
+      const points = readPoints(attrs.points)
       const answers = (clean.content as ProseMirrorJSON[]).at(-1)?.type !== 'multipartSubparts'
       clean.attrs = {
         id: typeof attrs.id === 'string' ? attrs.id : '',
         columns: attrs.columns === 1 || attrs.columns === 4 ? attrs.columns : 2,
-        ...(marks !== undefined && answers ? { marks } : {}),
+        ...(points !== undefined && answers ? { points } : {}),
       }
     } else if (node.type === 'multipartSubparts') {
       clean.content = (Array.isArray(clean.content)

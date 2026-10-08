@@ -90,7 +90,7 @@ describe('Spreadsheet of questions', () => {
     await expect(read('grades.csv', encode('Name,Score,Grade\nAda,98,A\nBob,71,C\n'))).rejects.toThrow('could not find questions')
   })
 
-  test('keeps a whole number in a Points or Marks column as Marks', async () => {
+  test('keeps a whole number in a Points or Marks column as Points', async () => {
     const { reading, questions } = await read('quiz.csv', encode([
       'Question,Option A,Option B,Answer,Marks',
       'Pick the mammal.,Shark,Whale,B,2',
@@ -98,6 +98,6 @@ describe('Spreadsheet of questions', () => {
       'Pick the fish.,Trout,Robin,A,',
     ].join('\n')))
     expect(reading.format).toBe('spreadsheet')
-    expect(questions.map((question) => question.marks)).toEqual([2, undefined, undefined])
+    expect(questions.map((question) => question.points)).toEqual([2, undefined, undefined])
   })
 })

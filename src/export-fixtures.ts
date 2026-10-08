@@ -519,13 +519,13 @@ export const FIXTURES: readonly Fixture[] = [
     { answerKey: true },
   ),
 
-  // Marks on everything a student answers (ADR-0042): a Multiple Choice
-  // question with Question Metadata beside its `[n]`, an unmarked True/False
-  // one, a Matching set marked as a whole, and a Multipart question whose
-  // Part and Subparts carry their own. No current Paper Style prints Marks on
+  // Points on everything a student answers (ADR-0042): a Multiple Choice
+  // question with Question Metadata beside its `[n]`, an unpointed True/False
+  // one, a Matching set worth Points as a whole, and a Multipart question whose
+  // Part and Subparts carry their own. No current Paper Style prints Points on
   // the test; the key prints each `[n]` and the paper's total.
   fixture(
-    'a marked paper',
+    'a paper with points',
     {
       title: 'Rivers',
       questions: [
@@ -539,7 +539,7 @@ export const FIXTURES: readonly Fixture[] = [
               choice('mk1-b', false, paragraph(text('Its mouth'))),
             ],
           ),
-          marks: 1,
+          points: 1,
           difficulty: 'easy',
           topics: ['Rivers'],
         },
@@ -557,19 +557,19 @@ export const FIXTURES: readonly Fixture[] = [
               bankAnswer('mk3-a2', paragraph(text('A bend in a river'))),
             ],
           ),
-          marks: 2,
+          points: 2,
         },
         multipart(
           'mk4',
           [paragraph(text('A river floods its valley every spring.'))],
           [
-            { ...part('mk4-a', [paragraph(text('Name the flat land that floods.'))], suggestedAnswer(paragraph(text('The floodplain.')))), attrs: { id: 'mk4-a', columns: DEFAULT_COLUMNS, marks: 1 } },
+            { ...part('mk4-a', [paragraph(text('Name the flat land that floods.'))], suggestedAnswer(paragraph(text('The floodplain.')))), attrs: { id: 'mk4-a', columns: DEFAULT_COLUMNS, points: 1 } },
             partWithSubparts(
               'mk4-b',
               [paragraph(text('Farmers grow crops on the flooded land.'))],
               [
-                { ...subpart('mk4-b-i', [paragraph(text('What does a flood leave behind?'))], suggestedAnswer(paragraph(text('Silt.')))), attrs: { id: 'mk4-b-i', columns: DEFAULT_COLUMNS, marks: 2 } },
-                { ...subpart('mk4-b-ii', [paragraph(text('Give one danger of farming there.'))], suggestedAnswer()), attrs: { id: 'mk4-b-ii', columns: DEFAULT_COLUMNS, marks: 3 } },
+                { ...subpart('mk4-b-i', [paragraph(text('What does a flood leave behind?'))], suggestedAnswer(paragraph(text('Silt.')))), attrs: { id: 'mk4-b-i', columns: DEFAULT_COLUMNS, points: 2 } },
+                { ...subpart('mk4-b-ii', [paragraph(text('Give one danger of farming there.'))], suggestedAnswer()), attrs: { id: 'mk4-b-ii', columns: DEFAULT_COLUMNS, points: 3 } },
               ],
             ),
           ],
@@ -1620,14 +1620,14 @@ export const FIXTURES: readonly Fixture[] = [
     },
   ),
 
-  // The Exam Board Paper Style (ADR-0045) over a marked paper: a Cover Page
+  // The Exam Board Paper Style (ADR-0045) over a paper with points: a Cover Page
   // from the Exam's Paper Details on A4, `1`, `(a)`, `(i)` and `A` labels,
-  // dotted lines where the teacher set no Work Space, each marked answer's
+  // dotted lines where the teacher set no Work Space, each answer's
   // `[n]` at the right margin, the Multipart question's `[Total: 9]`, and the
   // paper code and "Turn over" at the foot of every test page but the last.
   // One question to a page, so the test runs over several.
   fixture(
-    'a marked paper in the exam board paper style',
+    'a paper with points in the exam board paper style',
     {
       title: 'Plant Biology',
       paperStyle: 'exam-board',
@@ -1645,9 +1645,9 @@ export const FIXTURES: readonly Fixture[] = [
               choice('eb-mc-d', false, paragraph(text('Helium'))),
             ],
           ),
-          marks: 1,
+          points: 1,
         },
-        { ...trueFalse('eb-tf', [paragraph(text('Xylem carries water up the stem.'))], 'true'), marks: 1 },
+        { ...trueFalse('eb-tf', [paragraph(text('Xylem carries water up the stem.'))], 'true'), points: 1 },
         {
           ...matching(
             'eb-mx',
@@ -1661,14 +1661,14 @@ export const FIXTURES: readonly Fixture[] = [
               bankAnswer('eb-mx-a2', paragraph(text('Receives pollen'))),
             ],
           ),
-          marks: 2,
+          points: 2,
         },
-        { ...open('eb-sa', paragraph(text('Explain why a plant kept in the dark loses mass.'))), marks: 3 },
+        { ...open('eb-sa', paragraph(text('Explain why a plant kept in the dark loses mass.'))), points: 3 },
         multipart(
           'eb-mp',
           [paragraph(text('A student grows cress seeds on damp cotton wool.'))],
           [
-            { ...part('eb-mp-a', [paragraph(text('State one condition seeds need to germinate.'))], suggestedAnswer(paragraph(text('Warmth.')))), attrs: { id: 'eb-mp-a', columns: DEFAULT_COLUMNS, marks: 2 } },
+            { ...part('eb-mp-a', [paragraph(text('State one condition seeds need to germinate.'))], suggestedAnswer(paragraph(text('Warmth.')))), attrs: { id: 'eb-mp-a', columns: DEFAULT_COLUMNS, points: 2 } },
             partWithSubparts(
               'eb-mp-b',
               [paragraph(text('Half the seeds are kept in a cupboard.'))],
@@ -1682,9 +1682,9 @@ export const FIXTURES: readonly Fixture[] = [
                       choice('eb-mp-b-i-b', false, paragraph(text('Dark green'))),
                     ),
                   ),
-                  attrs: { id: 'eb-mp-b-i', columns: DEFAULT_COLUMNS, marks: 1 },
+                  attrs: { id: 'eb-mp-b-i', columns: DEFAULT_COLUMNS, points: 1 },
                 },
-                { ...subpart('eb-mp-b-ii', [paragraph(text('Explain the difference in their height.'))], suggestedAnswer()), attrs: { id: 'eb-mp-b-ii', columns: DEFAULT_COLUMNS, marks: 6 } },
+                { ...subpart('eb-mp-b-ii', [paragraph(text('Explain the difference in their height.'))], suggestedAnswer()), attrs: { id: 'eb-mp-b-ii', columns: DEFAULT_COLUMNS, points: 6 } },
               ],
             ),
           ],
@@ -1770,7 +1770,7 @@ export const FIXTURES: readonly Fixture[] = [
                 ],
                 suggestedAnswer(),
               ),
-              attrs: { id: 'eb-tb-a', columns: DEFAULT_COLUMNS, marks: 3 },
+              attrs: { id: 'eb-tb-a', columns: DEFAULT_COLUMNS, points: 3 },
             },
           ],
         ),
@@ -1783,7 +1783,7 @@ export const FIXTURES: readonly Fixture[] = [
   // Each Paper Style over every Question Type, so every adapter prints its
   // blanks, its letters, its Word Bank and its default Work Space the way the
   // plan resolved them. Two questions to a page, so the PDF has room to draw
-  // them; Condensed's measure fits every answer four across. Unmarked, and
+  // them; Condensed's measure fits every answer four across. Unpointed, and
   // with no Paper Details, an Exam Board Cover Page prints the title, the
   // style's own candidate fields and instructions, and no total.
   ...(['classic', 'condensed', 'exam-board'] as const).map((paperStyle) =>

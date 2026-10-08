@@ -9,7 +9,7 @@
 A `0.9.0` choice may say it is a Locked Answer with `locked`, which keeps its
 position when answers are shuffled; a Multipart Part may hold `subparts`
 in place of its own answers; and a Question, a Part or a Subpart that answers
-may carry `marks`, what answering it is worth — never a Multipart Question or a
+may carry `points`, what answering it is worth — never a Multipart Question or a
 Part that holds Subparts, whose worth is always the sum of their parts. As in `0.8.0`, a Media Asset names its
 `file` in the package's zip instead of carrying base64 `bytes`. Each fixture
 directory is laid out as that zip is: a record's

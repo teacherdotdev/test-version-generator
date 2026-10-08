@@ -164,7 +164,7 @@ export function trimTrailingEmpty(fields: string[]): string[] {
 
 /** A point value as a file writes it, such as `2`, `10.0` or `2,5`, as a
  *  number; undefined when there is none or it is not a number. Whether it
- *  becomes Marks is `record.ts`'s to say. */
+ *  becomes Points is `record.ts`'s to say. */
 export function pointsIn(text: string | undefined): number | undefined {
   const trimmed = text?.trim()
   if (!trimmed) return undefined

@@ -115,7 +115,7 @@ const PREVIEWS: Record<PaperStyle, ReactNode> = {
     </>
   ),
   // A bare bold number and a Part's (a), dotted lines to write on, and the
-  // answer's marks in brackets at the right margin.
+  // answer's points in brackets at the right margin.
   'exam-board': (
     <>
       <Mark x={0.5} y={7} bold>1</Mark>

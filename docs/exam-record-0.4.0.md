@@ -99,7 +99,7 @@ Sections print in the order `sections` lists them, and question numbering runs c
 - Under `condensed`, a Multiple Choice Question's or Part's answers are laid out in four, or else two, columns where every answer fits one line of a column; never in fewer columns than its `columns`.
 - The room a style rules applies to a Short Answer position, and to every Short Answer Part of a Multipart position, that has no `workSpace`. A `workSpace` always wins, including a zero-height one.
 - A `workSpace`'s rows keep their count under every style; `condensed` only sets them closer together on the page. A Matching position's `wordBankLayout` is where its Word Bank prints under every style.
-- Under `exam-board` (ADR-0045) the test prints on A4 rather than US Letter, numbers its questions `1` rather than `1.`, letters Parts `(a)` and Subparts `(i)`, rules every lined Work Space with dotted lines, prints a marked answer's Marks as `[n]` against the right margin after it and a marked Multipart Question's total as `[Total: n]` after it, and opens with a Cover Page made from the `paperDetails`. Its pages carry the page number at the top, the paper code and "Turn over" at the foot, and no header line: the candidate fields are on the Cover Page. Its Answer Key is on A4 and is otherwise the same as under every style.
+- Under `exam-board` (ADR-0045) the test prints on A4 rather than US Letter, numbers its questions `1` rather than `1.`, letters Parts `(a)` and Subparts `(i)`, rules every lined Work Space with dotted lines, prints an answer's Points as `[n]` against the right margin after it and a Multipart Question's total as `[Total: n]` after it, and opens with a Cover Page made from the `paperDetails`. Its pages carry the page number at the top, the paper code and "Turn over" at the foot, and no header line: the candidate fields are on the Cover Page. Its Answer Key is on A4 and is otherwise the same as under every style.
 - Changing an Exam's style never changes what the teacher set (ADR-0044). A `workSpace` is kept as it is. A Matching position whose `wordBankLayoutSet` is `true` keeps its `wordBankLayout`; every other Matching position is placed again by the new style, as in Defaults, so switching back gives the same layouts.
 
 ## Header
@@ -133,7 +133,7 @@ Every page is US Letter, or A4 under `exam-board`. By default it prints three qu
 | `candidateFields` | Which boxes a Cover Page asks the candidate to fill in, each at most once, from `name`, `class`, `candidate-number`, `centre-number` and `date`. Absent takes the style's own; an empty list asks for none. |
 
 - A blank detail prints nothing; producers leave it out. Test Parrot trims each text and drops blank instruction lines on import.
-- The paper's total is never a Paper Detail: it is counted from the Questions' Marks, and printed by a style that prints one only when some Question is marked.
+- The paper's total is never a Paper Detail: it is counted from the Questions' Points, and printed by a style that prints one only when some Question has Points.
 - Only `exam-board` prints them today. Under any other style they are kept and travel, but nothing prints them.
 
 ## Defaults

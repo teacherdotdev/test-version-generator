@@ -7,7 +7,7 @@
 // what room a Short Answer position leaves when the teacher has set none, and
 // how far apart questions stand — and, since the Exam Board style (ADR-0045),
 // the sheet's size, how questions, Parts, Subparts and answers are labelled,
-// how ruled lines look, where Marks print, whether there is a Cover Page and
+// how ruled lines look, where Points print, whether there is a Cover Page and
 // what the head and foot of each page carry. The Export Document reads these
 // rules once,
 // so print, PDF, DOCX, the Export Preview and the exam sheet all draw the same
@@ -51,7 +51,7 @@ export const PAPER_STYLE_LABELS: Record<PaperStyle, { label: string; description
   },
   'exam-board': {
     label: 'Exam Board',
-    description: 'A4 with a cover page: 1 (a) (i) labels, dotted lines, marks in brackets at the right.',
+    description: 'A4 with a cover page: 1 (a) (i) labels, dotted lines, points in brackets at the right.',
   },
 }
 
@@ -109,19 +109,19 @@ export function labelled(template: LabelTemplate, value: string | number): strin
   return template.split('{n}').join(String(value))
 }
 
-/** Where a style prints Marks on the test (ADR-0045). Each placement is its
- *  own rule, with its wording a template in which `{n}` is the Marks; one a
- *  style leaves out is not printed, and nothing unmarked prints any. */
-export type MarkPlacements = {
-  /** After each marked answer, against the right margin: a Multiple Choice,
+/** Where a style prints Points on the test (ADR-0045). Each placement is its
+ *  own rule, with its wording a template in which `{n}` is the Points; one a
+ *  style leaves out is not printed, and nothing unpointed prints any. */
+export type PointPlacements = {
+  /** After each answer with Points, against the right margin: a Multiple Choice,
    *  True/False or Matching question's after its answers, a Short Answer
    *  question's, Part's or Subpart's after its Work Space. */
-  marksAfterAnswer?: string
-  /** After each marked Multipart question, against the right margin: the sum
-   *  of its Parts' and Subparts' Marks. */
+  pointsAfterAnswer?: string
+  /** After each Multipart question with Points, against the right margin: the sum
+   *  of its Parts' and Subparts' Points. */
   questionTotal?: string
   /** After a Section's last question, against the right margin: the sum of
-   *  its questions' Marks. */
+   *  its questions' Points. */
   sectionTotal?: string
   /** On the Cover Page: the paper's total. */
   paperTotalOnCover?: string
@@ -171,8 +171,8 @@ export type PaperStyleRules = {
   labels: PaperLabels
   /** How a ruled Work Space is drawn. */
   ruling: Ruling
-  /** Where Marks print on the test. */
-  marks: MarkPlacements
+  /** Where Points print on the test. */
+  points: PointPlacements
   /** Whether the test opens with a Cover Page (ADR-0045). A style with one
    *  prints the candidate fields there, so its test pages carry no Page
    *  Header line. */
@@ -191,16 +191,16 @@ export const STANDARD_QUESTION_GAP = 26
 const STANDARD_WORK_SPACE_PITCH = 32
 
 /** What every style printed before the Exam Board style: US Letter, `1.`
- *  `a.` `i.` `A.`, solid rules, no Marks on the test, no Cover Page, and the
+ *  `a.` `i.` `A.`, solid rules, no Points on the test, no Cover Page, and the
  *  page number at the foot. */
 const SHEET_RULES = {
   pageSize: 'letter',
   labels: PERIOD_LABELS,
   ruling: 'solid',
-  marks: {},
+  points: {},
   coverPage: false,
   running: { pageNumber: 'foot', paperCode: false },
-} as const satisfies Pick<PaperStyleRules, 'pageSize' | 'labels' | 'ruling' | 'marks' | 'coverPage' | 'running'>
+} as const satisfies Pick<PaperStyleRules, 'pageSize' | 'labels' | 'ruling' | 'points' | 'coverPage' | 'running'>
 
 export const PAPER_STYLE_RULES: Record<PaperStyle, PaperStyleRules> = {
   // The sheet as ADR-0029 left it: T and F to circle, a letter circled on its
@@ -248,7 +248,7 @@ export const PAPER_STYLE_RULES: Record<PaperStyle, PaperStyleRules> = {
   },
   // Set out the way international exam boards' papers commonly are (ADR-0045),
   // with none of any board's own wording (ADR-0044): A4; `1`, `(a)`, `(i)`;
-  // dotted lines to write on; each answer's Marks in brackets at the right
+  // dotted lines to write on; each answer's Points in brackets at the right
   // margin and each Multipart question's total beneath it; a Cover Page with
   // the Paper Details, the candidate boxes and the paper's total; and the
   // page number at the top, the paper code and "Turn over" at the foot.
@@ -264,8 +264,8 @@ export const PAPER_STYLE_RULES: Record<PaperStyle, PaperStyleRules> = {
     pageSize: 'a4',
     labels: { question: '{n}', part: '({n})', subpart: '({n})', answer: '{n}' },
     ruling: 'dotted',
-    marks: {
-      marksAfterAnswer: '[{n}]',
+    points: {
+      pointsAfterAnswer: '[{n}]',
       questionTotal: '[Total: {n}]',
       paperTotalOnCover: 'The total mark for this paper is {n}.',
     },

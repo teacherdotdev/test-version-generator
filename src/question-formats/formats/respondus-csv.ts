@@ -13,7 +13,7 @@ import { isBlankRow, readSheet, type SheetRow } from './sheet'
  * Choice 1). A correct answer is a letter A–J or a number 1–10; for MR a
  * list of them, such as `"a,c"` or `"a c"`; for TF also `true` or `false`.
  * A header row, which Respondus lets a teacher skip, is skipped here too.
- * Points are kept as Marks when a whole number; the Topic becomes a topic.
+ * Points are kept when a whole number; the Topic becomes a topic.
  * Feedback and titles are left out.
  */
 

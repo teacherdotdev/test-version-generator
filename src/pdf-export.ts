@@ -38,7 +38,7 @@ import {
   headerHeightOf,
   MATCHING_BANK_WIDTH,
   PART_INDENT,
-  answerKeyMarksText,
+  answerKeyPointsText,
   answerKeyTotalText,
   COVER_INSTRUCTIONS_HEADING,
   printedLabel,
@@ -800,7 +800,7 @@ function drawWorkSpace(
   space: PlannedWorkSpace,
   x: number,
   width: number,
-  /** Room to keep below the space for the Marks printed after it. */
+  /** Room to keep below the space for the Points printed after it. */
   reserve = 0,
 ): void {
   if (space.height <= 0) return
@@ -823,15 +823,15 @@ function drawWorkSpace(
   context.y = top - height
 }
 
-/** How tall a line of Marks printed after an answer comes out: a body line
+/** How tall a line of Points printed after an answer comes out: a body line
  *  and print's 4px above it. */
-function marksLineHeight(): number {
+function pointsLineHeight(): number {
   return BODY_LINE + pt(4)
 }
 
-/** Marks a Paper Style prints after an answer or a question, each on a line
+/** Points a Paper Style prints after an answer or a question, each on a line
  *  of its own against the right margin of `x`..`x + width`. */
-function drawMarksAfter(context: DrawContext, texts: readonly string[], x: number, width: number): void {
+function drawPointsAfter(context: DrawContext, texts: readonly string[], x: number, width: number): void {
   for (const text of texts) {
     context.y -= pt(4)
     const font = context.fonts.regular
@@ -924,7 +924,7 @@ function drawPart(
   part: PlannedPart,
   x: number,
   width: number,
-  /** Room the question keeps below its last Part for its own closing Marks. */
+  /** Room the question keeps below its last Part for its own closing Points. */
   reserve = 0,
 ): void {
   const indent = pt(PART_INDENT)
@@ -945,7 +945,7 @@ function drawPart(
 function drawAnswering(
   context: DrawContext,
   label: string,
-  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'marksAfter'>,
+  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'pointsAfter'>,
   x: number,
   width: number,
   reserve = 0,
@@ -958,11 +958,11 @@ function drawAnswering(
   if (part.stem.length > 0) drawBlocks(context, part.stem, { x: bodyX, width: bodyWidth })
   else context.y -= BODY_LINE
   if (part.grid) drawChoiceGrid(context, part.grid, bodyX + pt(CHOICE_INDENT), bodyWidth - pt(CHOICE_INDENT))
-  const marks = part.marksAfter ? [part.marksAfter] : []
+  const points = part.pointsAfter ? [part.pointsAfter] : []
   if (part.workSpace) {
-    drawWorkSpace(context, part.workSpace, bodyX, bodyWidth, reserve + marks.length * marksLineHeight())
+    drawWorkSpace(context, part.workSpace, bodyX, bodyWidth, reserve + points.length * pointsLineHeight())
   }
-  drawMarksAfter(context, marks, bodyX, bodyWidth)
+  drawPointsAfter(context, points, bodyX, bodyWidth)
 }
 
 function drawQuestion(context: DrawContext, item: QuestionItem): void {
@@ -978,17 +978,17 @@ function drawQuestion(context: DrawContext, item: QuestionItem): void {
   // Set in from the stem, as print's `.choice-grid` is.
   if (item.grid) drawChoiceGrid(context, item.grid, bodyX + pt(CHOICE_INDENT), bodyWidth - pt(CHOICE_INDENT))
   if (item.matching) drawMatching(context, item.matching)
-  // Marks printed after the question keep their room below a space that
+  // Points printed after the question keep their room below a space that
   // fills the page, as packing kept it.
-  const closing = item.closingMarks ?? []
-  const reserve = closing.length * marksLineHeight()
+  const closing = item.closingPoints ?? []
+  const reserve = closing.length * pointsLineHeight()
   if (item.workSpace) drawWorkSpace(context, item.workSpace, bodyX, bodyWidth, reserve)
   const parts = item.parts ?? []
   for (const [index, part] of parts.entries()) {
     context.y -= pt(index === 0 ? PARTS_GAP_ABOVE : PARTS_GAP_BETWEEN)
     drawPart(context, part, bodyX, bodyWidth, index === parts.length - 1 ? reserve : 0)
   }
-  drawMarksAfter(context, closing, context.x, context.width)
+  drawPointsAfter(context, closing, context.x, context.width)
   // Nothing follows a space that fills its page, so it keeps the foot.
   const last = parts.at(-1)
   if (item.workSpace?.fill || (last && closingWorkSpaceOf(last)?.fill)) return
@@ -1091,8 +1091,8 @@ function drawItem(context: DrawContext, item: PageItem): void {
       drawTextLine(context, 'Answer Section', { font: 'bold', size: ANSWER_KEY_HEADING_SIZE, line })
       // The paper's total, on the heading's own baseline against the right
       // margin in body type, as print sets it.
-      if (item.totalMarks !== undefined) {
-        const total = answerKeyTotalText(item.totalMarks)
+      if (item.totalPoints !== undefined) {
+        const total = answerKeyTotalText(item.totalPoints)
         assertSupported(total, context.fonts.regular)
         context.page.drawText(total, {
           x: context.x + context.width - context.fonts.regular.widthOfTextAtSize(total, BODY_SIZE),
@@ -1117,9 +1117,9 @@ function drawItem(context: DrawContext, item: PageItem): void {
 
 /** An Answer Key line's `[n]`, just past its blank at `x`, on the line that
  *  starts at `rowY`; the line has already been drawn, so it moves nothing. */
-function drawAnswerKeyMarks(context: DrawContext, marks: number | undefined, x: number, rowY: number): void {
-  if (marks === undefined) return
-  const text = answerKeyMarksText(marks)
+function drawAnswerKeyPoints(context: DrawContext, points: number | undefined, x: number, rowY: number): void {
+  if (points === undefined) return
+  const text = answerKeyPointsText(points)
   context.page.drawText(text, {
     x,
     y: rowY - BODY_SIZE,
@@ -1134,12 +1134,12 @@ function drawAnswerKeyEntry(context: DrawContext, item: AnswerKeyEntryItem): voi
     ...(item.difficulty ? [DIFFICULTY_LABELS[item.difficulty]] : []),
     ...(item.topics ?? []),
   ]
-  // A marked entry's `[n]` follows its blank, and its tags follow that.
-  const marksWidth = item.marks === undefined
+  // An entry's `[n]`, when it has Points, follows its blank, and its tags follow that.
+  const pointsWidth = item.points === undefined
     ? 0
-    : context.fonts.regular.widthOfTextAtSize(answerKeyMarksText(item.marks), BODY_SIZE) + 6
-  const tagStart = context.x + 88 + marksWidth
-  const tagWidth = context.width - 88 - marksWidth
+    : context.fonts.regular.widthOfTextAtSize(answerKeyPointsText(item.points), BODY_SIZE) + 6
+  const tagStart = context.x + 88 + pointsWidth
+  const tagWidth = context.width - 88 - pointsWidth
   const gap = 5
   const padding = 5
   let tagX = tagStart
@@ -1166,7 +1166,7 @@ function drawAnswerKeyEntry(context: DrawContext, item: AnswerKeyEntryItem): voi
   context.y = rowY
   if (item.letter) drawTextLine(context, item.letter, { font: 'bold', x: context.x + ANSWER_KEY_ANSWER_X, width: 42 })
   else context.y -= BODY_LINE
-  drawAnswerKeyMarks(context, item.marks, context.x + 84, rowY)
+  drawAnswerKeyPoints(context, item.points, context.x + 84, rowY)
   context.page.drawLine({
     start: { x: context.x + 36, y: rowY - BODY_LINE + 3 },
     end: { x: context.x + 78, y: rowY - BODY_LINE + 3 },
@@ -1215,7 +1215,7 @@ function drawAnswerKeyEntry(context: DrawContext, item: AnswerKeyEntryItem): voi
     context.y = partY
     if (part.answer) drawTextLine(context, part.answer, { font: 'bold', x: partX + label + 6, width: 42 })
     else context.y -= BODY_LINE
-    drawAnswerKeyMarks(context, part.marks, partX + label + 52, partY)
+    drawAnswerKeyPoints(context, part.points, partX + label + 52, partY)
     context.page.drawLine({
       start: { x: partX + label + 4, y: partY - BODY_LINE + 3 },
       end: { x: partX + label + 46, y: partY - BODY_LINE + 3 },

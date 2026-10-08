@@ -7,7 +7,7 @@
   },
   "requiredFeatures": [],
   "bank": {
-    "name": "Zero Marks",
+    "name": "Points on a Multipart Question",
     "questions": [
       {
         "id": "q1",
@@ -26,7 +26,7 @@
             }
           ]
         },
-        "marks": 0,
+        "points": 1,
         "choices": [
           {
             "id": "q1-c1",
@@ -83,7 +83,7 @@
             }
           ]
         },
-        "marks": 1,
+        "points": 1,
         "choices": [
           {
             "id": "q2-c1",
@@ -140,7 +140,7 @@
             }
           ]
         },
-        "marks": 2,
+        "points": 2,
         "prompts": [
           {
             "id": "q3-p1",
@@ -233,7 +233,7 @@
             }
           ]
         },
-        "marks": 3,
+        "points": 3,
         "suggestedAnswer": {
           "type": "document",
           "content": [
@@ -302,7 +302,7 @@
                 }
               ]
             },
-            "marks": 1,
+            "points": 1,
             "suggestedAnswer": {
               "type": "document",
               "content": [
@@ -352,7 +352,7 @@
                     }
                   ]
                 },
-                "marks": 1,
+                "points": 1,
                 "choices": [
                   {
                     "id": "q6-s2-s1-c1",
@@ -409,7 +409,7 @@
                     }
                   ]
                 },
-                "marks": 2
+                "points": 2
               },
               {
                 "id": "q6-s2-s3",
@@ -431,7 +431,8 @@
               }
             ]
           }
-        ]
+        ],
+        "points": 4
       }
     ]
   },

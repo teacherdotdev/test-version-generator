@@ -28,8 +28,8 @@ describe('Respondus Standard Format', () => {
     ])
     const [speed, trueFalse, essay, blank, matching, order, several, blanks, planet] = questions
 
-    // Its `Points: 2.5` is not a whole number, so no question is marked.
-    expect(questions.every((question) => question.marks === undefined)).toBe(true)
+    // Its `Points: 2.5` is not a whole number, so no question has Points.
+    expect(questions.every((question) => question.points === undefined)).toBe(true)
 
     // Feedback and titles are not part of the question.
     expect(text(speed!.stem)).toBe('Who determined the exact speed of light?')
@@ -97,7 +97,7 @@ describe('Respondus Standard Format', () => {
     expect(reading.issues).toEqual([])
   })
 
-  test('keeps a whole-number Points line as the Marks of every question after it', async () => {
+  test('keeps a whole-number Points line as the Points of every question after it', async () => {
     const { reading, questions } = await read('respondus.txt', encode([
       '1) What colour is a ripe lemon?',
       'a. Blue',
@@ -117,6 +117,6 @@ describe('Respondus Standard Format', () => {
       'b. Black',
     ].join('\n')))
     expect(reading.format).toBe('respondus')
-    expect(questions.map((question) => question.marks)).toEqual([undefined, 2, 2, undefined])
+    expect(questions.map((question) => question.points)).toEqual([undefined, 2, 2, undefined])
   })
 })

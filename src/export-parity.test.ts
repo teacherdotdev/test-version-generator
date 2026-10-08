@@ -130,19 +130,19 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     expectSameDocument(planned, printFingerprint(planOf(fixture)))
   })
 
-  test('carries Marks on the Answer Key under every Paper Style, and on the test only where its style prints them', async () => {
-    const marked = FIXTURES.find((item) => item.name === 'a marked paper')!
+  test('carries Points on the Answer Key under every Paper Style, and on the test only where its style prints them', async () => {
+    const pointed = FIXTURES.find((item) => item.name === 'a paper with points')!
     for (const paperStyle of PAPER_STYLES.filter((style) => style !== 'exam-board')) {
-      const fixture = { ...marked, exam: { ...marked.exam, paperStyle } }
+      const fixture = { ...pointed, exam: { ...pointed.exam, paperStyle } }
       const plans = planOf(fixture)
       const planned = layoutFingerprint(plans)
       const [test, key] = [0, 1].map((stream) =>
         layoutFingerprint([plans[stream]!]).pages.flatMap((page) => page.content))
-      // The test says nothing of Marks under a style with no mark placements.
-      expect(test!.some((line) => /\[\d+\]|marks?\b/.test(line))).toBe(false)
-      // The key gives the paper's total, each marked line its `[n]`, a
-      // Matching set's once on its first Item, and an unmarked line none.
-      expect(key).toContain('heading:1 Answer Section Total: 9 marks')
+      // The test says nothing of Points under a style that prints none.
+      expect(test!.some((line) => /\[\d+\]|points?\b/.test(line))).toBe(false)
+      // The key gives the paper's total, each line with Points its `[n]`, a
+      // Matching set's once on its first Item, and an unpointed line none.
+      expect(key).toContain('heading:1 Answer Section Total: 9 points')
       expect(key).toContain('para 1. «strong»A«/» [1] Easy Rivers')
       expect(key).toContain('para 2. «strong»F«/»')
       expect(key).toContain('para 3. «strong»A«/» [2]')
@@ -155,8 +155,8 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     }
   })
 
-  test('carries an Exam Board paper: its Cover Page, labels, dotted lines and Marks, on A4', async () => {
-    const fixture = FIXTURES.find((item) => item.name === 'a marked paper in the exam board paper style')!
+  test('carries an Exam Board paper: its Cover Page, labels, dotted lines and Points, on A4', async () => {
+    const fixture = FIXTURES.find((item) => item.name === 'a paper with points in the exam board paper style')!
     const plans = planOf(fixture)
     const [test, key] = plans
     const planned = layoutFingerprint(plans)
@@ -184,14 +184,14 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     expect(layoutFingerprint([key!]).pages.flatMap((page) => page.content)).not.toContain('field:Name')
 
     // `1` before the stem, `A` before an answer, `(a)` and `(i)` before Parts
-    // and Subparts, the Marks after each answer and the Multipart total.
+    // and Subparts, the Points after each answer and the Multipart total.
     expect(lines).toContain('para 1 Which gas do leaves give out in sunlight?')
     expect(lines).toContain('para B Oxygen')
     expect(lines).toContain('para 5 Explain why a plant kept in the dark loses mass.')
     expect(lines).toContain('para (a) State one condition seeds need to germinate.')
     expect(lines).toContain('para (i) Which colour are the cupboard seedlings?')
     expect(lines).toContain('para (ii) Explain the difference in their height.')
-    // The style's three dotted lines, then the answer's Marks after them.
+    // The style's three dotted lines, then the answer's Points after them.
     const shortAnswer = lines.indexOf('para 5 Explain why a plant kept in the dark loses mass.')
     expect(lines.slice(shortAnswer + 1, shortAnswer + 3)).toEqual(['space:lines:3:dotted', 'para [3]'])
     // The teacher's own two lines on Part (a) win over the style's three.
@@ -199,7 +199,7 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     expect(lines.slice(partA + 1, partA + 3)).toEqual(['space:lines:2:dotted', 'para [2]'])
     expect(lines.at(-2)).toBe('para [6]')
     expect(lines.at(-1)).toBe('para [Total: 9]')
-    // A Multiple Choice and a Matching set print their Marks after their answers.
+    // A Multiple Choice and a Matching set print their Points after their answers.
     expect(lines).toContain('para [1]')
     expect(lines.indexOf('para [2]')).toBeGreaterThan(lines.findIndex((line) => line.includes('Receives pollen')))
 
@@ -219,7 +219,7 @@ describe('the DOCX Export Adapter carries the planned document', () => {
   })
 
   test('cuts an A4 plan to A4 exactly in Word', async () => {
-    const fixture = FIXTURES.find((item) => item.name === 'a marked paper in the exam board paper style')!
+    const fixture = FIXTURES.find((item) => item.name === 'a paper with points in the exam board paper style')!
     const blob = await createExamDocx(planOf(fixture), noImages)
     const xml = await (await JSZip.loadAsync(await blob.arrayBuffer())).file('word/document.xml')!.async('string')
     const sizes = [...xml.matchAll(/<w:pgSz [^>]*w:w="(\d+)"[^>]*w:h="(\d+)"/g)].map((match) => `${match[1]}x${match[2]}`)

@@ -17,7 +17,7 @@
 // first differing line, and that line says what the document says.
 
 import {
-  answerKeyMarksText,
+  answerKeyPointsText,
   answerKeyTotalText,
   COVER_INSTRUCTIONS_HEADING,
   printedLabel,
@@ -543,8 +543,8 @@ function plannedSpaceLines(space: PlannedWorkSpace | null): ContentLine[] {
   return space && space.height > 0 ? [workSpaceLine(space.style, space.lines, space.ruling)] : []
 }
 
-/** Marks printed after an answer or a question: a paragraph of their own. */
-function marksLines(texts: readonly string[] | undefined): ContentLine[] {
+/** Points printed after an answer or a question: a paragraph of their own. */
+function pointsLines(texts: readonly string[] | undefined): ContentLine[] {
   return (texts ?? []).map((text) => line('para', renderInline([{ kind: 'text', text, marks: [] }])))
 }
 
@@ -570,7 +570,7 @@ function planQuestion(item: QuestionItem, images: ImageOrdinals): ContentLine[] 
     ...(item.matching ? planMatching(item.matching, images) : []),
     ...plannedSpaceLines(item.workSpace),
     ...(item.parts ?? []).flatMap((part) => planPart(part, images)),
-    ...marksLines(item.closingMarks),
+    ...pointsLines(item.closingPoints),
   ]
 }
 
@@ -588,7 +588,7 @@ function planPart(part: PlannedPart, images: ImageOrdinals): ContentLine[] {
 
 function planAnswering(
   label: string,
-  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'marksAfter'>,
+  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'pointsAfter'>,
   images: ImageOrdinals,
 ): ContentLine[] {
   const opener: Segment[] = [{ kind: 'text', text: label, marks: [] }]
@@ -597,7 +597,7 @@ function planAnswering(
     ...(stem.length > 0 ? stem : [line('para', renderInline(opener))]),
     ...(part.grid ? planGrid(part.grid, images) : []),
     ...plannedSpaceLines(part.workSpace),
-    ...marksLines(part.marksAfter ? [part.marksAfter] : undefined),
+    ...pointsLines(part.pointsAfter ? [part.pointsAfter] : undefined),
   ]
 }
 
@@ -618,9 +618,9 @@ function planCover(item: CoverPageItem, images: ImageOrdinals): ContentLine[] {
   ]
 }
 
-/** An Answer Key line's `[n]`, after its answer, when it is marked. */
-export function marksSegments(marks: number | undefined): Segment[] {
-  return marks === undefined ? [] : [{ kind: 'text', text: ` ${answerKeyMarksText(marks)}`, marks: [] }]
+/** An Answer Key line's `[n]`, after its answer, when it has points. */
+export function pointsSegments(points: number | undefined): Segment[] {
+  return points === undefined ? [] : [{ kind: 'text', text: ` ${answerKeyPointsText(points)}`, marks: [] }]
 }
 
 export function planItemLines(
@@ -648,8 +648,8 @@ export function planItemLines(
     case 'answer-key-heading':
       // The paper's total shares the heading's line in every adapter.
       return [
-        item.totalMarks !== undefined
-          ? `heading:1 Answer Section ${answerKeyTotalText(item.totalMarks)}`
+        item.totalPoints !== undefined
+          ? `heading:1 Answer Section ${answerKeyTotalText(item.totalPoints)}`
           : 'heading:1 Answer Section',
       ]
     case 'answer-key-section':
@@ -669,7 +669,7 @@ export function planItemLines(
             ...(item.letter
               ? [{ kind: 'text' as const, text: item.letter, marks: ['strong'] }]
               : []),
-            ...marksSegments(item.marks),
+            ...pointsSegments(item.points),
             ...(metadata.length > 0
               ? [{ kind: 'text' as const, text: ` ${metadata.join(' ')}`, marks: [] }]
               : []),
@@ -684,7 +684,7 @@ export function planItemLines(
               ...(part.answer
                 ? [{ kind: 'text' as const, text: part.answer, marks: ['strong'] }]
                 : []),
-              ...marksSegments(part.marks),
+              ...pointsSegments(part.points),
             ]),
           ),
           ...(part.suggestedAnswer ? planBlocks(part.suggestedAnswer, {}, images) : []),

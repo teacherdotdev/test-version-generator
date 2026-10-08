@@ -573,8 +573,8 @@
         "suggestedAnswer": {
           "$ref": "#/$defs/document"
         },
-        "marks": {
-          "$ref": "#/$defs/marks"
+        "points": {
+          "$ref": "#/$defs/points"
         },
         "subparts": {
           "description": "The Subparts this Part holds, in the order they are numbered (i), (ii)…. A Part that holds Subparts answers nothing itself: its stem is their lead-in, and it has no `type`, `choices` or `suggestedAnswer`. Added in 0.9.0.",
@@ -624,7 +624,7 @@
               "type": false,
               "choices": false,
               "suggestedAnswer": false,
-              "marks": false
+              "points": false
             }
           },
           "else": {
@@ -672,8 +672,8 @@
         "suggestedAnswer": {
           "$ref": "#/$defs/document"
         },
-        "marks": {
-          "$ref": "#/$defs/marks"
+        "points": {
+          "$ref": "#/$defs/points"
         },
         "subparts": false
       },
@@ -726,8 +726,8 @@
         }
       }
     },
-    "marks": {
-      "description": "What answering it is worth, as a positive whole number. Absent means unmarked, which is not the same as worth nothing: it adds nothing to a total. A Multipart Question's Marks, and a paper's total, are always the sum of what its answering Parts and Subparts carry, and are never written. Added in 0.9.0.",
+    "points": {
+      "description": "What answering it is worth, as a positive whole number. Absent means unpointed, which is not the same as worth nothing: it adds nothing to a total. A Multipart Question's Points, and a paper's total, are always the sum of what its answering Parts and Subparts carry, and are never written. Added in 0.9.0.",
       "type": "integer",
       "minimum": 1
     },
@@ -768,8 +768,8 @@
             "type": "string"
           }
         },
-        "marks": {
-          "$ref": "#/$defs/marks"
+        "points": {
+          "$ref": "#/$defs/points"
         },
         "choices": {
           "type": "array",
@@ -899,7 +899,7 @@
               "parts": {
                 "$ref": "#/$defs/question/properties/parts"
               },
-              "marks": false
+              "points": false
             },
             "required": [
               "parts"

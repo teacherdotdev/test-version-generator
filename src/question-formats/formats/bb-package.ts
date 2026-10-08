@@ -27,7 +27,7 @@ import { assessmentTitle, Gatherer, manifestResources, readQti12Item, type Readi
  * `@X@EmbeddedFile.requestUrlStub@X@bbcswebdav/xid-123_1` for a file saved
  * under `csfiles/home_dir/` as `…__xid-123_1.png`. The pool or test's title
  * names the bank. A QTI item's points (`qmd_absolutescore_max`) are kept as
- * its Marks when a whole number; Blackboard 5's pools carry none. Feedback
+ * its Points when a whole number; Blackboard 5's pools carry none. Feedback
  * is not kept.
  */
 

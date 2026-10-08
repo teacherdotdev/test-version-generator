@@ -5,7 +5,7 @@
 // on it beside its Page Header and edited from the Format menu. A style that
 // prints a Cover Page fills it from these, and prints nothing for one the
 // teacher left blank. The paper's total is never a Paper Detail: it is counted
-// from the Marks (`marks.ts`).
+// from the Points (`points.ts`).
 //
 // Only what the teacher wrote is stored, as `page-header.ts` stores its lines:
 // an Exam whose details are all blank stores nothing. Two members are lists,

@@ -5,7 +5,7 @@ import type { Node as ProseNode } from '@milkdown/kit/prose/model'
 import { Plugin, TextSelection } from '@milkdown/kit/prose/state'
 import type { EditorView, NodeView } from '@milkdown/kit/prose/view'
 import { multipleChoiceEditableCtx, newMultipleChoiceNode } from './multiple-choice'
-import { parseMarksInput, readMarks } from './question-doc'
+import { parsePointsInput, readPoints } from './question-doc'
 
 // A Multipart question: a stem — often shared material such as a passage, a
 // quote, an image or a table — and the lettered Parts a student answers from
@@ -90,21 +90,21 @@ export const multipartPartStemSchema = $nodeSchema('multipartPartStem', () => ({
 // it is, or the Subparts it holds. `id` is the Part's stable identity — its
 // answer order and Work Space on an Exam are keyed by it — and `columns` is the
 // answer layout a Multiple Choice Part starts with, as a question's own
-// `columns` is. `marks` is what answering it is worth, `null` when it is
-// unmarked; a Part that holds Subparts keeps none, its Subparts carry theirs
+// `columns` is. `points` is what answering it is worth, `null` when it is
+// unpointed; a Part that holds Subparts keeps none, its Subparts carry theirs
 // (ADR-0042).
 export const multipartPartSchema = $nodeSchema('multipartPart', () => ({
   content: 'multipartPartStem (multipleChoice | suggestedAnswer | multipartSubparts)',
   defining: true,
   isolating: true,
-  attrs: { id: { default: '' }, columns: { default: 2 }, marks: { default: null } },
+  attrs: { id: { default: '' }, columns: { default: 2 }, points: { default: null } },
   parseDOM: [
     {
       tag: 'div[data-type="multipart-part"]',
       getAttrs: (element) => ({
         id: (element as HTMLElement).getAttribute('data-id') ?? '',
         columns: Number((element as HTMLElement).getAttribute('data-columns')) || 2,
-        marks: readMarks(Number((element as HTMLElement).getAttribute('data-marks'))) ?? null,
+        points: readPoints(Number((element as HTMLElement).getAttribute('data-points'))) ?? null,
       }),
     },
   ],
@@ -114,7 +114,7 @@ export const multipartPartSchema = $nodeSchema('multipartPart', () => ({
       'data-type': 'multipart-part',
       'data-id': node.attrs.id,
       'data-columns': node.attrs.columns,
-      ...(node.attrs.marks ? { 'data-marks': node.attrs.marks } : {}),
+      ...(node.attrs.points ? { 'data-points': node.attrs.points } : {}),
     },
     0,
   ],
@@ -128,14 +128,14 @@ export const multipartSubpartSchema = $nodeSchema('multipartSubpart', () => ({
   content: 'multipartPartStem (multipleChoice | suggestedAnswer)',
   defining: true,
   isolating: true,
-  attrs: { id: { default: '' }, columns: { default: 2 }, marks: { default: null } },
+  attrs: { id: { default: '' }, columns: { default: 2 }, points: { default: null } },
   parseDOM: [
     {
       tag: 'div[data-type="multipart-subpart"]',
       getAttrs: (element) => ({
         id: (element as HTMLElement).getAttribute('data-id') ?? '',
         columns: Number((element as HTMLElement).getAttribute('data-columns')) || 2,
-        marks: readMarks(Number((element as HTMLElement).getAttribute('data-marks'))) ?? null,
+        points: readPoints(Number((element as HTMLElement).getAttribute('data-points'))) ?? null,
       }),
     },
   ],
@@ -145,7 +145,7 @@ export const multipartSubpartSchema = $nodeSchema('multipartSubpart', () => ({
       'data-type': 'multipart-subpart',
       'data-id': node.attrs.id,
       'data-columns': node.attrs.columns,
-      ...(node.attrs.marks ? { 'data-marks': node.attrs.marks } : {}),
+      ...(node.attrs.points ? { 'data-points': node.attrs.points } : {}),
     },
     0,
   ],
@@ -218,28 +218,28 @@ export function setPartKind(
   return true
 }
 
-/** Give the Part or Subpart that answers at `partPosition` Marks, or clear
+/** Give the Part or Subpart that answers at `partPosition` Points, or clear
  *  them with `null`. A Part that holds Subparts answers nothing, so it takes
- *  none: its Subparts carry the Marks (ADR-0042). */
-export function setPartMarks(
+ *  none: its Subparts carry the Points (ADR-0042). */
+export function setPartPoints(
   view: Pick<EditorView, 'state' | 'dispatch'>,
   partPosition: number,
-  marks: number | null,
+  points: number | null,
 ) {
   const part = view.state.doc.nodeAt(partPosition)
   if (!part || !ANSWERING.has(part.type.name) || partKindOf(part) === 'subparts') return false
-  if ((part.attrs.marks ?? null) === marks) return false
-  view.dispatch(view.state.tr.setNodeMarkup(partPosition, undefined, { ...part.attrs, marks }))
+  if ((part.attrs.points ?? null) === points) return false
+  view.dispatch(view.state.tr.setNodeMarkup(partPosition, undefined, { ...part.attrs, points }))
   return true
 }
 
 /**
  * Give the answering Part at `partPosition` Subparts. Its stem stays, as their
  * lead-in; its answers become Subpart (i), under a blank stem, so nothing typed
- * is lost (ADR-0043). Subpart (i) takes the Part's id, columns and Marks with
+ * is lost (ADR-0043). Subpart (i) takes the Part's id, columns and Points with
  * them — it carries on as what the Part was, so the answer order and Work
  * Space an Exam set for the Part follow its answers, and its worth with them —
- * and the Part takes a fresh id and no Marks, as a lead-in answers nothing.
+ * and the Part takes a fresh id and no Points, as a lead-in answers nothing.
  * The cursor lands in Subpart (i)'s stem.
  */
 export function addSubparts(
@@ -251,7 +251,7 @@ export function addSubparts(
   const { schema } = view.state
   const answer = part.lastChild!
   const subpart = schema.nodes.multipartSubpart!.create(
-    { id: part.attrs.id, columns: part.attrs.columns, marks: part.attrs.marks ?? null },
+    { id: part.attrs.id, columns: part.attrs.columns, points: part.attrs.points ?? null },
     [schema.nodes.multipartPartStem!.create(null, schema.nodes.paragraph!.create()), answer],
   )
   const answerEnd = partPosition + part.nodeSize - 1
@@ -261,7 +261,7 @@ export function addSubparts(
     .setNodeMarkup(partPosition, undefined, {
       ...part.attrs,
       id: crypto.randomUUID(),
-      ...('marks' in part.attrs ? { marks: null } : {}),
+      ...('points' in part.attrs ? { points: null } : {}),
     })
   // Into Subpart (i)'s stem: past the box, the Subpart, the stem and the paragraph.
   tr.setSelection(TextSelection.near(tr.doc.resolve(answerStart + 4)))
@@ -327,7 +327,7 @@ export function deletePart(
 
 /** Delete the Subpart at `subpartPosition`. The last one left is not deleted
  *  but taken back into its Part: the Part answers again with that Subpart's
- *  answers, and takes its id, columns and Marks — the reverse of `addSubparts`, so
+ *  answers, and takes its id, columns and Points — the reverse of `addSubparts`, so
  *  adding Subparts and removing them again leaves the Part as it was. The
  *  Subpart's own stem goes with its box. */
 export function deleteSubpart(
@@ -350,7 +350,7 @@ export function deleteSubpart(
       ...part.attrs,
       id: subpart.attrs.id,
       columns: subpart.attrs.columns,
-      ...('marks' in subpart.attrs ? { marks: subpart.attrs.marks } : {}),
+      ...('points' in subpart.attrs ? { points: subpart.attrs.points } : {}),
     })
   view.dispatch(tr.scrollIntoView())
   return true
@@ -696,46 +696,46 @@ function answeringView(subpart: boolean) {
 
       // What answering it is worth, beside its type: typed as a whole number,
       // and cleared by emptying the field. Anything else is put back as it
-      // was when the field is left, so a stray letter never clears Marks.
+      // was when the field is left, so a stray letter never clears Points.
       // A Part that holds Subparts has no field, since its Subparts carry
-      // the Marks.
-      const marksField = document.createElement('label')
-      marksField.className = 'multipart-part-marks'
-      const marksInput = document.createElement('input')
-      marksInput.type = 'text'
-      marksInput.inputMode = 'numeric'
-      marksInput.className = 'multipart-part-marks-input'
-      marksInput.placeholder = '–'
-      marksInput.size = 2
-      marksInput.setAttribute('aria-label', `${subpart ? 'Subpart' : 'Part'} marks`)
-      const marksWord = document.createElement('span')
-      marksWord.textContent = 'marks'
-      marksField.append(marksInput, marksWord)
-      const shownMarks = () => {
-        const marks = readMarks(node.attrs.marks)
-        return marks === undefined ? '' : String(marks)
+      // the Points.
+      const pointsField = document.createElement('label')
+      pointsField.className = 'multipart-part-points'
+      const pointsInput = document.createElement('input')
+      pointsInput.type = 'text'
+      pointsInput.inputMode = 'numeric'
+      pointsInput.className = 'multipart-part-points-input'
+      pointsInput.placeholder = '–'
+      pointsInput.size = 2
+      pointsInput.setAttribute('aria-label', `${subpart ? 'Subpart' : 'Part'} points`)
+      const pointsWord = document.createElement('span')
+      pointsWord.textContent = 'points'
+      pointsField.append(pointsInput, pointsWord)
+      const shownPoints = () => {
+        const points = readPoints(node.attrs.points)
+        return points === undefined ? '' : String(points)
       }
-      const commitMarks = () => {
-        const marks = parseMarksInput(marksInput.value)
+      const commitPoints = () => {
+        const points = parsePointsInput(pointsInput.value)
         const pos = getPos()
-        if (marks !== undefined && editable() && pos != null) setPartMarks(view, pos, marks)
-        marksInput.value = shownMarks()
+        if (points !== undefined && editable() && pos != null) setPartPoints(view, pos, points)
+        pointsInput.value = shownPoints()
       }
-      marksInput.addEventListener('change', commitMarks)
-      marksInput.addEventListener('keydown', (event) => {
+      pointsInput.addEventListener('change', commitPoints)
+      pointsInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter') {
           event.preventDefault()
-          commitMarks()
+          commitPoints()
           view.focus()
         } else if (event.key === 'Escape') {
           event.preventDefault()
           event.stopPropagation()
-          marksInput.value = shownMarks()
+          pointsInput.value = shownPoints()
           view.focus()
         }
       })
 
-      header.append(label, kind.wrap, marksField, controls)
+      header.append(label, kind.wrap, pointsField, controls)
 
       const contentDOM = document.createElement('div')
       contentDOM.className = 'multipart-part-body'
@@ -755,9 +755,9 @@ function answeringView(subpart: boolean) {
         kindButton.disabled = !on
         if (!on) kind.close()
         controls.style.display = on ? '' : 'none'
-        marksField.hidden = current === 'subparts'
-        marksInput.disabled = !on
-        if (document.activeElement !== marksInput) marksInput.value = shownMarks()
+        pointsField.hidden = current === 'subparts'
+        pointsInput.disabled = !on
+        if (document.activeElement !== pointsInput) pointsInput.value = shownPoints()
       }
       render()
 

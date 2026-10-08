@@ -10,11 +10,11 @@ import {
   type Subpart,
 } from './exam'
 import { bankLetter } from './matching'
-import { marksOnQuestion } from './marks'
+import { pointsOnQuestion } from './points'
 import {
   choiceLockOf,
   pendingImageOf,
-  readMarks,
+  readPoints,
   stemNodesOf,
   type PendingImageReference,
   type ProseMirrorJSON,
@@ -183,8 +183,8 @@ export type QuestionBankRecordAnsweringPart = {
   stem: SemanticDocument
   choices?: QuestionBankRecordChoice[]
   suggestedAnswer?: SemanticDocument
-  /** What answering it is worth, when it is marked. Added in 0.9.0. */
-  marks?: number
+  /** What answering it is worth, when it has points. Added in 0.9.0. */
+  points?: number
 }
 
 /** A Subpart of a Part, numbered (i), (ii)…: shaped as a Part that answers,
@@ -240,7 +240,7 @@ export type QuestionBankRecordQuestion = {
   /** What answering it is worth, on any type but `multipart`, whose worth is
    *  its Parts' and Subparts' sum and never written (ADR-0042). Added in
    *  0.9.0. */
-  marks?: number
+  points?: number
   choices?: QuestionBankRecordChoice[]
   prompts?: QuestionBankRecordPrompt[]
   wordBank?: { id: string; content: SemanticDocument }[]
@@ -557,7 +557,7 @@ function portableQuestion(
     ...(topicsOf(question).length > 0
       ? { topics: [...topicsOf(question)] }
       : {}),
-    ...marksOf(marksOnQuestion(question) ? question.marks : undefined),
+    ...pointsOf(pointsOnQuestion(question) ? question.points : undefined),
   }
   if (question.type === 'open') {
     return {
@@ -675,7 +675,7 @@ function recordAnsweringPart(
       ...(part.suggestedAnswer
         ? { suggestedAnswer: semanticDocument(childNodes(part.suggestedAnswer), mediaIds) }
         : {}),
-      ...marksOf(part.marks),
+      ...pointsOf(part.points),
     }
   }
   if (part.choices.length < 2) {
@@ -694,14 +694,14 @@ function recordAnsweringPart(
       correct: choice.correct,
       ...recordLockOf(choice),
     })),
-    ...marksOf(part.marks),
+    ...pointsOf(part.points),
   }
 }
 
-/** `marks` as a record writes it: present only when something is marked. */
-function marksOf(value: unknown): { marks?: number } {
-  const marks = readMarks(value)
-  return marks === undefined ? {} : { marks }
+/** `points` as a record writes it: present only when there are any. */
+function pointsOf(value: unknown): { points?: number } {
+  const points = readPoints(value)
+  return points === undefined ? {} : { points }
 }
 
 /** A choice's `locked` as a record writes it: `true` for every Locked Answer,

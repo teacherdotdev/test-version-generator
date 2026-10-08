@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { createMemoryBackend, loadExamStore, type AuthoringState } from './exam-store'
 import { upgradeStoredQuestion } from './stored-upgrade'
 import { questionOf } from './question-bank-workspaces'
-import { marksOfQuestion } from './marks'
+import { pointsOfQuestion } from './points'
 import type { Question } from './exam'
 import type { ProseMirrorJSON } from './question-doc'
 
@@ -99,16 +99,60 @@ describe('a draft stored by an earlier build', () => {
   })
 })
 
-describe('Marks in a stored Question', () => {
-  test('a question stored before Marks existed reads as unmarked, needing no upgrade', () => {
+describe('Points in a stored Question', () => {
+  test('a question stored before Points existed reads as unpointed, needing no upgrade', () => {
     const read = questionOf({ ...shortAnswer, bankId: 'b' })
-    expect('marks' in read).toBe(false)
-    expect(marksOfQuestion(read)).toBeUndefined()
+    expect('points' in read).toBe(false)
+    expect(pointsOfQuestion(read)).toBeUndefined()
   })
 
-  test('stored Marks are read back, and anything that is not Marks is dropped', () => {
-    expect(questionOf({ ...shortAnswer, marks: 3, bankId: 'b' }).marks).toBe(3)
-    expect('marks' in questionOf({ ...shortAnswer, marks: 0, bankId: 'b' })).toBe(false)
-    expect('marks' in questionOf({ ...shortAnswer, marks: 1.5, bankId: 'b' })).toBe(false)
+  test('stored Points are read back, and anything that is not Points is dropped', () => {
+    expect(questionOf({ ...shortAnswer, points: 3, bankId: 'b' }).points).toBe(3)
+    expect('points' in questionOf({ ...shortAnswer, points: 0, bankId: 'b' })).toBe(false)
+    expect('points' in questionOf({ ...shortAnswer, points: 1.5, bankId: 'b' })).toBe(false)
+  })
+})
+
+// A build of this branch, before they were called Points, stored them as
+// `marks`, on a question and on a Part's or Subpart's node.
+describe('Points stored as `marks`', () => {
+  const answer = { type: 'suggestedAnswer', content: [{ type: 'paragraph' }] }
+  const stem = { type: 'multipartPartStem', content: [{ type: 'paragraph' }] }
+  const multipart = {
+    id: 'm1',
+    type: 'multipart',
+    columns: 2,
+    doc: {
+      type: 'doc',
+      content: [
+        { type: 'paragraph' },
+        {
+          type: 'multipartParts',
+          content: [
+            { type: 'multipartPart', attrs: { id: 'a', columns: 2, marks: 2 }, content: [stem, answer] },
+            {
+              type: 'multipartPart',
+              attrs: { id: 'b', columns: 2 },
+              content: [stem, {
+                type: 'multipartSubparts',
+                content: [{ type: 'multipartSubpart', attrs: { id: 'b-i', columns: 2, marks: 3 }, content: [stem, answer] }],
+              }],
+            },
+          ],
+        },
+      ],
+    },
+  } as Question
+
+  test('a question’s `marks` reads as its Points', () => {
+    const stored = { ...shortAnswer, marks: 3 } as Question
+    expect(questionOf({ ...stored, bankId: 'b' }).points).toBe(3)
+    expect(upgradeStoredQuestion(stored)).toEqual({ ...shortAnswer, points: 3 })
+  })
+
+  test('a Part’s and a Subpart’s `marks` read as their Points', () => {
+    const read = questionOf({ ...multipart, bankId: 'b' })
+    expect(pointsOfQuestion(read)).toBe(5)
+    expect(JSON.stringify(read.doc)).not.toContain('"marks"')
   })
 })

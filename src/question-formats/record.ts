@@ -8,7 +8,7 @@ import {
 } from '../question-bank-export'
 import { mediaDimensions } from '../question-bank-import'
 import { mediaFilePath } from '../package-zip'
-import { readMarks } from '../question-doc'
+import { readPoints } from '../question-doc'
 import { blocksText, isBlank, plainBlocks, textRun } from './rich-text'
 import { excerpt } from './text'
 import type { Blocks, ForeignChoice, ForeignImage, ForeignQuestion, ImportIssue, ParseResult } from './types'
@@ -27,8 +27,8 @@ import type { Blocks, ForeignChoice, ForeignImage, ForeignQuestion, ImportIssue,
  *   accepted answers, the value, or the order as the Suggested Answer.
  *
  * Whatever it becomes, a question keeps the points its source gives it as
- * its Marks when they are a positive whole number; a fractional or zero
- * value is dropped, since Marks are positive whole numbers (ADR-0042).
+ * its Points when they are a positive whole number; a fractional or zero
+ * value is dropped, since Points are positive whole numbers (ADR-0042).
  */
 
 export type ConvertOptions = {
@@ -101,12 +101,12 @@ type Report = (severity: ImportIssue['severity'], code: string, message: string)
 
 function convertQuestion(question: ForeignQuestion, id: string, report: Report): QuestionBankRecordQuestion | null {
   const topics = question.topics?.filter((topic) => topic.trim()).map((topic) => topic.trim())
-  const marks = readMarks(question.points)
+  const points = readPoints(question.points)
   const base = {
     id,
     stem: document(question.stem),
     ...(topics?.length ? { topics: [...new Set(topics)] } : {}),
-    ...(marks ? { marks } : {}),
+    ...(points ? { points } : {}),
   }
   if (question.kind !== 'matching' && isBlank(question.stem)) {
     report('error', 'empty-stem', 'it has no question text, so it was left out.')

@@ -78,7 +78,7 @@ import {
   type MediaLoader,
 } from './export-media'
 import {
-  answerKeyMarksText,
+  answerKeyPointsText,
   answerKeyTotalText,
   CHOICE_INDENT,
   COVER_INSTRUCTIONS_HEADING,
@@ -1057,13 +1057,13 @@ function questionContent(
     ...(item.parts ?? []).flatMap((part) =>
       partContent(part, indentPx, build),
     ),
-    ...(item.closingMarks ?? []).map(marksAfterParagraph),
+    ...(item.closingPoints ?? []).map(pointsAfterParagraph),
   ]
 }
 
-/** Marks a Paper Style prints after an answer or a question: a paragraph of
+/** Points a Paper Style prints after an answer or a question: a paragraph of
  *  their own against the right margin, as print sets them. */
-function marksAfterParagraph(text: string): Paragraph {
+function pointsAfterParagraph(text: string): Paragraph {
   return new Paragraph({
     alignment: AlignmentType.RIGHT,
     keepLines: true,
@@ -1093,7 +1093,7 @@ function partContent(
 
 function answeringContent(
   label: string,
-  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'marksAfter'>,
+  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'pointsAfter'>,
   outerIndentPx: number,
   build: BuildContext,
 ): (Paragraph | Table)[] {
@@ -1113,7 +1113,7 @@ function answeringContent(
       ? [choiceGridTable(part.grid, build, build.pageWidth - indentPx - CHOICE_INDENT, indentPx + CHOICE_INDENT)]
       : []),
     ...(part.workSpace ? workSpaceParagraphs(part.workSpace, indent) : []),
-    ...(part.marksAfter ? [marksAfterParagraph(part.marksAfter)] : []),
+    ...(part.pointsAfter ? [pointsAfterParagraph(part.pointsAfter)] : []),
   ]
 }
 
@@ -1220,9 +1220,9 @@ function answerKeySection(item: AnswerKeySectionItem): Paragraph {
   })
 }
 
-/** An Answer Key line's `[n]`, after its answer, when it is marked. */
-function marksRuns(marks: number | undefined): TextRun[] {
-  return marks === undefined ? [] : [new TextRun({ text: ` ${answerKeyMarksText(marks)}` })]
+/** An Answer Key line's `[n]`, after its answer, when it has points. */
+function pointsRuns(points: number | undefined): TextRun[] {
+  return points === undefined ? [] : [new TextRun({ text: ` ${answerKeyPointsText(points)}` })]
 }
 
 function answerKeyEntry(item: AnswerKeyEntryItem, build: BuildContext): (Paragraph | Table)[] {
@@ -1236,7 +1236,7 @@ function answerKeyEntry(item: AnswerKeyEntryItem, build: BuildContext): (Paragra
       // A free-response question still takes a line, so the key's numbering
       // matches the paper's; it simply has no letter to print.
       ...(item.letter ? [new TextRun({ text: item.letter, bold: true })] : []),
-      ...marksRuns(item.marks),
+      ...pointsRuns(item.points),
       ...metadata.map(({ label, fill }) =>
         new TextRun({ text: ` ${label} `, size: 18, shading: { fill } }),
       ),
@@ -1254,7 +1254,7 @@ function answerKeyEntry(item: AnswerKeyEntryItem, build: BuildContext): (Paragra
       children: [
         new TextRun({ text: `${part.letter}. ` }),
         ...(part.answer ? [new TextRun({ text: part.answer, bold: true })] : []),
-        ...marksRuns(part.marks),
+        ...pointsRuns(part.points),
       ],
     }),
     ...(part.suggestedAnswer
@@ -1321,15 +1321,15 @@ function itemContent(
             new TextRun({ text: ANSWER_KEY_TITLE, size: halfPointsOf('answerKeyHeading') }),
             // The paper's total, on the heading's own line against the right
             // margin in body type, as print sets it.
-            ...(item.totalMarks !== undefined
+            ...(item.totalPoints !== undefined
               ? [new TextRun({
-                  children: [new Tab(), answerKeyTotalText(item.totalMarks)],
+                  children: [new Tab(), answerKeyTotalText(item.totalPoints)],
                   size: halfPointsOf('body'),
                   bold: false,
                 })]
               : []),
           ],
-          ...(item.totalMarks !== undefined
+          ...(item.totalPoints !== undefined
             ? { tabStops: [{ type: TabStopType.RIGHT, position: twips(build.contentWidth) }] }
             : {}),
           heading: HeadingLevel.HEADING_1,

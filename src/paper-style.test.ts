@@ -426,12 +426,12 @@ describe('Hidden Answers under a Paper Style', () => {
 })
 
 describe('Exam Board', () => {
-  /** A marked Multipart question: Part (a) answers, worth 2; Part (b) holds
-   *  Subparts (i), worth 3, and (ii), unmarked. */
-  function markedMultipart(id: string): Question {
-    const subpart = (subpartId: string, marks?: number) => ({
+  /** A Multipart question with Points: Part (a) answers, worth 2; Part (b) holds
+   *  Subparts (i), worth 3, and (ii), unpointed. */
+  function multipartWithPoints(id: string): Question {
+    const subpart = (subpartId: string, points?: number) => ({
       type: 'multipartSubpart',
-      attrs: { id: subpartId, columns: 1, ...(marks !== undefined ? { marks } : {}) },
+      attrs: { id: subpartId, columns: 1, ...(points !== undefined ? { points } : {}) },
       content: [
         { type: 'multipartPartStem', content: [paragraph(`subpart ${subpartId}`)] },
         { type: 'suggestedAnswer', content: [paragraph('')] },
@@ -450,7 +450,7 @@ describe('Exam Board', () => {
             content: [
               {
                 type: 'multipartPart',
-                attrs: { id: `${id}-a`, columns: 1, marks: 2 },
+                attrs: { id: `${id}-a`, columns: 1, points: 2 },
                 content: [
                   { type: 'multipartPartStem', content: [paragraph('part a')] },
                   { type: 'suggestedAnswer', content: [paragraph('')] },
@@ -470,13 +470,13 @@ describe('Exam Board', () => {
       },
     }
   }
-  const marked = (question: Question, marks: number): Question => ({ ...question, marks })
-  const MARKED = [
-    marked(multipleChoice('mc', ['a', 'b', 'c', 'd'], 'b'), 1),
+  const worth = (question: Question, points: number): Question => ({ ...question, points })
+  const WITH_POINTS = [
+    worth(multipleChoice('mc', ['a', 'b', 'c', 'd'], 'b'), 1),
     trueFalse('tf'),
-    marked(matching('mx', ['w2', 'w1'], ['w1', 'w2', 'w3']), 2),
-    marked(open('sa'), 4),
-    markedMultipart('mp'),
+    worth(matching('mx', ['w2', 'w1'], ['w1', 'w2', 'w3']), 2),
+    worth(open('sa'), 4),
+    multipartWithPoints('mp'),
   ]
   const testPages = (exam: Exam, measure?: Measure) =>
     plan(exam, measure).pages.filter((page) => page.stream === 'test')
@@ -492,7 +492,7 @@ describe('Exam Board', () => {
   })
 
   test('labels questions 1, Parts (a), Subparts (i) and answers A, while the key keeps its own', () => {
-    const [mc, tf, mx, , mp] = testItems(examOf(MARKED, 'exam-board'))
+    const [mc, tf, mx, , mp] = testItems(examOf(WITH_POINTS, 'exam-board'))
     expect(mc!.question.printedNumber).toBe('1')
     expect(tf!.question.printedNumber).toBe('2')
     expect(mc!.grid!.cells.flat().map((cell) => cell?.printed)).toEqual(['A', 'B', 'C', 'D'])
@@ -502,10 +502,10 @@ describe('Exam Board', () => {
     expect(mx!.matching!.bank.map((answer) => answer.printed)).toEqual(['A', 'B', 'C'])
     expect(mp!.parts!.map((part) => part.printed)).toEqual(['(a)', '(b)'])
     expect(mp!.parts![1]!.subparts.map((subpart) => subpart.printed)).toEqual(['(i)', '(ii)'])
-    expect(keyItems(examOf(MARKED, 'exam-board'))).toEqual(keyItems(examOf(MARKED)))
+    expect(keyItems(examOf(WITH_POINTS, 'exam-board'))).toEqual(keyItems(examOf(WITH_POINTS)))
     // Every other style prints `1.`, `a.`, `i.` and `A.` as it always did.
     for (const style of ['standard', 'classic', 'condensed'] as const) {
-      const [standardMc, , , , standardMp] = testItems(examOf(MARKED, style))
+      const [standardMc, , , , standardMp] = testItems(examOf(WITH_POINTS, style))
       expect(standardMc!.question.printedNumber).toBeUndefined()
       expect(standardMc!.grid!.cells.flat().every((cell) => cell?.printed === undefined)).toBe(true)
       expect(standardMp!.parts!.every((part) => part.printed === undefined)).toBe(true)
@@ -522,33 +522,33 @@ describe('Exam Board', () => {
     expect(testItems(examOf([open('sa')], 'classic'))[0]!.workSpace).not.toHaveProperty('ruling')
   })
 
-  test('prints each marked answer’s [n] after it, and a Multipart question’s total after the question', () => {
-    const [mc, tf, mx, sa, mp] = testItems(examOf(MARKED, 'exam-board'))
-    expect(mc!.closingMarks).toEqual(['[1]'])
-    // Unmarked prints nothing.
-    expect(tf!.closingMarks).toBeUndefined()
-    // A Matching set is marked as a whole.
-    expect(mx!.closingMarks).toEqual(['[2]'])
-    expect(sa!.closingMarks).toEqual(['[4]'])
-    expect(mp!.closingMarks).toEqual(['[Total: 5]'])
-    expect(mp!.parts![0]!.marksAfter).toBe('[2]')
-    // A Part that holds Subparts has no Marks of its own; its Subparts do.
-    expect(mp!.parts![1]!.marksAfter).toBeUndefined()
-    expect(mp!.parts![1]!.subparts.map((subpart) => subpart.marksAfter)).toEqual(['[3]', undefined])
-    // No other style prints Marks on the test.
+  test('prints each answer’s [n] after it, and a Multipart question’s total after the question', () => {
+    const [mc, tf, mx, sa, mp] = testItems(examOf(WITH_POINTS, 'exam-board'))
+    expect(mc!.closingPoints).toEqual(['[1]'])
+    // Unpointed prints nothing.
+    expect(tf!.closingPoints).toBeUndefined()
+    // A Matching set takes its Points as a whole.
+    expect(mx!.closingPoints).toEqual(['[2]'])
+    expect(sa!.closingPoints).toEqual(['[4]'])
+    expect(mp!.closingPoints).toEqual(['[Total: 5]'])
+    expect(mp!.parts![0]!.pointsAfter).toBe('[2]')
+    // A Part that holds Subparts has no Points of its own; its Subparts do.
+    expect(mp!.parts![1]!.pointsAfter).toBeUndefined()
+    expect(mp!.parts![1]!.subparts.map((subpart) => subpart.pointsAfter)).toEqual(['[3]', undefined])
+    // No other style prints Points on the test.
     for (const style of ['standard', 'classic', 'condensed'] as const) {
-      const items = testItems(examOf(MARKED, style))
-      expect(items.every((item) => item.closingMarks === undefined)).toBe(true)
-      expect(items[4]!.parts!.every((part) => part.marksAfter === undefined)).toBe(true)
+      const items = testItems(examOf(WITH_POINTS, style))
+      expect(items.every((item) => item.closingPoints === undefined)).toBe(true)
+      expect(items[4]!.parts!.every((part) => part.pointsAfter === undefined)).toBe(true)
     }
   })
 
-  test('prints a question’s closing Marks only on the piece that ends it', () => {
+  test('prints a question’s closing Points only on the piece that ends it', () => {
     const long: Question = {
       id: 'long',
       type: 'open',
       columns: DEFAULT_COLUMNS,
-      marks: 5,
+      points: 5,
       doc: { type: 'doc', content: [paragraph('one'), paragraph('two'), paragraph('three')] },
     }
     // Each stem block is a page of its own.
@@ -557,29 +557,29 @@ describe('Exam Board', () => {
     }
     const pieces = testItems(examOf([long], 'exam-board'), measure)
     expect(pieces.length).toBeGreaterThan(1)
-    expect(pieces.slice(0, -1).every((piece) => piece.closingMarks === undefined)).toBe(true)
-    expect(pieces.at(-1)!.closingMarks).toEqual(['[5]'])
+    expect(pieces.slice(0, -1).every((piece) => piece.closingPoints === undefined)).toBe(true)
+    expect(pieces.at(-1)!.closingPoints).toEqual(['[5]'])
   })
 
-  test('measures the Marks it prints, so they move a question that no longer fits', () => {
+  test('measures the Points it prints, so they move a question that no longer fits', () => {
     // Two questions that fill an A4 page exactly, until each prints its [n].
     const box = 1123 - 2 * 72 - 42 - 36
-    const measure = (withMarks: boolean): Measure => ({
+    const measure = (withPoints: boolean): Measure => ({
       itemHeight: (item) =>
-        item.kind === 'question' ? box / 2 + (withMarks ? (item.closingMarks?.length ?? 0) * 20 : 0) : 0,
+        item.kind === 'question' ? box / 2 + (withPoints ? (item.closingPoints?.length ?? 0) * 20 : 0) : 0,
     })
-    const exam = examOf([marked(open('one'), 1), marked(open('two'), 1)], 'exam-board', {
+    const exam = examOf([worth(open('one'), 1), worth(open('two'), 1)], 'exam-board', {
       workSpace: { one: { height: 0, style: 'blank', fill: false }, two: { height: 0, style: 'blank', fill: false } },
     })
-    const where = (withMarks: boolean) =>
-      testPages(exam, measure(withMarks)).map((page) =>
+    const where = (withPoints: boolean) =>
+      testPages(exam, measure(withPoints)).map((page) =>
         page.items.flatMap((item) => (item.kind === 'question' ? [item.question.id] : [])))
     expect(where(false)).toEqual([[], ['one', 'two']])
     expect(where(true)).toEqual([[], ['one'], ['two']])
   })
 
   test('opens the test with a Cover Page of its own, from the Paper Details, and never the key', () => {
-    const exam = examOf(MARKED, 'exam-board', {
+    const exam = examOf(WITH_POINTS, 'exam-board', {
       title: 'Forces',
       paperDetails: { subject: 'Physics', duration: '50 minutes', paperCode: 'PHY-3' },
     })
@@ -607,7 +607,7 @@ describe('Exam Board', () => {
     const blank = cover(examOf(EVERY_TYPE, 'exam-board'))
     expect(blank).not.toHaveProperty('subject')
     expect(blank).not.toHaveProperty('duration')
-    // Nothing is marked, so no total.
+    // Nothing has Points, so no total.
     expect(blank).not.toHaveProperty('total')
     expect(blank).toMatchObject({ candidateFields: ['Name', 'Class', 'Candidate number'] })
     const none = cover(examOf(EVERY_TYPE, 'exam-board', { paperDetails: { instructions: [], candidateFields: [] } }))
@@ -622,7 +622,7 @@ describe('Exam Board', () => {
   })
 
   test('numbers pages at the top, prints the paper code at the foot, and “Turn over” wherever the test goes on', () => {
-    const exam = examOf(MARKED, 'exam-board', { paperDetails: { paperCode: 'PHY-3' } })
+    const exam = examOf(WITH_POINTS, 'exam-board', { paperDetails: { paperCode: 'PHY-3' } })
     const measure: Measure = { itemHeight: (item) => (item.kind === 'question' ? 700 : 0) }
     const pages = testPages(exam, measure)
     expect(pages.length).toBe(6)
@@ -636,16 +636,16 @@ describe('Exam Board', () => {
     expect(key.every((page) => page.furniture.pageNumberAt === undefined && page.furniture.footRight === undefined))
       .toBe(true)
     // No other style prints running furniture.
-    expect(plan(examOf(MARKED, 'classic'), measure).pages.every((page) =>
+    expect(plan(examOf(WITH_POINTS, 'classic'), measure).pages.every((page) =>
       page.furniture.pageNumberAt === undefined && page.furniture.footLeft === undefined)).toBe(true)
   })
 
   test('a Section total is a placement any style may take, printed after the Section’s last question', () => {
     const rules = PAPER_STYLE_RULES['exam-board']
-    const before = rules.marks
-    rules.marks = { ...before, sectionTotal: 'Section total: {n}' }
+    const before = rules.points
+    rules.points = { ...before, sectionTotal: 'Section total: {n}' }
     try {
-      const exam = examOf([marked(open('one'), 2), marked(open('two'), 3), open('three')], 'exam-board', {
+      const exam = examOf([worth(open('one'), 2), worth(open('two'), 3), open('three')], 'exam-board', {
         sections: [
           { id: 's1', title: 'First', instructions: '' },
           { id: 's2', title: 'Second', instructions: '' },
@@ -653,12 +653,12 @@ describe('Exam Board', () => {
         sectionOf: { one: 's1', two: 's1', three: 's2' },
       })
       const [one, two, three] = testItems(exam)
-      expect(one!.closingMarks).toEqual(['[2]'])
-      expect(two!.closingMarks).toEqual(['[3]', 'Section total: 5'])
-      // A Section with nothing marked prints no total.
-      expect(three!.closingMarks).toBeUndefined()
+      expect(one!.closingPoints).toEqual(['[2]'])
+      expect(two!.closingPoints).toEqual(['[3]', 'Section total: 5'])
+      // A Section with nothing worth Points prints no total.
+      expect(three!.closingPoints).toBeUndefined()
     } finally {
-      rules.marks = before
+      rules.points = before
     }
   })
 })

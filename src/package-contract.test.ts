@@ -272,7 +272,7 @@ describe('public Exam Record 0.4.0 contract', () => {
     expect(validate(exam({ candidateFields: ['name', 'name'] }))).toBe(false)
     expect(validate(exam({ candidateFields: ['seat'] }))).toBe(false)
     expect(validate(exam({ instructions: 'Answer all.' }))).toBe(false)
-    // The paper's total is counted from the Marks, never written.
+    // The paper's total is counted from the Points, never written.
     expect(validate(exam({ total: 40 }))).toBe(false)
   })
 

@@ -30,8 +30,8 @@ describe('text2qti', () => {
       'short-answer', 'short-answer', 'multiple-choice', 'short-answer',
     ])
     const [addition, dinosaurs, root2, root3, five, santa, essay, upload, wrapped, solution] = questions
-    // `Points: 2` is the first question's Marks alone; the rest give none.
-    expect(questions.map((question) => question.marks)).toEqual([2, ...questions.slice(1).map(() => undefined)])
+    // `Points: 2` is the first question's Points alone; the rest give none.
+    expect(questions.map((question) => question.points)).toEqual([2, ...questions.slice(1).map(() => undefined)])
 
     // Feedback is not part of the question or its choices.
     expect(text(addition!.stem)).toBe('What is 2+3?')
@@ -131,6 +131,6 @@ describe('text2qti', () => {
       '____',
     ].join('\n')))
     expect(reading.format).toBe('text2qti')
-    expect(questions.map((question) => question.marks)).toEqual([3, 1, undefined])
+    expect(questions.map((question) => question.points)).toEqual([3, 1, undefined])
   })
 })

@@ -58,8 +58,8 @@ describe('Canvas classic quiz export', () => {
       'matching', 'short-answer', 'short-answer', 'short-answer',
     ])
     const [choice, trueFalse, shortAnswer, blanks, multiple, dropdowns, matching, numeric, essay, upload] = questions
-    // Each item's points_possible of 1.0 is one Mark, the Matching set's for the set.
-    expect(questions.map((question) => question.marks)).toEqual(questions.map(() => 1))
+    // Each item's points_possible of 1.0 is one point, the Matching set's for the set.
+    expect(questions.map((question) => question.points)).toEqual(questions.map(() => 1))
 
     expect(text(choice!.stem)).toBe('Which gas do plants take in?')
     expect(choice!.choices!.map((each) => [text(each.content), each.correct])).toEqual([
@@ -172,7 +172,7 @@ describe('QTI 2.1 and 2.2 items', () => {
   })
 })
 
-describe('QTI points as Marks', () => {
+describe('QTI points kept as Points', () => {
   const qti12 = (items: string) => encode(`<?xml version="1.0" encoding="UTF-8"?>
 <questestinterop xmlns="http://www.imsglobal.org/xsd/ims_qtiasiv1p2">
   <assessment ident="a1" title="Weather"><section ident="root_section">${items}</section></assessment>
@@ -193,10 +193,10 @@ describe('QTI points as Marks', () => {
       essay('i4', 'Describe sleet.', ''),
     ].join('')))
     expect(reading.format).toBe('qti')
-    expect(questions.map((question) => question.marks)).toEqual([2, 3, undefined, undefined])
+    expect(questions.map((question) => question.points)).toEqual([2, 3, undefined, undefined])
   })
 
-  test('a Canvas item’s points_possible is its Marks, never its SCORE percentage', async () => {
+  test('a Canvas item’s points_possible is its Points, never its SCORE percentage', async () => {
     const canvas = (points: string) => `<itemmetadata><qtimetadata>
           <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>essay_question</fieldentry></qtimetadatafield>
           <qtimetadatafield><fieldlabel>points_possible</fieldlabel><fieldentry>${points}</fieldentry></qtimetadatafield>
@@ -207,7 +207,7 @@ describe('QTI points as Marks', () => {
       essay('i2', 'Describe fog.', canvas('0.5')),
       essay('i3', 'Describe hail.', canvas('0.0')),
     ].join('')))
-    expect(questions.map((question) => question.marks)).toEqual([4, undefined, undefined])
+    expect(questions.map((question) => question.points)).toEqual([4, undefined, undefined])
   })
 
   test('a QTI 2.1 item’s MAXSCORE, and a QTI 3.0 item’s SCORE normal-maximum', async () => {
@@ -219,7 +219,7 @@ describe('QTI points as Marks', () => {
   <itemBody><p>Describe a storm.</p><extendedTextInteraction responseIdentifier="RESPONSE"/></itemBody>
 </assessmentItem>`))
     expect(qti21.reading.format).toBe('qti')
-    expect(qti21.questions[0]!.marks).toBe(4)
+    expect(qti21.questions[0]!.points).toBe(4)
 
     const qti30 = await read('fog.xml', encode(`<?xml version="1.0" encoding="UTF-8"?>
 <qti-assessment-item xmlns="http://www.imsglobal.org/xsd/imsqtiasi_v3p0" identifier="fog" title="Fog" adaptive="false" time-dependent="false">
@@ -228,11 +228,11 @@ describe('QTI points as Marks', () => {
   <qti-item-body><p>Describe fog.</p><qti-extended-text-interaction response-identifier="RESPONSE"/></qti-item-body>
 </qti-assessment-item>`))
     expect(qti30.reading.format).toBe('qti')
-    expect(qti30.questions[0]!.marks).toBe(2)
+    expect(qti30.questions[0]!.points).toBe(2)
 
-    // An item whose SCORE gives no maximum is unmarked.
+    // An item whose SCORE gives no maximum is unpointed.
     const plain = await read('choice.xml', fixture('qti21-choice.xml'))
-    expect(plain.questions[0]!.marks).toBeUndefined()
+    expect(plain.questions[0]!.points).toBeUndefined()
   })
 })
 

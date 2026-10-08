@@ -55,7 +55,7 @@ import {
   type WorkSpaceStyle,
 } from './exam'
 import { stemNodesOf, type ProseMirrorJSON } from './question-doc'
-import { marksOfQuestion, sumOfMarks } from './marks'
+import { pointsOfQuestion, sumOfPoints } from './points'
 import { answerVisibilityOf, shownChoices, type AnswerVisibility } from './hidden-answers'
 import { headerLineOf, type ExamHeader, type HeaderLine } from './page-header'
 import { DEFAULT_MARGIN, marginPx, marginsOf, sameMargins, type MarginSide, type PageMargins } from './page-margins'
@@ -314,18 +314,18 @@ export type PlannedSubpart = {
   workSpace: PlannedWorkSpace | null
   /** A Short Answer one's Suggested Answer, for the Answer Key only. */
   suggestedAnswer?: ProseMirrorJSON[]
-  /** What answering it is worth, when it is marked (ADR-0042). Planned as
+  /** What answering it is worth, when it has points (ADR-0042). Planned as
    *  data whether or not the Paper Style prints it: the Answer Key does, and
    *  where the test does is the style's to decide. A Part that holds
    *  Subparts never has any of its own. */
-  marks?: number
+  points?: number
   /** How its label prints, when the Paper Style labels it otherwise than
    *  `i.` — `(i)` under Exam Board; a Part's letter, `(a)`. */
   printed?: string
-  /** Its Marks as the Paper Style prints them after its answer, against the
-   *  right margin — `[2]` under Exam Board. Absent on an unmarked one and
-   *  under every style that prints no Marks on the test. */
-  marksAfter?: string
+  /** Its Points as the Paper Style prints them after its answer, against the
+   *  right margin — `[2]` under Exam Board. Absent on an unpointed one and
+   *  under every style that prints no Points on the test. */
+  pointsAfter?: string
 }
 
 // One Part of a Multipart question as it prints: lettered `a`, `b`, … in authored order
@@ -438,22 +438,22 @@ export type PlannedQuestion = {
   /** A Multipart question's Parts, lettered, in authored order; `null` for every other
    *  Question Type. A Multipart question's `stem` is the shared material its Parts are asked about. */
   parts: PlannedPart[] | null
-  /** What the whole question is worth, when anything in it is marked: its
-   *  own Marks, or a Multipart question's Parts' and Subparts' sum
+  /** What the whole question is worth, when anything in it has Points: its
+   *  own Points, or a Multipart question's Parts' and Subparts' sum
    *  (ADR-0042). Not to be confused with `marks`, which is what prints in
    *  the number column. No current Paper Style prints it on the test; the
    *  Answer Key counts its total from it. Absent on a plan recorded before
-   *  Marks existed, which therefore reprints as it always did. */
-  totalMarks?: number
+   *  Points existed, which therefore reprints as it always did. */
+  totalPoints?: number
   /** How its number prints, when the Paper Style numbers otherwise than
    *  `1.` — a bold `1` under Exam Board. */
   printedNumber?: string
   /** The lines its Paper Style prints after the whole question, against the
-   *  right margin, in order (ADR-0045): its Marks after its answer — `[2]` —
+   *  right margin, in order (ADR-0045): its Points after its answer — `[2]` —
    *  or a Multipart question's total — `[Total: 9]` — and, after a Section's
    *  last question, that Section's total. Absent when the style prints none,
-   *  or nothing in it is marked. Only the question's last piece prints them. */
-  closingMarks?: string[]
+   *  or nothing in it has points. Only the question's last piece prints them. */
+  closingPoints?: string[]
 }
 
 /** How a question's number prints in its number column. */
@@ -526,9 +526,9 @@ export type QuestionItem = {
    *  Part's Subparts, or — when the stem and its first Part cannot share a
    *  page — between its stem's blocks. */
   parts: PlannedPart[] | null
-  /** The question's closing Marks lines (`PlannedQuestion.closingMarks`), on
+  /** The question's closing Points lines (`PlannedQuestion.closingPoints`), on
    *  the piece that ends it; absent on every other piece. */
-  closingMarks?: string[]
+  closingPoints?: string[]
 }
 
 /** Whether this piece prints the question's number line: the first piece of
@@ -545,9 +545,9 @@ export function printsNumberLine(item: QuestionItem): boolean {
 // question, and one line per question.
 export type AnswerKeyHeadingItem = {
   kind: 'answer-key-heading'
-  /** The paper's total Marks, printed beside the heading, when any of its
-   *  questions are marked (ADR-0042). Under every Paper Style. */
-  totalMarks?: number
+  /** The paper's total Points, printed beside the heading, when any of its
+   *  questions have points (ADR-0042). Under every Paper Style. */
+  totalPoints?: number
 }
 
 export type AnswerKeySectionItem = {
@@ -571,10 +571,10 @@ export type AnswerKeyEntryItem = {
   /** A Multipart question's one line per Part — or per Subpart, where a Part
    *  holds them — under its one number. */
   parts?: AnswerKeyPartLine[]
-  /** What the question is worth, printed `[n]` after its answer, when it is
-   *  marked. A Multipart question's Marks print on its Part lines instead, and
+  /** What the question is worth, printed `[n]` after its answer, when it has
+   *  Points. A Multipart question's Points print on its Part lines instead, and
    *  a Matching set's — one for the whole set — on its first Item's line. */
-  marks?: number
+  points?: number
 }
 
 /** What the Answer Key records for one Part or Subpart: the correct letter for
@@ -588,18 +588,18 @@ export type AnswerKeyPartLine = {
   subpart?: true
   answer: string | null
   suggestedAnswer?: ProseMirrorJSON[]
-  /** What the Part or Subpart is worth, printed `[n]`, when it is marked. */
-  marks?: number
+  /** What the Part or Subpart is worth, printed `[n]`, when it has points. */
+  points?: number
 }
 
-/** Marks as the Answer Key prints them after an answer, in every adapter. */
-export function answerKeyMarksText(marks: number): string {
-  return `[${marks}]`
+/** Points as the Answer Key prints them after an answer, in every adapter. */
+export function answerKeyPointsText(points: number): string {
+  return `[${points}]`
 }
 
 /** The paper's total as the Answer Key prints it beside its heading. */
-export function answerKeyTotalText(marks: number): string {
-  return `Total: ${marks} ${marks === 1 ? 'mark' : 'marks'}`
+export function answerKeyTotalText(points: number): string {
+  return `Total: ${points} ${points === 1 ? 'point' : 'points'}`
 }
 
 /** The heading a Cover Page's instructions print under. */
@@ -609,7 +609,7 @@ export const COVER_INSTRUCTIONS_HEADING = 'Instructions'
 // that prints one, alone on its page and never part of the Answer Key. It
 // arranges the Exam's title and its Paper Details — each one the teacher left
 // blank printing nothing — the candidate fields as boxes, the instructions,
-// and the paper's total when anything is marked. Its instructions are planned
+// and the paper's total when anything has points. Its instructions are planned
 // as a bulleted list, so every adapter draws them as it draws any list.
 export type CoverPageItem = {
   kind: 'cover'
@@ -622,7 +622,7 @@ export type CoverPageItem = {
   candidateFields: string[]
   /** The instructions, as a bulleted list; `null` when there are none. */
   instructions: ProseMirrorJSON | null
-  /** The paper's total, worded by the style; absent when nothing is marked. */
+  /** The paper's total, worded by the style; absent when nothing has Points. */
   total?: string
 }
 
@@ -1108,10 +1108,10 @@ function labelledChoices(choices: PlannedChoice[], rules: PaperStyleRules): Plan
   return choices.map((choice) => ({ ...choice, ...printedBy(rules.labels.answer, choice.letter) }))
 }
 
-/** What a marked answer prints after itself under this style, if anything. */
-function marksAfterOf(rules: PaperStyleRules, marks: number | undefined): { marksAfter: string } | Record<string, never> {
-  const template = rules.marks.marksAfterAnswer
-  return template && marks !== undefined ? { marksAfter: labelled(template, marks) } : {}
+/** What an answer with Points prints after itself under this style, if anything. */
+function pointsAfterOf(rules: PaperStyleRules, points: number | undefined): { pointsAfter: string } | Record<string, never> {
+  const template = rules.points.pointsAfterAnswer
+  return template && points !== undefined ? { pointsAfter: labelled(template, points) } : {}
 }
 
 // A matching set under this arrangement: the Word Bank in the arrangement's
@@ -1204,8 +1204,8 @@ function deriveAnswering(
     ...(!multipleChoice && suggestedBlocks.length > 0 && !blankBlocks(suggestedBlocks)
       ? { suggestedAnswer: structuredClone(suggestedBlocks) }
       : {}),
-    ...(part.marks !== undefined ? { marks: part.marks } : {}),
-    ...marksAfterOf(rules, part.marks),
+    ...(part.points !== undefined ? { points: part.points } : {}),
+    ...pointsAfterOf(rules, part.points),
   }
 }
 
@@ -1265,7 +1265,7 @@ function deriveQuestion(
   const answerVisibility = question.type === 'multiple-choice'
     ? answerVisibilityOf(question, arrangement)
     : undefined
-  const totalMarks = marksOfQuestion(question)
+  const totalPoints = pointsOfQuestion(question)
   const choices: PlannedChoice[] = ordered.map((choice, index) => ({
     id: choice.id,
     // A True/False answer is written the way the student circles it, so the
@@ -1304,10 +1304,10 @@ function deriveQuestion(
       ? { suggestedAnswer: suggestedAnswerOf(question) }
       : {}),
     parts: multipart ? deriveParts(exam, question, arrangement) : null,
-    ...(totalMarks !== undefined ? { totalMarks } : {}),
+    ...(totalPoints !== undefined ? { totalPoints } : {}),
     // A matching set's numbers print on its Items.
     ...(matching ? {} : printedNumberBy(rules, number)),
-    ...closingMarksOf(rules, multipart, totalMarks),
+    ...closingPointsOf(rules, multipart, totalPoints),
   }
 }
 
@@ -1317,14 +1317,14 @@ function printedNumberBy(rules: PaperStyleRules, number: number): { printedNumbe
 }
 
 /** What a question prints after itself under this style: a Multipart
- *  question's total, or any other question's Marks after its answer. */
-function closingMarksOf(
+ *  question's total, or any other question's Points after its answer. */
+function closingPointsOf(
   rules: PaperStyleRules,
   multipart: boolean,
-  totalMarks: number | undefined,
-): { closingMarks: string[] } | Record<string, never> {
-  const template = multipart ? rules.marks.questionTotal : rules.marks.marksAfterAnswer
-  return template && totalMarks !== undefined ? { closingMarks: [labelled(template, totalMarks)] } : {}
+  totalPoints: number | undefined,
+): { closingPoints: string[] } | Record<string, never> {
+  const template = multipart ? rules.points.questionTotal : rules.points.pointsAfterAnswer
+  return template && totalPoints !== undefined ? { closingPoints: [labelled(template, totalPoints)] } : {}
 }
 
 // The Exam's Sections in their own order. A Section with no questions still
@@ -1357,14 +1357,14 @@ function deriveItems(exam: Exam, arrangement: Arrangement): PageItem[] {
       return derived
     })
     // A Section's total prints after its last question, under a style that
-    // prints one, when anything in the Section is marked.
-    const sectionTotal = rules.marks.sectionTotal
-    const sectionMarks = sumOfMarks(planned.map((question) => question.totalMarks))
+    // prints one, when anything in the Section has points.
+    const sectionTotal = rules.points.sectionTotal
+    const sectionPoints = sumOfPoints(planned.map((question) => question.totalPoints))
     const last = planned.at(-1)
-    if (sectionTotal && sectionMarks !== undefined && last) {
+    if (sectionTotal && sectionPoints !== undefined && last) {
       planned[planned.length - 1] = {
         ...last,
-        closingMarks: [...(last.closingMarks ?? []), labelled(sectionTotal, sectionMarks)],
+        closingPoints: [...(last.closingPoints ?? []), labelled(sectionTotal, sectionPoints)],
       }
     }
     items.push(...planned.map(wholeQuestion))
@@ -1383,7 +1383,7 @@ function wholeQuestion(question: PlannedQuestion): QuestionItem {
     matching: question.matching,
     workSpace: question.workSpace,
     parts: question.parts,
-    ...(question.closingMarks ? { closingMarks: question.closingMarks } : {}),
+    ...(question.closingPoints ? { closingPoints: question.closingPoints } : {}),
   }
 }
 
@@ -1404,7 +1404,7 @@ type Segment = {
    *  whole, and a Part that holds Subparts one Subpart at a time. */
   parts: PlannedPart[]
   /** Set on the question's last segment: the piece that carries it prints the
-   *  question's closing Marks. */
+   *  question's closing Points. */
   closes?: true
 }
 
@@ -1569,8 +1569,8 @@ function pieceOf(
       sets.length === 0 ? null : { ...sets[0]!, prompts: sets.flatMap((set) => set.prompts) },
     workSpace: segments.find((segment) => segment.workSpace !== null)?.workSpace ?? null,
     parts: question.parts ? joinedParts(segments.flatMap((segment) => segment.parts)) : null,
-    ...(question.closingMarks && segments.some((segment) => segment.closes)
-      ? { closingMarks: question.closingMarks }
+    ...(question.closingPoints && segments.some((segment) => segment.closes)
+      ? { closingPoints: question.closingPoints }
       : {}),
   }
 }
@@ -1779,7 +1779,7 @@ function paginate(
 /** The Answer Key's line for a Part or Subpart that answers. */
 function answerKeyPartLine(
   letter: string,
-  part: Pick<PlannedSubpart, 'type' | 'choices' | 'suggestedAnswer' | 'marks'>,
+  part: Pick<PlannedSubpart, 'type' | 'choices' | 'suggestedAnswer' | 'points'>,
 ): AnswerKeyPartLine {
   return {
     letter,
@@ -1788,7 +1788,7 @@ function answerKeyPartLine(
         ? part.choices.find((choice) => choice.correct)?.letter ?? null
         : null,
     ...(part.suggestedAnswer ? { suggestedAnswer: part.suggestedAnswer } : {}),
-    ...(part.marks !== undefined ? { marks: part.marks } : {}),
+    ...(part.points !== undefined ? { points: part.points } : {}),
   }
 }
 
@@ -1805,10 +1805,10 @@ function deriveAnswerKey(testItems: readonly PageItem[]): PageItem[] {
   // answers with no label is not one. A Section with no questions has no
   // group.
   // The paper's total is counted from the very questions the key lists, so
-  // it is the sum of the Marks printed beneath it.
-  const totalMarks = totalMarksIn(testItems)
+  // it is the sum of the Points printed beneath it.
+  const totalPoints = totalPointsIn(testItems)
   const items: PageItem[] = [
-    { kind: 'answer-key-heading', ...(totalMarks !== undefined ? { totalMarks } : {}) },
+    { kind: 'answer-key-heading', ...(totalPoints !== undefined ? { totalPoints } : {}) },
   ]
   const seen = new Set<string>()
   let heading: SectionHeadingItem | null = null
@@ -1847,9 +1847,9 @@ function deriveAnswerKey(testItems: readonly PageItem[]): PageItem[] {
       })
       continue
     }
-    const marks = item.question.totalMarks !== undefined ? { marks: item.question.totalMarks } : {}
+    const points = item.question.totalPoints !== undefined ? { points: item.question.totalPoints } : {}
     if (item.question.matching) {
-      // A Matching set is marked as a whole, so its Marks print once, on
+      // A Matching set takes its Points as a whole, so its Points print once, on
       // its first Item's line.
       item.question.matching.prompts.forEach((prompt, index) => {
         items.push({
@@ -1857,7 +1857,7 @@ function deriveAnswerKey(testItems: readonly PageItem[]): PageItem[] {
           number: prompt.number,
           letter: prompt.letter,
           ...metadata,
-          ...(index === 0 ? marks : {}),
+          ...(index === 0 ? points : {}),
         })
       })
       continue
@@ -1867,7 +1867,7 @@ function deriveAnswerKey(testItems: readonly PageItem[]): PageItem[] {
       number: item.question.number,
       letter: item.question.choices.find((choice) => choice.correct)?.letter ?? null,
       ...metadata,
-      ...marks,
+      ...points,
       ...(item.question.suggestedAnswer
         ? { suggestedAnswer: item.question.suggestedAnswer }
         : {}),
@@ -1961,12 +1961,12 @@ export function buildExportDocument(
   }
 }
 
-/** The paper's total Marks, counted once per question from the very questions
- *  the test prints; `undefined` when none is marked. */
-function totalMarksIn(items: readonly PageItem[]): number | undefined {
-  return sumOfMarks(
+/** The paper's total Points, counted once per question from the very questions
+ *  the test prints; `undefined` when none has points. */
+function totalPointsIn(items: readonly PageItem[]): number | undefined {
+  return sumOfPoints(
     [...new Map(
-      items.flatMap((item) => (item.kind === 'question' ? [[item.question.id, item.question.totalMarks] as const] : [])),
+      items.flatMap((item) => (item.kind === 'question' ? [[item.question.id, item.question.totalPoints] as const] : [])),
     ).values()],
   )
 }
@@ -1974,15 +1974,15 @@ function totalMarksIn(items: readonly PageItem[]): number | undefined {
 /** The Cover Page a style that prints one opens the test with: the Exam's
  *  title and Paper Details, each detail the teacher left blank printing
  *  nothing; its candidate fields and instructions, the teacher's or the
- *  style's own; and the paper's total, when anything is marked. */
+ *  style's own; and the paper's total, when anything has points. */
 function coverPageOf(
   exam: Exam,
   details: PaperDetails | undefined,
   rules: PaperStyleRules,
   questions: readonly PageItem[],
 ): CoverPageItem {
-  const total = totalMarksIn(questions)
-  const template = rules.marks.paperTotalOnCover
+  const total = totalPointsIn(questions)
+  const template = rules.points.paperTotalOnCover
   const instructions = instructionsOf(details)
   return {
     kind: 'cover',

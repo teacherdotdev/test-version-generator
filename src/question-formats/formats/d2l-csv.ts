@@ -12,7 +12,7 @@ import { isBlankRow, readSheet, type SheetRow } from './sheet'
  * Keys are read in any case, with the spaces around them ignored (D2L's own
  * sample writes `Feedback ,`). A text cell followed by `HTML` is HTML; any
  * other text is read as HTML only if it plainly is. A `Points` row is the
- * question's points, kept as its Marks when a whole number (an `Option` or
+ * question's points, kept as its Points when a whole number (an `Option` or
  * `Answer` row's number is a different thing: the percentage that answer
  * earns, which says which is right). Title, difficulty, hints and feedback
  * have no place in a Test Parrot question and are left out; a picture named

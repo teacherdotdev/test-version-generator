@@ -14,7 +14,7 @@ import type { Blocks, ForeignChoice, ForeignQuestion, FormatInput, FormatSpec, I
  * essay, `F` fill in the blank, `S` short answer, `MT` matching, `MA`, `MS`
  * or `MR` multiple answer, `ORD` ordering, `FMB` fill in multiple blanks),
  * `Title:` its title, and `Points:` its points and every later question's,
- * kept as Marks when a whole number. `~ ` and `@ ` lines are feedback.
+ * kept as Points when a whole number. `~ ` and `@ ` lines are feedback.
  * Test Parrot keeps neither titles nor feedback.
  *
  * Where Respondus would quietly mark answer A correct because nothing else

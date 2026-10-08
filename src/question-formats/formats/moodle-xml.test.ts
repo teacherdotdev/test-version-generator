@@ -32,8 +32,8 @@ describe('Moodle XML', () => {
     ])
 
     const [cell, primes, sun, capital, matching, essay, pi, cloze, ordering] = questions
-    // A <defaultgrade> of 1.0000000 is one Mark; a question with none is unmarked.
-    expect(questions.map((question) => question.marks)).toEqual([1, 1, 1, undefined, undefined, undefined, undefined, undefined, undefined])
+    // A <defaultgrade> of 1.0000000 is one point; a question with none is unpointed.
+    expect(questions.map((question) => question.points)).toEqual([1, 1, 1, undefined, undefined, undefined, undefined, undefined, undefined])
     expect(text(cell!.stem)).toBe('Which organelle makes ATP?')
     expect(cell!.choices!.map((choice) => [text(choice.content), choice.correct])).toEqual([
       ['Nucleus', false], ['Mitochondrion', true], ['Ribosome', false],
@@ -112,7 +112,7 @@ describe('Moodle XML', () => {
     expect(moodleXml.detect(input('1. What is 2 + 2?\n*a) 4\nb) 5'))).toBe(0)
   })
 
-  test('keeps a whole-number <defaultgrade> as Marks, a Matching set’s for the set, and drops any other', async () => {
+  test('keeps a whole-number <defaultgrade> as Points, a Matching set’s for the set, and drops any other', async () => {
     const { questions } = await read('q.xml', quiz(`
       <question type="essay">
         <questiontext format="html"><text>Describe the water cycle.</text></questiontext>
@@ -132,7 +132,7 @@ describe('Moodle XML', () => {
         <subquestion format="html"><text>Bee</text><answer><text>Hive</text></answer></subquestion>
         <subquestion format="html"><text>Fox</text><answer><text>Den</text></answer></subquestion>
       </question>`))
-    expect(questions.map((question) => [question.type, question.marks])).toEqual([
+    expect(questions.map((question) => [question.type, question.points])).toEqual([
       ['short-answer', 4], ['short-answer', undefined], ['short-answer', undefined], ['matching', 3],
     ])
   })

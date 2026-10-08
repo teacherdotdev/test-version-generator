@@ -856,9 +856,9 @@ button { cursor: pointer; }
 .cover-instructions ul { margin: 0; }
 .cover-total { margin: 24px 0 0; font-weight: 700; }
 
-/* Marks a Paper Style prints on the test: `[2]` after an answer, `[Total: 9]`
+/* Points a Paper Style prints on the test: `[2]` after an answer, `[Total: 9]`
    after a question, against the right margin on a line of their own. */
-.marks-after { margin: 4px 0 0; text-align: right; }
+.points-after { margin: 4px 0 0; text-align: right; }
 .question-closing { grid-column: 1 / -1; }
 
 /* Where `dom-measure.ts` lays a page item out to find its height: off-screen,
@@ -918,9 +918,9 @@ button { cursor: pointer; }
    heading is no taller with it. The PDF and DOCX adapters right-align it too. */
 .answer-key-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
 .answer-key-total { font: 400 15px/1.2 Georgia, serif; }
-/* A marked entry's `[n]` follows its blank, before any Question Metadata. */
-.answer-key-entry--marked { grid-template-columns: 42px 56px auto minmax(0, 1fr); }
-.answer-key-marks { white-space: nowrap; }
+/* An entry's `[n]`, when it has Points, follows its blank, before any Question Metadata. */
+.answer-key-entry--pointed { grid-template-columns: 42px 56px auto minmax(0, 1fr); }
+.answer-key-points { white-space: nowrap; }
 .answer-key-section { margin: 0 0 10px; font: 700 17px/1.2 Georgia, serif; }
 .answer-key-entry {
   display: grid; grid-template-columns: 42px 56px minmax(0, 1fr);
@@ -1341,47 +1341,22 @@ button { cursor: pointer; }
 .exam-question:has(> .question-number--blank) > :is(.answer-visibility-note, .work-space-handle) { left: 98px; }
 [data-paper-style='condensed'] .answer-visibility-note { bottom: -12px; font-size: 10px; line-height: 12px; }
 
-/* Marks on the sheet (ADR-0042): a chip in the right margin beside a
-   question, Part or Subpart, level with its first line. An editor annotation:
-   absolutely placed, so it takes none of the height packing measured, and
-   never part of a printed page. A marked one always shows; an unmarked one
-   shows only while its question is hovered or selected, so a sheet nobody is
-   marking still reads as paper. */
-.marks-chip {
-  position: absolute; top: 0; left: calc(100% + 6px); z-index: 2;
-  display: inline-flex; align-items: center; gap: 4px;
-  height: 20px; padding: 0 7px; border: 1px solid #e0d3c2; border-radius: 999px;
-  background: #fffdf8; color: #6b5646; white-space: nowrap;
-  font: 11px/18px Arial, Helvetica, sans-serif; cursor: pointer;
-  transition: opacity 90ms ease-in;
+/* A printed `[n]` on the sheet, under a Paper Style that prints Points
+   (ADR-0045): the text itself is the control that changes them, so it looks
+   like the page and takes exactly the height the page measured. */
+.points-after-button {
+  padding: 0; border: 0; border-radius: 3px; background: transparent;
+  color: inherit; font: inherit; line-height: inherit; cursor: pointer;
 }
-.marks-chip:not([data-marked]):not(.marks-chip--editing) {
-  opacity: 0; border-style: dashed; color: #9c8b7c; background: transparent;
+.points-after-button:hover { background: #f2e6d8; }
+.points-after-button:focus-visible { outline: 2px solid #9f5037; outline-offset: 1px; }
+.points-after-input {
+  width: 3em; height: 1.2em; padding: 0 3px; border: 0; border-radius: 3px;
+  background: #f2e6d8; color: #332a24; font: inherit; line-height: inherit;
+  text-align: center; vertical-align: baseline;
 }
-.exam-question:hover .marks-chip,
-.exam-question--selected .marks-chip,
-.marks-chip:focus-visible { opacity: 1; }
-.marks-chip:hover { border-color: #cdb9a6; background: #f2e6d8; color: #4e3b2f; }
-.marks-chip:focus-visible { outline: 2px solid #9f5037; outline-offset: 1px; }
-.marks-chip--sum { cursor: default; background: transparent; }
-.marks-chip--sum:hover { border-color: #e0d3c2; background: transparent; color: #6b5646; }
-.marks-chip--editing { padding: 0 6px 0 2px; cursor: default; }
-.marks-chip-input {
-  width: 2.6em; height: 16px; padding: 0 3px; border: 0; border-radius: 8px;
-  background: #f2e6d8; color: #332a24; font: inherit; text-align: center;
-}
-.marks-chip-input:focus { outline: 1px solid #9f5037; }
-.marks-chip-input[aria-invalid='true'] { outline-color: #a3322a; background: #fbe9e6; }
-.question-drag-preview .marks-chip { display: none; }
-
-/* The Exam's total Marks, beside its save state, with a quiet note when some
-   Questions have none. Never a warning: export is not held up for it. */
-.exam-marks-summary {
-  display: inline-flex; align-items: baseline; gap: 6px;
-  color: var(--paper-ink-soft); font-size: 13px; white-space: nowrap;
-}
-.exam-marks-total { font-weight: 600; }
-.exam-marks-note { color: #8a7767; font-size: 12px; }
+.points-after-input:focus { outline: 1px solid #9f5037; }
+.points-after-input[aria-invalid='true'] { outline-color: #a3322a; background: #fbe9e6; }
 
 /* The handles: a plus and a grip in the margin beside a question, hidden until
    it is hovered or one of them has focus, so the page still reads as paper.
@@ -1661,10 +1636,15 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
 .front-matter-stated { cursor: default; }
 .front-matter-stated:hover { background: transparent; }
 .front-matter-blank { color: #9c8b7c; font-size: 13px; }
-/* Marks are typed, not chosen, so their row is a small field rather than a
-   list: blank is unmarked. */
-.front-matter-marks { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; font-size: 13px; color: var(--paper-ink-soft); }
-.front-matter-marks-input { min-height: 26px; font-size: 14px; }
+/* Points are typed, not chosen, so their value is a field rather than a
+   list, drawn like the other values until it has focus: blank is unpointed. */
+.front-matter-points { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--paper-ink-soft); }
+.front-matter-value.front-matter-points-input {
+  min-width: 0; width: 160px; color: #332a24; font: inherit; font-size: 14px; cursor: text;
+}
+.front-matter-points-input::placeholder { color: #9c8b7c; font-size: 13px; }
+.front-matter-points-input:focus { outline: 2px solid var(--paper-accent); outline-offset: -2px; background: #fffdf8; }
+.front-matter-points-input[aria-invalid='true'] { outline-color: #a3322a; background: #fbe9e6; }
 
 /* The list of what can be chosen, with a box to narrow it. Typing filters and
    moves the highlight; it never rewrites a value, because the spelling is the
@@ -2041,22 +2021,20 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
 .multipart-part-kind:not(:disabled):hover .badge,
 .multipart-part-kind[aria-expanded="true"] .badge { border-color: #cdb9a6; background: #f2e6d8; }
 .multipart-part-kind:focus { outline: none; }
-/* A Part's or Subpart's Marks: a small field beside its type, worded like
-   the sheet's own "marks" so a blank one still says what it is for. */
-.multipart-part-marks {
+/* A Part's or Subpart's Points: a small field beside its type, worded like
+   the sheet's own "points" so a blank one still says what it is for. */
+.multipart-part-points {
   display: inline-flex; align-items: center; gap: 5px;
   color: var(--paper-ink-soft); font-size: 13px;
 }
-.multipart-part-marks[hidden] { display: none; }
-.multipart-part-marks-input,
-.front-matter-marks-input {
+.multipart-part-points[hidden] { display: none; }
+.multipart-part-points-input {
   width: 3.2em; min-height: 24px; padding: 1px 6px;
   border: 1px solid #d8c8b8; border-radius: 5px; background: #fffdf8;
   color: #332a24; font: inherit; text-align: center;
 }
-.multipart-part-marks-input:focus,
-.front-matter-marks-input:focus { outline: 2px solid var(--paper-accent); outline-offset: -1px; }
-.multipart-part-marks-input:disabled { border-color: transparent; background: transparent; }
+.multipart-part-points-input:focus { outline: 2px solid var(--paper-accent); outline-offset: -1px; }
+.multipart-part-points-input:disabled { border-color: transparent; background: transparent; }
 .multipart-part-controls { display: inline-flex; gap: 2px; margin-left: auto; }
 .multipart-part-control {
   display: inline-flex; align-items: center; justify-content: center;
@@ -2184,7 +2162,6 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
      is judged against, without making that browser path available to people. */
   html[data-export-reference-print] .document-bar,
   html[data-export-reference-print] .question-handles,
-  html[data-export-reference-print] .marks-chip,
   html[data-export-reference-print] .work-space-handle,
   html[data-export-reference-print] .context-menu,
   html[data-export-reference-print] .vary-summary,

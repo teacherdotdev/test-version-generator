@@ -36,7 +36,7 @@ Use these resources as the source of truth:
 - [Matching example](./formats/question-bank/0.9.0/examples/matching.json)
 - [Multipart example](./formats/question-bank/0.9.0/examples/multipart.json)
 - [Subparts example](./formats/question-bank/0.9.0/examples/subparts.json)
-- [Marks example](./formats/question-bank/0.9.0/examples/marks.json)
+- [Points example](./formats/question-bank/0.9.0/examples/points.json)
 - [Short Answer example](./formats/question-bank/0.9.0/examples/short-answer.json)
 - [Complete rich-text example](./formats/question-bank/0.9.0/examples/complete-rich-text.json)
 - [Provenance and links example](./formats/question-bank/0.9.0/examples/provenance-and-links.json)
@@ -112,7 +112,7 @@ When triage says the source is a test:
 - Write every Question's choices and Word Bank answers into the bank in the order the test prints them. That records the test's answer order, so leave out `answerOrder`: answers print in the order the bank records them, and the answer key's letters stay right.
 - Record `columns` (`1`, `2` or `4`) on a Multiple Choice position whenever the source layout shows how many columns its answers are printed in: count the answers side by side on one line. Four answers across one line is `4`. Answers printed as a grid of two across — (A) beside (B), (C) beside (D), a 2 × 2 grid — are `2`. Answers printed one under another are `1`. Answers that are pictures, such as four graphs to choose from, are nearly always printed as a grid: look at the page and record it, since a picture answer with no `columns` prints as wide as the whole question. Leave `columns` out only when the layout truly cannot be read, such as answers split across a page break. Never put `columns` on any other Question Type.
 - Record `workSpace` on a Short Answer position whenever the source prints room to write its answer below it, so the test arrives with the room it printed: `{ "height": <lines × 32>, "style": "lines", "fill": false }` when the room is ruled, counting the printed lines (three lines is `96`); and `{ "height": <rows × 32>, "style": "blank", "fill": false }` when it is empty space, as many 32-pixel rows as the space is tall at 96 pixels to the inch (about one row per third of an inch, never fewer than one). Leave `workSpace` out when the source prints the answer on the same line, leaves no room, or its room cannot be read, such as an answer split across a page break. Never put `workSpace` on any other Question Type, nor on a Multipart question: its Short Answer Parts take Test Parrot's defaults.
-- Do not add `headingSize`, `textSize`, `header`, point values, or any other member. The teacher sets how the test prints in Test Parrot. A question's marks are not the Exam's: they go on the Question itself in the bank, as `marks` (see [Marks](#marks)).
+- Do not add `headingSize`, `textSize`, `header`, point values, or any other member. The teacher sets how the test prints in Test Parrot. A question's points are not the Exam's: they go on the Question itself in the bank, as `points` (see [Points](#points)).
 
 Test Parrot prints the Exam exactly in the order you record: its sections in the order `sections` lists them, and the questions in each in the order of their positions. It never sorts them by Question Type, so the order you write is the order the teacher gets. Reproduce the test as printed, question by question.
 
@@ -153,7 +153,7 @@ Completeness means accounting for every source question, not pretending every qu
 ### During conversion
 
 1. Classify a question as `multiple-choice`, `true-false`, `matching`, `short-answer` or `multipart` only when the source supports that classification. Version `0.9.0` supports only those five types. If its type is uncertain or it cannot be represented without material loss, leave it out and report it explicitly; never coerce it into the closest supported type.
-2. Preserve the exact wording, punctuation, capitalization, symbols, units, and meaningful whitespace. A Question's stem is what the source prints at its number, and nothing more: never add the directions printed above a group of questions to each one, and take out a mark printed beside it, such as `[2]`, which becomes its `marks` (see [Marks](#marks)). Under “Write the capital of each country below.”, the item `18. Peru` has the stem “Peru”.
+2. Preserve the exact wording, punctuation, capitalization, symbols, units, and meaningful whitespace. A Question's stem is what the source prints at its number, and nothing more: never add the directions printed above a group of questions to each one, and take out a mark printed beside it, such as `[2]`, which becomes its `points` (see [Points](#points)). Under “Write the capital of each country below.”, the item `18. Peru` has the stem “Peru”.
 3. Preserve authored question and choice order.
 4. Preserve paragraphs, headings, blockquotes, lists, code, rules, tables, equations, hard breaks, links, images, captions, content printed side by side, and text formatting when present (see [Page layout: boxes and side-by-side content](#page-layout-boxes-and-side-by-side-content)).
 5. Do not rewrite, summarize, correct, simplify, or “improve” source content unless the user explicitly requests editing.
@@ -178,8 +178,8 @@ Perform a second pass against the original source and verify all of the followin
 - meaningful formatting, especially subscript and superscript, was preserved semantically;
 - every image, caption, table, list, equation, hard break, and safe link was preserved, and every table is a block of its own in a `content` list, never nested inside a paragraph;
 - every question printed under one number with lettered parts is one Multipart Question, each lettered part a Part and each `(i)`, `(ii)`, … beneath a part a Subpart of it, in printed order, with no label left in a stem;
-- every Part that holds Subparts has its lead-in as its `stem` and its `subparts`, and no `type`, `choices`, `suggestedAnswer` or `marks`;
-- every mark the source prints for a question, Part or Subpart is that one's `marks`, a positive whole number; no `[2]`, `(2 marks)` or `[Total: 9]` is left in a stem, choice or Suggested Answer; no Multipart Question carries `marks`; and no total was stored;
+- every Part that holds Subparts has its lead-in as its `stem` and its `subparts`, and no `type`, `choices`, `suggestedAnswer` or `points`;
+- every mark the source prints for a question, Part or Subpart is that one's `points`, a positive whole number; no `[2]`, `(2 marks)` or `[Total: 9]` is left in a stem, choice or Suggested Answer; no Multipart Question carries `points`; and no total was stored;
 - all Question, choice, item, word bank, Part, Part choice, Subpart and Subpart choice IDs are unique and sequential;
 - every meaningful image, including an image used as an answer choice, matching item or word bank answer, is a Pending Image;
 - every picture has its own Pending Image, with pictures printed side by side split rather than merged — one per `panel` of a `side-by-side`;
@@ -567,14 +567,14 @@ A Multipart Question:
 - leaves the source's labels — `12`, `2`, `(a)`, `(i)` — out of every stem, since Test Parrot numbers the Question and letters its Parts itself;
 - has `parts`: the questions asked about the material, in printed order, with IDs such as `q5-s1`, `q5-s2`, and so on;
 - gives `difficulty` and `topics` to the Multipart Question, never to a Part;
-- does not have `choices`, `prompts`, `wordBank`, `suggestedAnswer` or `marks` of its own — each Part carries its own answers and marks.
+- does not have `choices`, `prompts`, `wordBank`, `suggestedAnswer` or `points` of its own — each Part carries its own answers and points.
 
 Each Part has an `id` and its own `stem`, and either answers or holds Subparts (see [Subparts](#subparts)). A Part that answers has a `type`, which is one of exactly two:
 
 - A `multiple-choice` Part has at least two `choices` in authored order, with IDs such as `q5-s1-c1`, `q5-s1-c2`, and so on, zero or one of them `correct`, and no `suggestedAnswer`.
 - A `short-answer` Part has no `choices`, and may have a rich-text `suggestedAnswer` only when the source or user supplies one.
 
-A Part that answers may also have `marks` (see [Marks](#marks)).
+A Part that answers may also have `points` (see [Points](#points)).
 
 Leave the source's question numbers (`12`, `13`) out of each Part's stem, and its choice numbers or letters (`(1)`, `(2)`, `A.`) out of each choice — they are positions, not content. A key of `12: 4` marks the fourth choice of the Part numbered 12. Never infer correctness from general knowledge, and never reorder the Parts: they are lettered in place and often build on one another.
 
@@ -715,9 +715,9 @@ A Part that holds Subparts:
 
 - has an `id` and a `stem`: the lead-in printed between its letter and its first Subpart, or a blank paragraph when it prints none;
 - has `subparts`: at least one, in printed order, with IDs such as `q6-s2-s1`, `q6-s2-s2`, and so on;
-- has no `type`, `choices`, `suggestedAnswer` or `marks`: it answers nothing itself, and its Subparts carry the answers and the marks.
+- has no `type`, `choices`, `suggestedAnswer` or `points`: it answers nothing itself, and its Subparts carry the answers and the points.
 
-A Subpart is written exactly as a Part that answers — an `id`, a `type` of `multiple-choice` or `short-answer`, its own `stem`, the `choices` or optional `suggestedAnswer` its type calls for, and optional `marks` — and its choices have IDs such as `q6-s2-s1-c1`. A Subpart never holds Subparts of its own. Leave the `(i)`, `(ii)` labels out of each stem, and never reorder Subparts.
+A Subpart is written exactly as a Part that answers — an `id`, a `type` of `multiple-choice` or `short-answer`, its own `stem`, the `choices` or optional `suggestedAnswer` its type calls for, and optional `points` — and its choices have IDs such as `q6-s2-s1-c1`. A Subpart never holds Subparts of its own. Leave the `(i)`, `(ii)` labels out of each stem, and never reorder Subparts.
 
 A Part never both answers and holds Subparts. When a lettered part asks for an answer of its own and also has questions numbered beneath it, ask the user, or leave the block unconverted and say so.
 
@@ -742,7 +742,7 @@ A Part never both answers and holds Subparts. When a lettered part asks for an a
         "type": "document",
         "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Name the variable the class changed." }] }]
       },
-      "marks": 1
+      "points": 1
     },
     {
       "id": "q6-s2",
@@ -763,7 +763,7 @@ A Part never both answers and holds Subparts. When a lettered part asks for an a
             "type": "document",
             "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Describe the pattern in these results." }] }]
           },
-          "marks": 2
+          "points": 2
         },
         {
           "id": "q6-s2-s2",
@@ -772,7 +772,7 @@ A Part never both answers and holds Subparts. When a lettered part asks for an a
             "type": "document",
             "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Predict how far the car rolls from a 15 cm ramp." }] }]
           },
-          "marks": 1
+          "points": 1
         }
       ]
     }
@@ -780,20 +780,20 @@ A Part never both answers and holds Subparts. When a lettered part asks for an a
 }
 ```
 
-The `[Total: 4]` is written nowhere: Test Parrot adds up a Multipart Question's marks itself (see [Marks](#marks)).
+The `[Total: 4]` is written nowhere: Test Parrot adds up a Multipart Question's points itself (see [Points](#points)).
 
-## Marks
+## Points
 
-Many tests print what each question is worth beside it: `[2]`, `(2 marks)`, `(3 pts)`, `2 marks`, usually at the right margin or at the end of the answer line. That number is the question's **marks**, an optional positive whole number.
+Many tests print what each question is worth beside it: `[2]`, `(2 marks)`, `(3 pts)`, `2 marks`, usually at the right margin or at the end of the answer line. That number — its marks or points — is the question's **points**, an optional positive whole number.
 
-- Write it as `marks` on what the student answers: a Multiple Choice, True/False or Short Answer Question; a Matching Question, once for the whole set; a Part that answers; or a Subpart. `[2]` printed beside Part (a) is `"marks": 2` on that Part.
+- Write it as `points` on what the student answers: a Multiple Choice, True/False or Short Answer Question; a Matching Question, once for the whole set; a Part that answers; or a Subpart. `[2]` printed beside Part (a) is `"points": 2` on that Part.
 - **Never leave a mark in the text.** Take `[2]`, `(2 marks)` and the like out of the stem, choice or Suggested Answer where it is printed, as you take out question numbers.
-- **Never write a total.** A Multipart Question and a Part that holds Subparts have no `marks`: Test Parrot adds up their Parts' and Subparts' marks itself, and adds up the test's total. Drop a total the source prints for a question, such as `[Total: 9]` or `(10 marks in all)`, and a total for the whole paper, such as `Total: 60 marks`. If a printed total does not equal the sum of the marks you wrote beneath it, say so in the report.
-- A matching set that prints a mark beside each item has `marks` equal to their sum; one that prints a single mark for the set has that mark.
-- Directions that give every question under them the same worth, such as “Each question is worth 2 marks.”, give each of those questions `"marks": 2`, and stay in the section's `instructions` as printed.
-- Write only marks the source prints. Never guess a mark for a question that has none, and never give the rest of a test's questions a mark because some have one.
-- When a mark is not a positive whole number — `[½]`, `(0 marks)`, `[1–2]` — or you cannot tell which question it belongs to, leave `marks` out and say so in the report.
-- A section heading keeps its point value as printed, such as “Part B – Short Answer (10 points)” (see [Sections](#sections)): the heading is text, not marks.
+- **Never write a total.** A Multipart Question and a Part that holds Subparts have no `points`: Test Parrot adds up their Parts' and Subparts' points itself, and adds up the test's total. Drop a total the source prints for a question, such as `[Total: 9]` or `(10 marks in all)`, and a total for the whole paper, such as `Total: 60 marks`. If a printed total does not equal the sum of the points you wrote beneath it, say so in the report.
+- A matching set that prints a mark beside each item has `points` equal to their sum; one that prints a single mark for the set has that mark.
+- Directions that give every question under them the same worth, such as “Each question is worth 2 marks.”, give each of those questions `"points": 2`, and stay in the section's `instructions` as printed.
+- Write only points the source prints. Never guess a mark for a question that has none, and never give the rest of a test's questions a mark because some have one.
+- When a mark is not a positive whole number — `[½]`, `(0 marks)`, `[1–2]` — or you cannot tell which question it belongs to, leave `points` out and say so in the report.
+- A section heading keeps its point value as printed, such as “Part B – Short Answer (10 points)” (see [Sections](#sections)): the heading is text, not points.
 
 ```text
 7   Name the gas that plants give off in sunlight.   ........................   [1]
@@ -812,7 +812,7 @@ Many tests print what each question is worth beside it: `[2]`, `(2 marks)`, `(3 
       }
     ]
   },
-  "marks": 1
+  "points": 1
 }
 ```
 
@@ -1051,7 +1051,7 @@ A Question may have:
 - `difficulty`: `easy`, `medium`, or `hard`;
 - `topics`: an ordered array of strings.
 
-A Multipart Part or Subpart never has either: they belong to its Multipart Question. Marks are not Question Metadata: see [Marks](#marks).
+A Multipart Part or Subpart never has either: they belong to its Multipart Question. Points are not Question Metadata: see [Points](#points).
 
 A bank may have:
 
@@ -1063,7 +1063,7 @@ Include only information explicitly present in the source or supplied by the use
 
 ## Final validation and delivery
 
-Validate the package against the [package schema](./formats/package/0.1.0/schema.json), its Question Bank Record against the [Question Bank Record schema](./formats/question-bank/0.9.0/schema.json), and any Exam against the [Exam Record schema](./formats/exam/0.3.0/schema.json). Schema validation alone is not sufficient: also verify Question cardinality, unique IDs, that every matching `answer` names an ID in the same Question's `wordBank`, that every Multipart Part is Multiple Choice with at least two choices, Short Answer with none, or holds at least one Subpart and no `type`, `choices`, `suggestedAnswer` or `marks`, that every Subpart is Multiple Choice or Short Answer in the same way, that every `marks` is a positive whole number on a Question that is not Multipart, a Part that answers, or a Subpart, that every `side-by-side` has two or three panels and stands directly in a stem, safe links, and that every Pending Image follows the rules above.
+Validate the package against the [package schema](./formats/package/0.1.0/schema.json), its Question Bank Record against the [Question Bank Record schema](./formats/question-bank/0.9.0/schema.json), and any Exam against the [Exam Record schema](./formats/exam/0.3.0/schema.json). Schema validation alone is not sufficient: also verify Question cardinality, unique IDs, that every matching `answer` names an ID in the same Question's `wordBank`, that every Multipart Part is Multiple Choice with at least two choices, Short Answer with none, or holds at least one Subpart and no `type`, `choices`, `suggestedAnswer` or `points`, that every Subpart is Multiple Choice or Short Answer in the same way, that every `points` is a positive whole number on a Question that is not Multipart, a Part that answers, or a Subpart, that every `side-by-side` has two or three panels and stands directly in a stem, safe links, and that every Pending Image follows the rules above.
 
 Relevant import limits include:
 
@@ -1090,7 +1090,7 @@ Also include a concise conversion report containing:
 - whether triage treated the source as a test (the package has an Exam) or as questions only (no Exam), and for a test which Multiple Choice positions were given `columns`;
 - total Questions converted;
 - counts by Question Type (a matching set is one Question; also give its item count; a Multipart question is one Question; also give its Part and Subpart counts);
-- whether the source prints marks, and if so how many Questions, Parts and Subparts carry them, every mark left out because it was not a positive whole number or had no clear question, and every printed total that does not match the marks beneath it;
+- whether the source prints points, and if so how many Questions, Parts and Subparts carry them, every mark left out because it was not a positive whole number or had no clear question, and every printed total that does not match the points beneath it;
 - whether answer correctness was supplied by the source's answer key or left unmarked because it has none;
 - every question that names other questions by their source numbers, and every set of source numbers that became one Question (a Multipart question, a table to complete), so the teacher can check the numbering;
 - every image tag, and which Questions and answers use it as a picture, or how it was transcribed instead;

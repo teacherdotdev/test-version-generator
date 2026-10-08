@@ -36,7 +36,7 @@ import {
  *   as `@@PLUGINFILE@@/name`; Moodle 1.9 wrote one `<image_base64>` per
  *   question instead.
  *
- * A question's `<defaultgrade>`, its points in a quiz, is kept as its Marks
+ * A question's `<defaultgrade>`, its points in a quiz, is kept as its Points
  * when a whole number. Descriptions, which are text and not questions, are
  * skipped and noted.
  */

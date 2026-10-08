@@ -260,7 +260,7 @@ function importedPart(
   answerIds.set(part.id, id)
   return {
     type,
-    attrs: { id, columns: DEFAULT_COLUMNS, ...(part.marks !== undefined ? { marks: part.marks } : {}) },
+    attrs: { id, columns: DEFAULT_COLUMNS, ...(part.points !== undefined ? { points: part.points } : {}) },
     content: [
       { type: 'multipartPartStem', content: blocksOrBlank(part.stem) },
       part.type === 'multiple-choice'
@@ -347,7 +347,7 @@ export function importedQuestionIdentities(
       },
       ...(question.difficulty ? { difficulty: question.difficulty } : {}),
       ...(question.topics ? { topics: [...question.topics] } : {}),
-      ...(question.marks !== undefined && question.type !== 'multipart' ? { marks: question.marks } : {}),
+      ...(question.points !== undefined && question.type !== 'multipart' ? { points: question.points } : {}),
       ...(question.suggestedAnswer
         ? {
             suggestedAnswer: {
@@ -406,10 +406,10 @@ type CopyContext = {
    *  carries `subparts` carries an unknown optional field, ignored, and is
    *  read as the Part its `type` says. */
   subparts: boolean
-  /** Whether the record may carry Marks; an older record's `marks`, if it
+  /** Whether the record may carry Points; an older record's `points`, if it
    *  carries any, is an unknown optional field, ignored, and every Question
-   *  it holds is read as unmarked (ADR-0042). */
-  marks: boolean
+   *  it holds is read as unpointed (ADR-0042). */
+  points: boolean
   media: ReadonlyMap<string, { width: number; height: number }>
 }
 
@@ -423,8 +423,8 @@ const LOCKED_ANSWER_VERSIONS: ReadonlySet<string> = new Set(['0.9.0'])
 /** The versions that let a Part hold Subparts, added in 0.9.0. */
 const SUBPART_VERSIONS: ReadonlySet<string> = new Set(['0.9.0'])
 
-/** The versions that know Marks, added in 0.9.0. */
-const MARKS_VERSIONS: ReadonlySet<string> = new Set(['0.9.0'])
+/** The versions that know Points, added in 0.9.0. */
+const POINTS_VERSIONS: ReadonlySet<string> = new Set(['0.9.0'])
 
 function copyPicture(node: SemanticNode, context: CopyContext): Partial<SemanticNode> {
   const size =
@@ -495,7 +495,7 @@ function copyQuestion(question: QuestionBankRecordQuestion, context: CopyContext
     ...(part.suggestedAnswer !== undefined
       ? { suggestedAnswer: copyDocument(part.suggestedAnswer) }
       : {}),
-    ...(context.marks && part.marks !== undefined ? { marks: part.marks } : {}),
+    ...(context.points && part.points !== undefined ? { points: part.points } : {}),
   })
   return {
     id: question.id,
@@ -503,7 +503,7 @@ function copyQuestion(question: QuestionBankRecordQuestion, context: CopyContext
     stem: copyDocument(question.stem),
     ...(question.difficulty !== undefined ? { difficulty: question.difficulty } : {}),
     ...(question.topics !== undefined ? { topics: [...question.topics] } : {}),
-    ...(context.marks && question.marks !== undefined ? { marks: question.marks } : {}),
+    ...(context.points && question.points !== undefined ? { points: question.points } : {}),
     ...(question.choices !== undefined
       ? { choices: question.choices.map(copyChoice) }
       : {}),
@@ -762,7 +762,7 @@ function malformedPendingImage(
  */
 /** Why a Part that holds Subparts cannot stand, in a teacher's words. */
 function subpartsAndAnswers(where: string): string {
-  return `${where} holds Subparts, so it cannot also have a type, choices, a Suggested Answer or Marks of its own; each Subpart carries its own.`
+  return `${where} holds Subparts, so it cannot also have a type, choices, a Suggested Answer or Points of its own; each Subpart carries its own.`
 }
 
 /** A Part of a record that knows Subparts which holds them and answers too —
@@ -777,7 +777,7 @@ function partWithSubpartsAndAnswers(value: unknown, sourceVersion: string): stri
     if (!Array.isArray(parts)) continue
     for (const [partIndex, part] of parts.entries()) {
       if (typeof part !== 'object' || part === null || !('subparts' in part)) continue
-      if ('type' in part || 'choices' in part || 'suggestedAnswer' in part || 'marks' in part) {
+      if ('type' in part || 'choices' in part || 'suggestedAnswer' in part || 'points' in part) {
         const id = String((part as { id?: unknown }).id ?? '')
         const questionId = String((question as { id?: unknown }).id ?? '')
         return subpartsAndAnswers(`Part ${partLetter(partIndex)} (“${id}”) of Multipart Question “${questionId}”`)
@@ -787,18 +787,18 @@ function partWithSubpartsAndAnswers(value: unknown, sourceVersion: string): stri
   return undefined
 }
 
-/** A Multipart Question of a record that knows Marks which carries Marks of
+/** A Multipart Question of a record that knows Points which carries Points of
  *  its own — named before the schema would, since a Multipart question's
  *  worth is always its Parts' sum and a teacher can move the number there. */
-function multipartWithMarks(value: unknown, sourceVersion: string): string | undefined {
-  if (!MARKS_VERSIONS.has(sourceVersion)) return undefined
+function multipartWithPoints(value: unknown, sourceVersion: string): string | undefined {
+  if (!POINTS_VERSIONS.has(sourceVersion)) return undefined
   const questions = valueAt(value, '/bank/questions')
   if (!Array.isArray(questions)) return undefined
   for (const question of questions) {
     if (typeof question !== 'object' || question === null) continue
     const { type, id } = question as { type?: unknown; id?: unknown }
-    if (type === 'multipart' && 'marks' in question) {
-      return `Multipart Question “${String(id ?? '')}” is worth what its Parts and Subparts are, so it cannot have Marks of its own; give them to its Parts and Subparts.`
+    if (type === 'multipart' && 'points' in question) {
+      return `Multipart Question “${String(id ?? '')}” is worth what its Parts and Subparts are, so it cannot have Points of its own; give them to its Parts and Subparts.`
     }
   }
   return undefined
@@ -813,7 +813,7 @@ function parseWith(
   if (misplaced) throw new QuestionBankImportError('invalid-question', misplaced)
   const doubled = partWithSubpartsAndAnswers(value, sourceVersion)
   if (doubled) throw new QuestionBankImportError('invalid-question', doubled)
-  const summed = multipartWithMarks(value, sourceVersion)
+  const summed = multipartWithPoints(value, sourceVersion)
   if (summed) throw new QuestionBankImportError('invalid-question', summed)
   if (!validate(value)) {
     const unsafeLink = validate.errors?.find(
@@ -874,7 +874,7 @@ function parseWith(
           crops: SHARE_SIZE_VERSIONS.has(sourceVersion),
           locks: LOCKED_ANSWER_VERSIONS.has(sourceVersion),
           subparts: SUBPART_VERSIONS.has(sourceVersion),
-          marks: MARKS_VERSIONS.has(sourceVersion),
+          points: POINTS_VERSIONS.has(sourceVersion),
           media: new Map(record.media.map((asset) => [asset.id, asset])),
         }),
       ),

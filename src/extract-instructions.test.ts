@@ -80,9 +80,9 @@ describe('the JSON examples in the conversion instructions', () => {
     expect(checked).toBeGreaterThanOrEqual(10)
   })
 
-  test('show Marks on what a student answers and a Part holding Subparts', () => {
-    const marked = JSON.stringify(examples)
-    expect(marked).toContain('"marks":')
-    expect(marked).toContain('"subparts":')
+  test('show Points on what a student answers and a Part holding Subparts', () => {
+    const written = JSON.stringify(examples)
+    expect(written).toContain('"points":')
+    expect(written).toContain('"subparts":')
   })
 })

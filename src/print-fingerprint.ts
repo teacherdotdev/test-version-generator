@@ -157,7 +157,7 @@ const HEADING_CLASSES: Record<string, string> = {
 }
 
 /** The `[n]` an Answer Key line prints after its answer, read as text. */
-function marksText(node: XmlNode | undefined): Segment[] {
+function pointsText(node: XmlNode | undefined): Segment[] {
   const text = node ? normalizeSpace(textOf(node)).trim() : ''
   return text ? [{ kind: 'text', text: ` ${text}`, marks: [] }] : []
 }
@@ -205,7 +205,7 @@ function blockLines(
           const answer = find(part, 'answer-key-answer')
           const letter = find(part, 'answer-key-part-letter')
           const suggested = find(part, 'answer-key-suggested')
-          const partMarks = find(part, 'answer-key-marks')
+          const partPoints = find(part, 'answer-key-points')
           const text = answer ? normalizeSpace(textOf(answer)).trim() : ''
           return [
             line(
@@ -217,7 +217,7 @@ function blockLines(
                   marks: [],
                 },
                 ...(text ? [{ kind: 'text' as const, text, marks: ['strong'] }] : []),
-                ...marksText(partMarks),
+                ...pointsText(partPoints),
               ]),
             ),
             ...(suggested ? childBlocks(suggested, reader) : []),
@@ -228,9 +228,9 @@ function blockLines(
     const answer = find(node, 'answer-key-answer')
     const metadata = find(node, 'answer-key-metadata')
     const suggested = find(node, 'answer-key-suggested')
-    const entryMarks = find(node, 'answer-key-marks')
+    const entryPoints = find(node, 'answer-key-points')
     const number = node.children.find(
-      (child) => child !== answer && child !== metadata && child !== suggested && child !== entryMarks,
+      (child) => child !== answer && child !== metadata && child !== suggested && child !== entryPoints,
     )
     const letter = answer ? normalizeSpace(textOf(answer)).trim() : ''
     const metadataText = metadata
@@ -249,7 +249,7 @@ function blockLines(
             marks: [],
           },
           ...(letter ? [{ kind: 'text' as const, text: letter, marks: ['strong'] }] : []),
-          ...marksText(entryMarks),
+          ...pointsText(entryPoints),
           ...(metadataText
             ? [{ kind: 'text' as const, text: ` ${metadataText}`, marks: [] }]
             : []),

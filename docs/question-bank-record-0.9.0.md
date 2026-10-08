@@ -33,9 +33,9 @@ Every record has these required members:
 
 `0.9.0` also lets a Multipart Part hold **Subparts**: an optional `subparts` list in place of the Part's own `type` and answers, each Subpart shaped like a Part that answers (see [Subparts](#subparts)). A record with no `subparts` anywhere is otherwise the same in `0.8.0` and `0.9.0`.
 
-`0.9.0` also adds **Marks**: an optional whole number `marks` on what a student answers — a Multiple Choice, True/False, Matching or Short Answer Question, and a Part or Subpart that answers (see [Marks](#marks)). A record with no `marks` anywhere is otherwise the same in `0.8.0` and `0.9.0`.
+`0.9.0` also adds **Points**: an optional whole number `points` on what a student answers — a Multiple Choice, True/False, Matching or Short Answer Question, and a Part or Subpart that answers (see [Points](#points)). A record with no `points` anywhere is otherwise the same in `0.8.0` and `0.9.0`.
 
-An older consumer would read a `0.9.0` record without loss of structure but would shuffle a locked answer, changing what it means — and could not read a Part that holds Subparts at all, and would drop every Mark — which is why the change is a minor version rather than a patch. A consumer reads a `0.1.0`–`0.8.0` record as making no decision about any answer's lock, and as unmarked throughout; an older record's `locked` or `marks`, if one carries it, is an unknown optional field and is ignored.
+An older consumer would read a `0.9.0` record without loss of structure but would shuffle a locked answer, changing what it means — and could not read a Part that holds Subparts at all, and would drop every Point — which is why the change is a minor version rather than a patch. A consumer reads a `0.1.0`–`0.8.0` record as making no decision about any answer's lock, and as unpointed throughout; an older record's `locked` or `points`, if one carries it, is an unknown optional field and is ignored.
 
 `0.8.0` changed only how a Media Asset's bytes travel. Through `0.7.0` each Media Asset carried its bytes in the record as base64 `bytes`; from `0.8.0` it names its `file` instead, a path in the zip the record's package travels in (see [Media Assets](#media-assets) and [The package zip](#the-package-zip)). A picture of a few megabytes no longer makes the record a string of several million characters, and the record stays readable in a text editor. A record that declares no Media Asset — one with no pictures, or whose pictures are all Pending Images — is otherwise the same in `0.7.0` and `0.8.0`. A consumer reads a `0.1.0`–`0.7.0` record's base64 `bytes` as before.
 
@@ -61,21 +61,21 @@ The contract contains no IndexedDB store names, local URL paths, editor-specific
 
 ## Question Types and metadata
 
-Every Question has `id`, `type`, and a semantic `stem`. Optional Question Metadata consists of `difficulty` (`easy`, `medium`, or `hard`) and ordered `topics` strings. Any Question but a Multipart one may carry `marks` (see [Marks](#marks)).
+Every Question has `id`, `type`, and a semantic `stem`. Optional Question Metadata consists of `difficulty` (`easy`, `medium`, or `hard`) and ordered `topics` strings. Any Question but a Multipart one may carry `points` (see [Points](#points)).
 
-### Marks
+### Points
 
-**Marks** are what answering something correctly is worth: an optional positive whole number, `"marks": 2`, added in `0.9.0`. They belong to what a student answers, and to nothing larger:
+**Points** are what answering something correctly is worth: an optional positive whole number, `"points": 2`, added in `0.9.0`. They belong to what a student answers, and to nothing larger:
 
-- A `multiple-choice`, `true-false` or `short-answer` Question may carry `marks`.
-- A `matching` Question carries one `marks` for the whole set: its items share one Word Bank and are never Questions of their own.
-- A Part that answers, and a Subpart, may carry `marks`.
-- A `multipart` Question must not carry `marks`, and nor may a Part that holds Subparts. A Multipart Question's worth is always the sum of its answering Parts' and Subparts' Marks, and a paper's total the sum of its Questions', so neither is ever written and neither can disagree with what it adds up. A record that gives either one is rejected.
+- A `multiple-choice`, `true-false` or `short-answer` Question may carry `points`.
+- A `matching` Question carries one `points` for the whole set: its items share one Word Bank and are never Questions of their own.
+- A Part that answers, and a Subpart, may carry `points`.
+- A `multipart` Question must not carry `points`, and nor may a Part that holds Subparts. A Multipart Question's worth is always the sum of its answering Parts' and Subparts' Points, and a paper's total the sum of its Questions', so neither is ever written and neither can disagree with what it adds up. A record that gives either one is rejected.
 
-A Question, Part or Subpart without `marks` is **unmarked**, which is not the same as being worth nothing: it adds nothing to a sum, and a sum over nothing marked has no Marks rather than zero. Zero, a negative number and a fraction are not Marks and invalidate the record. Marks are the Question's, the same on every Exam that uses it; where they print on a paper is the paper's presentation, not part of the record.
+A Question, Part or Subpart without `points` is **unpointed**, which is not the same as being worth nothing: it adds nothing to a sum, and a sum over nothing with Points has no Points rather than zero. Zero, a negative number and a fraction are not Points and invalidate the record. Points are the Question's, the same on every Exam that uses it; where they print on a paper is the paper's presentation, not part of the record.
 
 ```json
-{ "id": "q4", "type": "short-answer", "stem": { "type": "document", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Explain why leaves are green." }] }] }, "marks": 3 }
+{ "id": "q4", "type": "short-answer", "stem": { "type": "document", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Explain why leaves are green." }] }] }, "points": 3 }
 ```
 
 ### Multiple Choice
@@ -128,9 +128,9 @@ Question Metadata — `difficulty` and `topics` — belongs to the Multipart Que
 
 #### Subparts
 
-A Part may instead hold `subparts`, added in `0.9.0`: a non-empty list of the questions it asks, in the order they are numbered (i), (ii)…, so that a paper's question 2(a)(i) is Subpart (i) of Part a of the second Question. Such a Part's `stem` is their shared lead-in, and **a Part either answers or holds Subparts, never both**: a Part with `subparts` must not contain `type`, `choices`, `suggestedAnswer` or `marks`, and a Part without them must have a `type`. A record that gives a Part both is rejected rather than read one way or the other.
+A Part may instead hold `subparts`, added in `0.9.0`: a non-empty list of the questions it asks, in the order they are numbered (i), (ii)…, so that a paper's question 2(a)(i) is Subpart (i) of Part a of the second Question. Such a Part's `stem` is their shared lead-in, and **a Part either answers or holds Subparts, never both**: a Part with `subparts` must not contain `type`, `choices`, `suggestedAnswer` or `points`, and a Part without them must have a `type`. A record that gives a Part both is rejected rather than read one way or the other.
 
-A Subpart is shaped exactly like a Part that answers — an `id`, a `type` of `multiple-choice` or `short-answer`, a `stem`, the `choices` or optional `suggestedAnswer` its type calls for, under the same rules, and optional `marks` — and must not contain `subparts` of its own: a Multipart Question is never deeper than its Parts' Subparts. A Subpart's `id` carries its Part's, `q1-s2-s1`, and its own Multiple Choice choice's carries the Subpart's, `q1-s2-s1-c1`. A producer must not reorder Subparts, for the reason it does not reorder Parts, and may shuffle a Multiple Choice Subpart's choices as it would a Part's. An answer key records one line for each Subpart in place of its Part.
+A Subpart is shaped exactly like a Part that answers — an `id`, a `type` of `multiple-choice` or `short-answer`, a `stem`, the `choices` or optional `suggestedAnswer` its type calls for, under the same rules, and optional `points` — and must not contain `subparts` of its own: a Multipart Question is never deeper than its Parts' Subparts. A Subpart's `id` carries its Part's, `q1-s2-s1`, and its own Multiple Choice choice's carries the Subpart's, `q1-s2-s1-c1`. A producer must not reorder Subparts, for the reason it does not reorder Parts, and may shuffle a Multiple Choice Subpart's choices as it would a Part's. An answer key records one line for each Subpart in place of its Part.
 
 A record older than `0.9.0` has no Subparts: every one of its Parts answers, and a `subparts` member it carries is an unknown optional field, ignored.
 

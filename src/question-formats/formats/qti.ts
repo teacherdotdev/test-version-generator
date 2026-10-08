@@ -40,7 +40,7 @@ import { imageMimeType, resolveEntryPath, safeEntryPath, zipFile } from '../zip'
  * Blackboard pool or test export is QTI 1.2 too, but is left to its own
  * reader, which knows Blackboard's ways.
  *
- * An item's points are kept as its Marks when they are a whole number:
+ * An item's points are kept as its Points when they are a whole number:
  * QTI 1.2's Canvas `points_possible`, Blackboard `qmd_absolutescore_max`,
  * `qmd_weighting`, or failing those its SCORE's `maxvalue`; QTI 2 and 3's
  * `MAXSCORE` outcome, or failing that its SCORE's `normalMaximum`. Feedback

@@ -10,7 +10,7 @@ import { isBlankRow, readSheet, type SheetRow } from './sheet'
  * `Prompt` or `Stem`; `Option A`, `Choice 1`, `Answer B` and the like;
  * `Correct answer`, `Answer` or `Key`; `Type`; `Topic`, `Category` or
  * `Tags`; `Points` or `Marks` — in any case and order. Points are kept as
- * the question's Marks when a whole number. Explanations, feedback and
+ * the question's Points when a whole number. Explanations, feedback and
  * difficulty have no place in a Test Parrot question and are left out.
  *
  * The correct answer may be a letter, a 1-based number, the answer's own

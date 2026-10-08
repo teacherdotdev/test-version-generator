@@ -96,8 +96,8 @@ describe('PDF Export Adapter', () => {
     expect(text).toContain('Titration')
   })
 
-  test('prints the Answer Key’s Marks and total, and no Marks on the test', async () => {
-    const { plans } = plansOf('a marked paper')
+  test('prints the Answer Key’s Points and total, and no Points on the test', async () => {
+    const { plans } = plansOf('a paper with points')
     const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
     const pages = await Promise.all(
@@ -110,8 +110,8 @@ describe('PDF Export Adapter', () => {
     const testPages = pages.slice(0, plans[0]!.pages.length).join(' ')
     const keyPages = pages.slice(plans[0]!.pages.length).join(' ')
     expect(testPages).not.toMatch(/\[\d+\]|Total/)
-    expect(keyPages).toContain('Total: 9 marks')
-    for (const marks of ['[1]', '[2]', '[3]']) expect(keyPages).toContain(marks)
+    expect(keyPages).toContain('Total: 9 points')
+    for (const points of ['[1]', '[2]', '[3]']) expect(keyPages).toContain(points)
   })
 
   test('writes authored hyperlinks as PDF link annotations', async () => {
@@ -241,8 +241,8 @@ describe('PDF Export Adapter', () => {
     expect(key).toContain('b (ii).')
   })
 
-  test('draws an Exam Board paper on A4: its Cover Page, labels, Marks at the right margin and running furniture', async () => {
-    const { plans } = plansOf('a marked paper in the exam board paper style')
+  test('draws an Exam Board paper on A4: its Cover Page, labels, Points at the right margin and running furniture', async () => {
+    const { plans } = plansOf('a paper with points in the exam board paper style')
     const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const pdf = await PDFDocument.load(bytes)
     for (const page of pdf.getPages()) {
@@ -264,7 +264,7 @@ describe('PDF Export Adapter', () => {
       'Answer every question.', 'The total mark for this paper is 16.']) {
       expect(cover).toContain(text)
     }
-    // Labels and Marks on the question pages, each `[n]` at the right margin.
+    // Labels and Points on the question pages, each `[n]` at the right margin.
     const test = pages.slice(1, testPageCount).flat()
     const texts = test.map((item) => item.text)
     for (const text of ['(a)', '(b)', '(i)', '(ii)', '[1]', '[2]', '[3]', '[6]', '[Total: 9]']) expect(texts).toContain(text)

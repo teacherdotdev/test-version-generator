@@ -11,12 +11,12 @@
 // reads a page's furniture: a header, a footer and a page number belong to the
 // page, not to the items on it.
 
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { TITLE_PX, sectionHeadingStyles } from './export-typography'
 import { Check, Lock, RotateCcw } from 'lucide-react'
 import { DifficultyBadge, TopicBadge } from './badges'
 import { DocView } from './doc-view'
-import { marksLabel } from './marks'
+import { pointsLabel } from './points'
 import {
   hasAnswerBlank,
   headerHeightOf,
@@ -24,7 +24,7 @@ import {
   printsNumberLine,
   type AnswerKeyEntryItem,
   type AnswerKeyHeadingItem,
-  answerKeyMarksText,
+  answerKeyPointsText,
   answerKeyTotalText,
   type AnswerKeySectionItem,
   COVER_INSTRUCTIONS_HEADING,
@@ -229,11 +229,31 @@ export function WorkSpaceView({ space }: { space: PlannedWorkSpace }) {
   )
 }
 
-// Marks a Paper Style prints after an answer or a question, against the
+// Points a Paper Style prints after an answer or a question, against the
 // right margin on a line of their own: `[2]`, `[Total: 9]`. A paragraph, so it
 // measures, prints and reads back as one.
-export function MarksAfter({ text }: { text: string }) {
-  return <p className="marks-after">{text}</p>
+export function PointsAfter({ text }: { text: string }) {
+  return <p className="points-after">{text}</p>
+}
+
+/** What a printed `[n]` is the Points of: a Part or Subpart by its id, or —
+ *  `partId` `null` — the question itself. */
+export type PrintedPoints = { partId: string | null; points: number; text: string }
+
+/** Draws a printed `[n]` in place of `PointsAfter`. The sheet uses it to make
+ *  the `[n]` the control that changes the Points it shows; it must take the
+ *  same height `PointsAfter` does, since the page was measured with that. */
+export type RenderPrintedPoints = (printed: PrintedPoints) => ReactNode
+
+function printedPoints(
+  text: string,
+  partId: string | null,
+  points: number | undefined,
+  render: RenderPrintedPoints | undefined,
+): ReactNode {
+  return render && points !== undefined
+    ? render({ partId, points, text })
+    : <PointsAfter text={text} />
 }
 
 // One Part of a Multipart question, drawn the way a question of its kind is, one level
@@ -245,14 +265,13 @@ export function PartContent({
   part,
   showCorrectness = false,
   renderWorkSpace,
-  renderMarks,
+  renderPoints,
 }: {
   part: PlannedPart
   showCorrectness?: boolean
   renderWorkSpace?: (partId: string, space: PlannedWorkSpace) => ReactNode
-  /** The sheet's Marks control for a Part or Subpart that answers; drawn
-   *  nowhere else, and taking no height where it is. */
-  renderMarks?: (partId: string, marks: number | undefined) => ReactNode
+  /** How the sheet draws a Part's or Subpart's printed `[n]`. */
+  renderPoints?: RenderPrintedPoints
 }) {
   // A piece continued from an earlier page keeps the letter column, empty, so
   // its Subparts stand where they would have under the lead-in.
@@ -266,7 +285,6 @@ export function PartContent({
       <div className="part-letter">
         {!part.continued && <span className="part-count">{printedLabel(part.letter, part.printed)}</span>}
       </div>
-      {renderMarks && !part.continued && part.type !== 'subparts' && renderMarks(part.id, part.marks)}
       <div className="part-body">
         {!part.continued && <DocView className="question-stem" content={part.stem} />}
         {part.grid && <ChoiceGridView grid={part.grid} showCorrectness={showCorrectness} />}
@@ -274,7 +292,8 @@ export function PartContent({
           && (renderWorkSpace
             ? renderWorkSpace(part.id, part.workSpace)
             : <WorkSpaceView space={part.workSpace} />)}
-        {!part.continued && part.marksAfter && <MarksAfter text={part.marksAfter} />}
+        {!part.continued && part.pointsAfter
+          && printedPoints(part.pointsAfter, part.id, part.points, renderPoints)}
         {part.subparts.length > 0 && (
           <div className="multipart-subparts-print">
             {part.subparts.map((subpart) => (
@@ -283,7 +302,7 @@ export function PartContent({
                 subpart={subpart}
                 showCorrectness={showCorrectness}
                 renderWorkSpace={renderWorkSpace}
-                renderMarks={renderMarks}
+                renderPoints={renderPoints}
               />
             ))}
           </div>
@@ -299,12 +318,12 @@ function SubpartContent({
   subpart,
   showCorrectness,
   renderWorkSpace,
-  renderMarks,
+  renderPoints,
 }: {
   subpart: PlannedSubpart
   showCorrectness: boolean
   renderWorkSpace?: (partId: string, space: PlannedWorkSpace) => ReactNode
-  renderMarks?: (partId: string, marks: number | undefined) => ReactNode
+  renderPoints?: RenderPrintedPoints
 }) {
   return (
     <div
@@ -315,7 +334,6 @@ function SubpartContent({
       <div className="part-letter">
         <span className="part-count">{printedLabel(subpart.label, subpart.printed)}</span>
       </div>
-      {renderMarks?.(subpart.id, subpart.marks)}
       <div className="part-body">
         <DocView className="question-stem" content={subpart.stem} />
         {subpart.grid && <ChoiceGridView grid={subpart.grid} showCorrectness={showCorrectness} />}
@@ -323,7 +341,8 @@ function SubpartContent({
           && (renderWorkSpace
             ? renderWorkSpace(subpart.id, subpart.workSpace)
             : <WorkSpaceView space={subpart.workSpace} />)}
-        {subpart.marksAfter && <MarksAfter text={subpart.marksAfter} />}
+        {subpart.pointsAfter
+          && printedPoints(subpart.pointsAfter, subpart.id, subpart.points, renderPoints)}
       </div>
     </div>
   )
@@ -337,7 +356,7 @@ export function QuestionContent({
   item,
   showCorrectness = false,
   renderPartWorkSpace,
-  renderPartMarks,
+  renderPoints,
 }: {
   item: QuestionItem
   /** Correct-answer feedback is authoring chrome, never export content. */
@@ -345,8 +364,9 @@ export function QuestionContent({
   /** The sheet's own drawing of a Short Answer Part's work space, with its
    *  sizing handle; everywhere else the space is drawn plain. */
   renderPartWorkSpace?: (partId: string, space: PlannedWorkSpace) => ReactNode
-  /** The sheet's Marks control for each Part or Subpart that answers. */
-  renderPartMarks?: (partId: string, marks: number | undefined) => ReactNode
+  /** How the sheet draws each printed `[n]` — the question's, a Part's or a
+   *  Subpart's. A total, which no one sets, is always drawn plain. */
+  renderPoints?: RenderPrintedPoints
 }) {
   const numbered = printsNumberLine(item)
   const column = numberColumnOf(item.question)
@@ -387,7 +407,7 @@ export function QuestionContent({
                 part={part}
                 showCorrectness={showCorrectness}
                 renderWorkSpace={renderPartWorkSpace}
-                renderMarks={renderPartMarks}
+                renderPoints={renderPoints}
               />
             ))}
           </div>
@@ -396,9 +416,18 @@ export function QuestionContent({
       {item.matching && (
         <MatchingSetView set={item.matching} showCorrectness={showCorrectness} />
       )}
-      {item.closingMarks && (
+      {item.closingPoints && (
         <div className="question-closing">
-          {item.closingMarks.map((text, index) => <MarksAfter key={index} text={text} />)}
+          {item.closingPoints.map((text, index) => (
+            <Fragment key={index}>
+              {/* Only a question that is not Multipart prints its own Points
+                  here, and always first (`closingPointsOf` in export-plan.ts);
+                  a Multipart question's total, and any Section's, follow. */}
+              {index === 0 && !item.question.parts
+                ? printedPoints(text, null, item.question.totalPoints, renderPoints)
+                : <PointsAfter text={text} />}
+            </Fragment>
+          ))}
         </div>
       )}
     </>
@@ -459,26 +488,26 @@ export function SectionHeadingContent({ item }: { item: SectionHeadingItem }) {
   )
 }
 
-// The paper's total Marks stand at the right of the heading's own line, so
+// The paper's total Points stand at the right of the heading's own line, so
 // the heading measures the same height with a total as without one.
 export function AnswerKeyHeading({ item }: { item: AnswerKeyHeadingItem }) {
   return (
     <h2 className="answer-key-heading">
       Answer Section
-      {item.totalMarks !== undefined && (
+      {item.totalPoints !== undefined && (
         <>
           {' '}
-          <span className="answer-key-total">{answerKeyTotalText(item.totalMarks)}</span>
+          <span className="answer-key-total">{answerKeyTotalText(item.totalPoints)}</span>
         </>
       )}
     </h2>
   )
 }
 
-/** Marks as the Answer Key prints them after an answer: `[2]`. */
-function AnswerKeyMarks({ marks }: { marks: number | undefined }) {
-  if (marks === undefined) return null
-  return <span className="answer-key-marks" aria-label={marksLabel(marks)}>{answerKeyMarksText(marks)}</span>
+/** Points as the Answer Key prints them after an answer: `[2]`. */
+function AnswerKeyPoints({ points }: { points: number | undefined }) {
+  if (points === undefined) return null
+  return <span className="answer-key-points" aria-label={pointsLabel(points)}>{answerKeyPointsText(points)}</span>
 }
 
 export function AnswerKeySection({ item }: { item: AnswerKeySectionItem }) {
@@ -488,13 +517,13 @@ export function AnswerKeySection({ item }: { item: AnswerKeySectionItem }) {
 export function AnswerKeyEntry({ item }: { item: AnswerKeyEntryItem }) {
   return (
     <div
-      className={item.marks !== undefined ? 'answer-key-entry answer-key-entry--marked' : 'answer-key-entry'}
+      className={item.points !== undefined ? 'answer-key-entry answer-key-entry--pointed' : 'answer-key-entry'}
     >
       <span>{item.number}.</span>
       <span className="answer-key-answer" aria-label={item.letter ?? 'Blank answer'}>
         {item.letter}
       </span>
-      <AnswerKeyMarks marks={item.marks} />
+      <AnswerKeyPoints points={item.points} />
       {(item.difficulty || (item.topics?.length ?? 0) > 0) && (
         <span className="answer-key-metadata" aria-label="Question Metadata">
           {item.difficulty && <DifficultyBadge difficulty={item.difficulty} />}
@@ -521,7 +550,7 @@ export function AnswerKeyEntry({ item }: { item: AnswerKeyEntryItem }) {
               >
                 {part.answer}
               </span>
-              <AnswerKeyMarks marks={part.marks} />
+              <AnswerKeyPoints points={part.points} />
               {part.suggestedAnswer && (
                 <DocView className="answer-key-suggested" content={part.suggestedAnswer} />
               )}

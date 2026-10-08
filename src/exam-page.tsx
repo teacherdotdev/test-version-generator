@@ -29,6 +29,7 @@ import {
   SectionHeadingContent,
   WorkSpaceView,
   type IdentityLineEditor,
+  type RenderPrintedPoints,
 } from './page-item-view'
 import { headerLineOf, type HeaderLine } from './page-header'
 import { pageContentStyle } from './export-typography'
@@ -77,7 +78,7 @@ import {
 import type { Selection } from './use-selection'
 import { selectAllPaneProps, useSelectAll } from './use-select-all'
 import { answerVisibilityNote } from './hidden-answers'
-import { marksLabel, parseMarksInput } from './marks'
+import { pointsLabel, parsePointsInput } from './points'
 import { shownIncorrectChoices, shownIncorrectMenuOf, type ShownIncorrectMenu } from './question-menu'
 import type { SectionHeadingChange } from './section-headings'
 import { sectionHeadingStyles } from './export-typography'
@@ -156,9 +157,9 @@ const DEFAULT_WORK_SPACE_HEIGHT = 4 * WORK_SPACE_LINE_PITCH
 
 export type SetWorkSpace = (questionIds: readonly string[], patch: Partial<WorkSpace>) => void
 
-/** Sets the Marks of a question — `partId` `null` — or of one of a Multipart
- *  question's Parts or Subparts; `null` marks clears them. A bank edit. */
-export type SetMarks = (questionId: string, partId: string | null, marks: number | null) => void
+/** Sets the Points of a question — `partId` `null` — or of one of a Multipart
+ *  question's Parts or Subparts; `null` points clears them. A bank edit. */
+export type SetPoints = (questionId: string, partId: string | null, points: number | null) => void
 
 /** The Answer columns submenu, for a Multiple Choice question or Part. */
 function columnsMenu(
@@ -661,36 +662,37 @@ function WorkSpaceHandle({
 // selectable, editable and droppable. A continued piece is chrome-free — its
 // handles, and everything they do, belong to the piece that carries the
 // question's number.
-// What a question, Part or Subpart is worth, on the sheet: a small chip in
-// the right margin beside it, an editor annotation like the handles. It is
-// never drawn into the printed page — the Export Preview draws the plan
-// without it, and no current Paper Style prints Marks on the test — so it
-// takes none of the height packing measured. A marked one always shows its
-// Marks; an unmarked one offers "Marks" only while its question is hovered or
-// selected, so a sheet nobody is marking reads as paper. Clicking turns it into
-// a field: a whole number sets the Marks, an empty field clears them, and
-// anything else changes nothing. Marks belong to the Question, so what is typed
-// here edits the Question in its bank (ADR-0042).
-function MarksChip({
+// A printed `[n]` on the sheet, under a Paper Style that prints Points
+// (ADR-0045): the very text the page prints, made the control that changes
+// the Points it shows. Points never show on the sheet otherwise — like
+// Question Metadata, only where the style prints them — and the Export
+// Preview draws the plan without this. Clicking turns the `[n]` into a field
+// of the same height, so the page measured with the plain text still fits: a
+// whole number sets the Points, an empty field clears them, and anything else
+// changes nothing. Points belong to the Question, so what is typed here edits
+// the Question in its bank (ADR-0042).
+function EditablePoints({
   label,
-  marks,
+  points,
+  text,
   onSet,
 }: {
-  /** What it is the Marks of, for a screen reader: "question 3", "question 3 part b (ii)". */
+  /** What it is the Points of, for a screen reader: "question 3", "question 3 part b (ii)". */
   label: string
-  marks: number | undefined
-  /** Absent for a Multipart question, whose Marks are its Parts' sum. */
-  onSet?: (marks: number | null) => void
+  points: number
+  /** The `[n]` as the style prints it. */
+  text: string
+  onSet: (points: number | null) => void
 }) {
   const [editing, setEditing] = useState(false)
-  const [text, setText] = useState('')
+  const [typed, setTyped] = useState('')
   const finish = (keep: boolean) => {
     setEditing(false)
-    if (!keep || !onSet) return
-    const next = parseMarksInput(text)
-    if (next !== undefined && next !== (marks ?? null)) onSet(next)
+    if (!keep) return
+    const next = parsePointsInput(typed)
+    if (next !== undefined && next !== points) onSet(next)
   }
-  // Nothing in or on the chip is the question's own gesture: no selecting,
+  // Nothing in or on the field is the question's own gesture: no selecting,
   // dragging or opening the editor from it.
   const stop = {
     onClick: (event: { stopPropagation: () => void }) => event.stopPropagation(),
@@ -698,33 +700,20 @@ function MarksChip({
     onPointerDown: (event: { stopPropagation: () => void }) => event.stopPropagation(),
     onContextMenu: (event: { stopPropagation: () => void }) => event.stopPropagation(),
   }
-  if (!onSet) {
-    if (marks === undefined) return null
-    return (
-      <span
-        className="marks-chip marks-chip--sum"
-        data-marked="true"
-        title="The sum of its Parts' marks"
-        aria-label={`Marks for ${label}: ${marksLabel(marks)}, the sum of its parts`}
-        {...stop}
-      >
-        {marksLabel(marks)}
-      </span>
-    )
-  }
-  if (editing) {
-    return (
-      <span className="marks-chip marks-chip--editing" {...stop}>
+  return (
+    <p className="points-after">
+      {editing ? (
         <input
-          className="marks-chip-input"
+          className="points-after-input"
           type="text"
           inputMode="numeric"
-          aria-label={`Marks for ${label}`}
-          aria-invalid={parseMarksInput(text) === undefined ? true : undefined}
+          aria-label={`Points for ${label}`}
+          aria-invalid={parsePointsInput(typed) === undefined ? true : undefined}
           size={3}
           autoFocus
-          value={text}
-          onChange={(event) => setText(event.target.value)}
+          value={typed}
+          {...stop}
+          onChange={(event) => setTyped(event.target.value)}
           onBlur={() => finish(true)}
           onKeyDown={(event) => {
             event.stopPropagation()
@@ -737,30 +726,28 @@ function MarksChip({
             }
           }}
         />
-        <span aria-hidden="true">marks</span>
-      </span>
-    )
-  }
-  return (
-    <button
-      type="button"
-      className="marks-chip"
-      data-marked={marks !== undefined ? 'true' : undefined}
-      aria-label={marks === undefined ? `Set marks for ${label}` : `Marks for ${label}: ${marksLabel(marks)}`}
-      title={marks === undefined ? 'Set marks' : 'Change marks'}
-      {...stop}
-      onClick={(event) => {
-        event.stopPropagation()
-        setText(marks === undefined ? '' : String(marks))
-        setEditing(true)
-      }}
-    >
-      {marks === undefined ? 'Marks' : marksLabel(marks)}
-    </button>
+      ) : (
+        <button
+          type="button"
+          className="points-after-button"
+          aria-label={`Points for ${label}: ${pointsLabel(points)}`}
+          title="Change points"
+          {...stop}
+          onClick={(event) => {
+            event.stopPropagation()
+            setTyped(String(points))
+            setEditing(true)
+          }}
+        >
+          {text}
+        </button>
+      )}
+    </p>
   )
 }
 
-function QuestionView({
+/** A question on the sheet, with its chrome. Exported for its tests. */
+export function QuestionView({
   item,
   sectionId,
   selected,
@@ -769,7 +756,7 @@ function QuestionView({
   onEdit,
   onOpenMenu,
   onSetWorkSpace,
-  onSetMarks,
+  onSetPoints,
   maxWorkSpace,
   dragging,
   dropped,
@@ -783,8 +770,8 @@ function QuestionView({
   /** The Question Section this question is in, which a gesture reads. */
   sectionId: string
   onSetWorkSpace: SetWorkSpace
-  /** Present in the editor: sets Marks from the sheet. */
-  onSetMarks?: SetMarks
+  /** Present in the editor: sets Points from the sheet. */
+  onSetPoints?: SetPoints
   maxWorkSpace: number
   selected: boolean
   orderedIds: readonly string[]
@@ -859,17 +846,17 @@ function QuestionView({
     )
   }
 
-  // A Part's or Subpart's Marks, beside it in the right margin. A Part that
-  // holds Subparts has none of its own, and a Part continued from an earlier
-  // page shows its Subparts' only.
-  const renderPartMarks = onSetMarks
-    ? (partId: string, marks: number | undefined) => {
-        const here = answeringHere.find(({ part }) => part.id === partId)
+  // The `[n]` the Paper Style prints after the question or one of its Parts
+  // or Subparts, as the control that changes it.
+  const renderPoints: RenderPrintedPoints | undefined = onSetPoints
+    ? ({ partId, points, text }) => {
+        const here = partId === null ? undefined : answeringHere.find(({ part }) => part.id === partId)
         return (
-          <MarksChip
-            label={`question ${numberLabelOf(question)} part ${here?.name ?? ''}`}
-            marks={marks}
-            onSet={(next) => onSetMarks(question.id, partId, next)}
+          <EditablePoints
+            label={`question ${numberLabelOf(question)}${here ? ` part ${here.name}` : ''}`}
+            points={points}
+            text={text}
+            onSet={(next) => onSetPoints(question.id, partId, next)}
           />
         )
       }
@@ -1007,15 +994,8 @@ function QuestionView({
         item={shown}
         showCorrectness
         renderPartWorkSpace={renderPartWorkSpace}
-        renderPartMarks={renderPartMarks}
+        renderPoints={renderPoints}
       />
-      {item.numbered && onSetMarks && (
-        <MarksChip
-          label={`question ${numberLabelOf(question)}`}
-          marks={question.totalMarks}
-          onSet={question.parts ? undefined : (next) => onSetMarks(question.id, null, next)}
-        />
-      )}
       {/* Editing chrome, like the work space bar: placed in the gap below
           the answers, so it takes none of the height the page measured. */}
       {item.grid && question.answerVisibility && (
@@ -1363,7 +1343,7 @@ function PageItemView({
   onEdit,
   onOpenMenu,
   onSetWorkSpace,
-  onSetMarks,
+  onSetPoints,
   maxWorkSpace,
   draggedQuestionIds,
   droppedQuestionIds,
@@ -1398,7 +1378,7 @@ function PageItemView({
   onEdit: (questionId: string) => void
   onOpenMenu: (questionId: string, point: MenuPoint, side?: MenuSide) => void
   onSetWorkSpace: SetWorkSpace
-  onSetMarks?: SetMarks
+  onSetPoints?: SetPoints
   /** The most room a work space may be dragged to on this sheet. */
   maxWorkSpace: number
   draggedQuestionIds: ReadonlySet<string>
@@ -1443,7 +1423,7 @@ function PageItemView({
           onEdit={onEdit}
           onOpenMenu={onOpenMenu}
           onSetWorkSpace={onSetWorkSpace}
-          onSetMarks={onSetMarks}
+          onSetPoints={onSetPoints}
           maxWorkSpace={maxWorkSpace}
           dragging={draggedQuestionIds.has(item.question.id)}
           dropped={droppedQuestionIds.has(item.question.id) && item.numbered}
@@ -1700,7 +1680,7 @@ export function ExamPage({
   onSetColumns,
   onSetWordBankLayout,
   onSetWorkSpace,
-  onSetMarks,
+  onSetPoints,
   onTitleChange,
   onSectionHeadingChange,
   onMoveSection,
@@ -1738,9 +1718,9 @@ export function ExamPage({
   onSetWordBankLayout?: (questionIds: readonly string[], layout: WordBankLayout) => void
   /** Changes the room left for work below Short Answer questions. */
   onSetWorkSpace: SetWorkSpace
-  /** Sets Marks from the sheet, editing the Question in its bank. Absent
-   *  offers no Marks controls. */
-  onSetMarks?: SetMarks
+  /** Sets Points from the sheet, editing the Question in its bank. Absent
+   *  offers no Points controls. */
+  onSetPoints?: SetPoints
   /** Renames the Exam from its own title line. See `PageHeaderContent`. */
   onTitleChange?: (title: string) => void
   /** Rewords a section heading from where it prints. See `EditableSectionHeading`. */
@@ -2234,7 +2214,7 @@ export function ExamPage({
                 onEdit={onEdit}
                 onOpenMenu={openMenu}
                 onSetWorkSpace={onSetWorkSpace}
-                onSetMarks={onSetMarks}
+                onSetPoints={onSetPoints}
                 maxWorkSpace={maxWorkSpaceHeight(plan.pageSize)}
                 draggedQuestionIds={draggedQuestionIds}
                 droppedQuestionIds={droppedQuestionIds}

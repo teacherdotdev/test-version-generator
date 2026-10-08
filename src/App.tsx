@@ -74,15 +74,13 @@ import {
 import type { Difficulty, Question, QuestionType, SectionTarget } from './exam'
 import { DifficultyBadge, TopicBadge } from './badges'
 import {
-  marksLabel,
-  marksOfQuestion,
-  marksOnQuestion,
-  parseMarksInput,
-  totalMarksOf,
-  unmarkedCountOf,
-  withPartMarks,
-  withQuestionMarks,
-} from './marks'
+  pointsLabel,
+  pointsOfQuestion,
+  pointsOnQuestion,
+  parsePointsInput,
+  withPartPoints,
+  withQuestionPoints,
+} from './points'
 import { bankQuestionById } from './question-bank'
 import { createExamStore, loadExamStore, type ExamStore } from './exam-store'
 import { ExamPage } from './exam-page'
@@ -122,7 +120,6 @@ import { storedPicture } from './resolved-pictures'
 import { pendingImagesOfQuestions, withStoredPictures, type PendingImageResolution, type StoredPicture } from './pending-images'
 import {
   AlignLeft,
-  Award,
   BookOpenText,
   Captions,
   ClipboardList,
@@ -473,29 +470,6 @@ function FrontMatterSelect({
   )
 }
 
-/**
- * The Exam's total Marks, beside its save state: counted from its Questions
- * whenever they change, so it follows every question added, removed or
- * re-marked (ADR-0042). Nothing shows until some Question is marked; a
- * partly marked Exam says how many have none, as a note rather than a
- * warning, since an Exam is never kept from export for it.
- */
-function MarksSummary({ questions }: { questions: readonly Question[] }) {
-  const total = totalMarksOf(questions)
-  if (total === undefined) return null
-  const unmarked = unmarkedCountOf(questions)
-  return (
-    <span className="exam-marks-summary" role="status" aria-live="polite">
-      <span className="exam-marks-total">{marksLabel(total)}</span>
-      {unmarked > 0 && (
-        <span className="exam-marks-note">
-          {unmarked} {unmarked === 1 ? 'question has' : 'questions have'} no marks
-        </span>
-      )}
-    </span>
-  )
-}
-
 function CrepeQuestion({
   value,
   onChange,
@@ -756,15 +730,15 @@ function QuestionDialog({
   )
   const [difficulty, setDifficulty] = useState<Difficulty | ''>(question.difficulty ?? '')
   const [topics, setTopics] = useState<readonly string[]>(topicsOf(question))
-  // What the Marks field holds as typed; read when the question is saved, so
-  // a half-typed value is never mistaken for one (see `parseMarksInput`).
-  const [marksText, setMarksText] = useState(
-    question.marks !== undefined && marksOnQuestion(question) ? String(question.marks) : '',
+  // What the Points field holds as typed; read when the question is saved, so
+  // a half-typed value is never mistaken for one (see `parsePointsInput`).
+  const [pointsText, setPointsText] = useState(
+    question.points !== undefined && pointsOnQuestion(question) ? String(question.points) : '',
   )
-  const marksValue = parseMarksInput(marksText)
-  // A Multipart question's Marks are its Parts' and Subparts' sum, kept up to
+  const pointsValue = parsePointsInput(pointsText)
+  // A Multipart question's Points are its Parts' and Subparts' sum, kept up to
   // date as they are typed in the editor below (ADR-0042).
-  const [partsMarks, setPartsMarks] = useState(() => marksOfQuestion(question))
+  const [partsPoints, setPartsPoints] = useState(() => pointsOfQuestion(question))
   const latestDoc = useRef(doc)
   const readEditorDocument = useRef<(() => ProseMirrorJSON) | null>(null)
   const dialog = useRef<HTMLElement>(null)
@@ -822,12 +796,12 @@ function QuestionDialog({
       else delete saved.difficulty
       if (topics.length > 0) saved.topics = [...topics]
       else delete saved.topics
-      // Marks live on the Question for every type but Multipart, whose Parts
-      // carry theirs in the document. What cannot be read as Marks keeps the
-      // Marks the question had.
-      if (!marksOnQuestion(saved)) delete saved.marks
-      else if (marksValue === null) delete saved.marks
-      else if (marksValue !== undefined) saved.marks = marksValue
+      // Points live on the Question for every type but Multipart, whose Parts
+      // carry theirs in the document. What cannot be read as Points keeps the
+      // Points the question had.
+      if (!pointsOnQuestion(saved)) delete saved.points
+      else if (pointsValue === null) delete saved.points
+      else if (pointsValue !== undefined) saved.points = pointsValue
       if (type === 'open') {
         const answer = suggestedAnswerDocumentOf(edited)
         if (answer) saved.suggestedAnswer = await ownDocumentMedia(answer)
@@ -967,27 +941,23 @@ function QuestionDialog({
             renderValue={(value) => <TopicBadge topic={value} />}
           />
           <div className="front-matter-field">
-            <span className="front-matter-label">
-              <Award />
-              Marks
-            </span>
-            {marksOnQuestion(question) ? (
-              <span className="front-matter-marks">
+            <span className="front-matter-label">Points</span>
+            {pointsOnQuestion(question) ? (
+              <span className="front-matter-points">
                 <input
-                  className="front-matter-marks-input"
+                  className="front-matter-value front-matter-points-input"
                   type="text"
                   inputMode="numeric"
-                  aria-label="Marks"
-                  aria-invalid={marksValue === undefined ? true : undefined}
-                  placeholder="–"
-                  size={2}
-                  value={marksText}
-                  onChange={(event) => setMarksText(event.target.value)}
+                  aria-label="Points"
+                  aria-invalid={pointsValue === undefined ? true : undefined}
+                  placeholder="Empty"
+                  value={pointsText}
+                  onChange={(event) => setPointsText(event.target.value)}
                   onBlur={() => {
                     // Put back what was there when the field is left holding
-                    // something that is not Marks.
-                    if (marksValue === undefined) {
-                      setMarksText(question.marks !== undefined ? String(question.marks) : '')
+                    // something that is not Points.
+                    if (pointsValue === undefined) {
+                      setPointsText(question.points !== undefined ? String(question.points) : '')
                     }
                   }}
                 />
@@ -995,10 +965,10 @@ function QuestionDialog({
               </span>
             ) : (
               <span className="front-matter-value front-matter-stated">
-                {partsMarks === undefined ? (
+                {partsPoints === undefined ? (
                   <span className="front-matter-blank">Set on each Part</span>
                 ) : (
-                  `${marksLabel(partsMarks)}, from its Parts`
+                  `${pointsLabel(partsPoints)}, from its Parts`
                 )}
               </span>
             )}
@@ -1016,7 +986,7 @@ function QuestionDialog({
             }}
             onChange={(next) => {
               latestDoc.current = next
-              if (type === 'multipart') setPartsMarks(marksOfQuestion({ ...question, doc: next }))
+              if (type === 'multipart') setPartsPoints(pointsOfQuestion({ ...question, doc: next }))
             }}
           />
         </div>
@@ -2140,18 +2110,18 @@ function ExamEditor({
     setVarySummary('Shuffled answer order.')
   }
 
-  // Marks belong to the Question, not to this Exam (ADR-0042): set on the
+  // Points belong to the Question, not to this Exam (ADR-0042): set on the
   // sheet, they are a bank edit, committed through the owning Question Bank
   // and saved at once like a save from the question editor, never an
   // undoable change to the Working Copy. `partId` names a Part or Subpart of
   // a Multipart question; `null` the question itself.
-  const setMarks = (questionId: string, partId: string | null, marks: number | null) => {
+  const setPoints = (questionId: string, partId: string | null, points: number | null) => {
     void (async () => {
       const question = bankQuestionById(store.getState().questionBank, questionId)
       if (!question) return
       const saved = partId === null
-        ? withQuestionMarks(question, marks)
-        : withPartMarks(question, partId, marks)
+        ? withQuestionPoints(question, points)
+        : withPartPoints(question, partId, points)
       if (JSON.stringify(saved) === JSON.stringify(question)) return
       try {
         const owner = await bankWorkspaces.ownerOfQuestion(questionId)
@@ -2166,7 +2136,7 @@ function ExamEditor({
         setBankRevision((revision) => revision + 1)
       } catch (error) {
         setStorageNotice(
-          `The Marks could not be saved${error instanceof Error ? `: ${error.message}` : '.'}`,
+          `The Points could not be saved${error instanceof Error ? `: ${error.message}` : '.'}`,
         )
       }
     })()
@@ -2540,7 +2510,6 @@ function ExamEditor({
               reflowing under the teacher's hands while they type. The text is
               still there — in the tooltip, and announced to a screen reader —
               but the slot it lives in never changes size. */}
-          <MarksSummary questions={exam.questions} />
           <WorkingCopyStatus dirty={state.dirty} backupStatus={backupStatus} />
           <button
             ref={historyButton}
@@ -2940,7 +2909,7 @@ function ExamEditor({
             onSetWorkSpace={(questionIds, patch) =>
               store.setQuestionWorkSpace(questionIds, patch)
             }
-            onSetMarks={isHistoricalBrowsing ? undefined : setMarks}
+            onSetPoints={isHistoricalBrowsing ? undefined : setPoints}
                 unsavedDraft={!store.hasSavedExam()}
               />
             </div>

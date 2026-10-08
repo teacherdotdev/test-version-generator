@@ -14,7 +14,7 @@ import type { Blocks, ForeignChoice, ForeignQuestion, FormatInput, FormatSpec, I
  * each accepted short answer; `=   1.4142 +- 0.0001`, `=   [1.2598, 1.26]`
  * or `=   5` for a number; `____` for an essay and `^^^^` for a file upload.
  * `Quiz title:` and `Quiz description:` name the bank. `Points:` above a
- * question, or a group's `Points per question:`, is kept as its Marks when a
+ * question, or a group's `Points per question:`, is kept as its Points when a
  * whole number. `Title:` above a question, feedback (`... `, `+ `, `- `) and
  * question groups are text2qti's and are not kept, though a `!` solution
  * becomes an essay's suggested answer and every question in a group comes in.
