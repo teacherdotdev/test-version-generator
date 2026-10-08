@@ -76,6 +76,9 @@ export type ExamRecordPosition = {
   /** From Exam Record 0.4.0: where a Matching position's Word Bank prints,
    *  when not left to the fit rule. */
   wordBankLayout?: WordBankLayout
+  /** From Exam Record 0.4.0: whether the teacher chose that layout, so a
+   *  change of Paper Style leaves it (ADR-0044). Absent means false. */
+  wordBankLayoutSet?: boolean
 }
 
 /**
@@ -353,14 +356,18 @@ const examParser030: ExamParser = sectionedParser(validateExam030, '0.3.0')
 
 // 0.4.0 adds to 0.3.0 a Multiple Choice position's `hiddenAnswers`, the
 // incorrect answers it leaves off (ADR-0038); a Matching position's
-// `wordBankLayout`; the Exam's Page Margins (ADR-0039); and its
-// `paperStyle` (ADR-0041) — and nothing else. A record without them hides
-// nothing, prints today's margins and prints in the standard style; a Matching
-// position without a `wordBankLayout` takes one on import, from its style and
-// the fit rule (`planImport`).
+// `wordBankLayout`, and whether the teacher chose it (`wordBankLayoutSet`,
+// ADR-0044); the Exam's Page Margins (ADR-0039); and its `paperStyle`
+// (ADR-0041) — and nothing else. A record without them hides nothing, prints
+// today's margins and prints in the standard style; a Matching position
+// without a `wordBankLayout` takes one on import, from its style and the fit
+// rule (`planImport`), and is not the teacher's choice.
 const sectionedParser040: ExamParser = sectionedParser(validateExam040, '0.4.0', (position) => ({
   ...(position.hiddenAnswers !== undefined ? { hiddenAnswers: [...position.hiddenAnswers] } : {}),
   ...(position.wordBankLayout !== undefined ? { wordBankLayout: position.wordBankLayout } : {}),
+  ...(position.wordBankLayout !== undefined && position.wordBankLayoutSet === true
+    ? { wordBankLayoutSet: true }
+    : {}),
 }))
 
 const examParser040: ExamParser = (value) => {
@@ -486,7 +493,8 @@ function proposedExam(
         `${where} sets answer columns, which only a Multiple Choice Question has.`,
       )
     }
-    if (position.wordBankLayout !== undefined && question.type !== 'matching') {
+    if ((position.wordBankLayout !== undefined || position.wordBankLayoutSet !== undefined)
+      && question.type !== 'matching') {
       throw new QuestionBankImportError(
         'invalid-position',
         `${where} sets a Word Bank layout, which only a Matching Question has.`,

@@ -47,8 +47,8 @@ import type { ProseMirrorJSON } from './question-doc'
 import { bankQuestionById, type ExamWorkingCopy, type QuestionBank } from './question-bank'
 
 function sameStrings(
-  left: Readonly<Record<string, string>> | undefined,
-  right: Readonly<Record<string, string>> | undefined,
+  left: Readonly<Record<string, string | true>> | undefined,
+  right: Readonly<Record<string, string | true>> | undefined,
 ): boolean {
   const entries = Object.entries(left ?? {})
   return entries.length === Object.keys(right ?? {}).length
@@ -176,6 +176,12 @@ export function selectedExam(
     if (matchingIds.has(id) && isWordBankLayout(layout)) wordBankLayout[id] = layout
   }
   const hasAnyWordBankLayout = Object.keys(wordBankLayout).length > 0
+  // And which of them the teacher chose: only a referenced Matching question's.
+  const wordBankLayoutSet: Record<string, true> = {}
+  for (const [id, set] of Object.entries(draft.wordBankLayoutSet ?? {})) {
+    if (matchingIds.has(id) && set === true) wordBankLayoutSet[id] = true
+  }
+  const hasAnyWordBankLayoutSet = Object.keys(wordBankLayoutSet).length > 0
   // Section wording and size are this Exam's presentation too, carried only
   // when readable and only when they say something other than the default.
   const sectionHeadings =
@@ -217,6 +223,7 @@ export function selectedExam(
     && previous.exam.questions.every((question, index) => question === questions[index])
     && sameWorkSpace(previous.exam.workSpace, hasAnyWorkSpace ? workSpace : undefined)
     && sameStrings(previous.exam.wordBankLayout, hasAnyWordBankLayout ? wordBankLayout : undefined)
+    && sameStrings(previous.exam.wordBankLayoutSet, hasAnyWordBankLayoutSet ? wordBankLayoutSet : undefined)
     && sameSections(previous.exam.sections, sections)
     && (previous.exam.sections === undefined) === (sections === undefined)
     && sameSectionOf(previous.exam.sectionOf, hasAnySectionOf ? sectionOf : undefined)
@@ -232,6 +239,7 @@ export function selectedExam(
           questions,
           ...(hasAnyWorkSpace ? { workSpace } : {}),
           ...(hasAnyWordBankLayout ? { wordBankLayout } : {}),
+          ...(hasAnyWordBankLayoutSet ? { wordBankLayoutSet } : {}),
           ...(sections ? { sections } : {}),
           ...(hasAnySectionOf ? { sectionOf } : {}),
           ...(sectionHeadings ? { sectionHeadings } : {}),

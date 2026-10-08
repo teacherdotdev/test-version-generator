@@ -60,8 +60,8 @@ export type Lettering = 'upper' | 'lower'
 /** Where a Matching position's Word Bank goes when it takes a layout — when
  *  the question arrives on the Exam, or the Exam takes this style: beside its
  *  Items wherever it fits and above them otherwise (`'fit'`), or above them
- *  (`'above'`). A teacher may then move any one; the style sets them all
- *  again only when the Exam changes style (`wordBankLayoutFor`). */
+ *  (`'above'`). A teacher may then move any one, and a change of style sets
+ *  again only those the teacher did not move (`wordBankLayoutFor`, ADR-0044). */
 export type BankPlacement = 'fit' | 'above'
 
 export type PaperStyleRules = {

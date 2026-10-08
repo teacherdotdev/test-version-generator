@@ -1917,28 +1917,75 @@ describe('a Matching question’s Word Bank layout', () => {
     expect(store.getState().dirty).toBe(false)
   })
 
-  test('is set again for every Matching question when the Paper Style changes, in one undo step', async () => {
-    const { store, questions } = await withExamWorkingCopy(2, 'matching')
-    const [first, second] = questions.map(({ id }) => id)
+  test('is set again when the Paper Style changes only where the teacher did not choose it, in one undo step', async () => {
+    const store = await measuredStore(40)
+    const questions = [createQuestion('matching'), createQuestion('matching'), createQuestion('matching')]
+    for (const question of questions) store.createInQuestionBank(question)
+    store.addManyToWorkingCopy(questions)
+    const [first, second, third] = questions.map(({ id }) => id)
+    const layouts = () => store.getState().workingCopy.wordBankLayout
+    expect(layouts()).toEqual({ [first!]: 'beside', [second!]: 'beside', [third!]: 'beside' })
+
     store.setWordBankLayout([first!], 'above')
-    expect(store.getState().workingCopy.wordBankLayout).toEqual({ [first!]: 'above', [second!]: 'beside' })
+    expect(store.getState().workingCopy.wordBankLayoutSet).toEqual({ [first!]: true })
 
     store.setPaperStyle('classic')
-    expect(store.getState().workingCopy.wordBankLayout).toEqual({ [first!]: 'above', [second!]: 'above' })
-    // A teacher's own choice holds until the style changes again.
+    expect(layouts()).toEqual({ [first!]: 'above', [second!]: 'above', [third!]: 'above' })
+    // A choice made under Classic holds too.
     store.setWordBankLayout([second!], 'beside')
     store.setPaperStyle('standard')
-    expect(store.getState().workingCopy.wordBankLayout).toEqual({ [first!]: 'beside', [second!]: 'beside' })
+    // Standard → Classic → Standard restores every layout the teacher did not
+    // choose, and moves none they did.
+    expect(layouts()).toEqual({ [first!]: 'above', [second!]: 'beside', [third!]: 'beside' })
+    store.setPaperStyle('condensed')
+    store.setPaperStyle('classic')
+    expect(layouts()).toEqual({ [first!]: 'above', [second!]: 'beside', [third!]: 'above' })
+    store.setPaperStyle('standard')
+    expect(layouts()).toEqual({ [first!]: 'above', [second!]: 'beside', [third!]: 'beside' })
     // Choosing the style the Exam already has changes nothing.
     store.setPaperStyle('standard')
 
     store.undo()
     expect(store.getState().workingCopy.paperStyle).toBe('classic')
-    expect(store.getState().workingCopy.wordBankLayout).toEqual({ [first!]: 'above', [second!]: 'beside' })
+    expect(layouts()).toEqual({ [first!]: 'above', [second!]: 'beside', [third!]: 'above' })
+  })
+
+  test('a flip the teacher made is never moved by a change of style, even back to where it fits', async () => {
+    const store = await measuredStore(2000)
+    const question = createQuestion('matching')
+    store.createInQuestionBank(question)
+    store.addToWorkingCopy(question)
+    expect(store.getState().workingCopy.wordBankLayout).toEqual({ [question.id]: 'above' })
+    store.setWordBankLayout([question.id], 'beside')
+    for (const style of ['classic', 'condensed', 'standard', 'classic'] as const) {
+      store.setPaperStyle(style)
+      expect(store.getState().workingCopy.wordBankLayout).toEqual({ [question.id]: 'beside' })
+    }
+    expect(store.selectedExam().exam.wordBankLayoutSet).toEqual({ [question.id]: true })
+  })
+
+  test('records the teacher’s choice only when they flip, undoably, and never on arrival', async () => {
+    const { store, questions } = await withExamWorkingCopy(2, 'matching')
+    const [first, second] = questions.map(({ id }) => id)
+    expect(store.getState().workingCopy).not.toHaveProperty('wordBankLayoutSet')
+    await store.save()
+
+    store.setWordBankLayout([first!], 'above')
+    expect(store.getState().workingCopy.wordBankLayoutSet).toEqual({ [first!]: true })
+    expect(store.getState().dirty).toBe(true)
     store.undo()
-    store.undo()
-    expect(store.getState().workingCopy).not.toHaveProperty('paperStyle')
-    expect(store.getState().workingCopy.wordBankLayout).toEqual({ [first!]: 'above', [second!]: 'beside' })
+    expect(store.getState().workingCopy.wordBankLayoutSet ?? {}).toEqual({})
+    expect(store.getState().dirty).toBe(false)
+
+    // A duplicate takes its original's layout, and whether the teacher chose it.
+    store.setWordBankLayout([first!], 'above')
+    store.duplicateInWorkingCopy(first!)
+    store.duplicateInWorkingCopy(second!)
+    const copies = store.getState().workingCopy.questionIds.filter((id) => id !== first && id !== second)
+    expect(copies).toHaveLength(2)
+    expect(store.getState().workingCopy.wordBankLayoutSet).toEqual({ [first!]: true, [copies[0]!]: true })
+    store.removeFromWorkingCopy([first!])
+    expect(store.getState().workingCopy.wordBankLayoutSet).toEqual({ [copies[0]!]: true })
   })
 
   test('reads a position stored without one by its count, and stores it once set', async () => {

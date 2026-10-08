@@ -181,8 +181,8 @@ function columnsMenu(
 
 // Where a Matching question's Word Bank prints on this Exam, offered as Multiple
 // Choice answer columns are: always one of the two, which the question took
-// from the Paper Style when it arrived and which a change of style sets
-// again (ADR-0041).
+// from the Paper Style when it arrived. Choosing one here is the teacher's,
+// and a change of style then leaves it (ADR-0044).
 const WORD_BANK_MENU_OPTIONS: readonly { label: string; value: WordBankLayout; icon: ReactNode }[] = [
   { label: 'Beside items', value: 'beside', icon: <Columns2 /> },
   { label: 'Above items', value: 'above', icon: <Rows2 /> },

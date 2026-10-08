@@ -158,9 +158,10 @@ describe('public Exam Record 0.3.0 contract', () => {
   })
 })
 
-// 0.4.0 adds a position's `hiddenAnswers` (ADR-0038), and the Exam's `margins`
-// (ADR-0039) and `paperStyle` (ADR-0041), to 0.3.0, and nothing else of its
-// own.
+// 0.4.0 adds a position's `hiddenAnswers` (ADR-0038), a Matching position's
+// `wordBankLayout` and `wordBankLayoutSet` (ADR-0041, ADR-0044), and the
+// Exam's `margins` (ADR-0039) and `paperStyle` (ADR-0041, ADR-0044), to
+// 0.3.0, and nothing else of its own.
 describe('public Exam Record 0.4.0 contract', () => {
   test('is the version Test Parrot writes', () => {
     expect(EXAM_FORMAT_VERSION).toBe('0.4.0')
@@ -174,15 +175,16 @@ describe('public Exam Record 0.4.0 contract', () => {
     ).toEqual(publicExamSchema040)
   })
 
-  test('adds only optional margins, paperStyle and a position’s hiddenAnswers and wordBankLayout to 0.3.0', () => {
+  test('adds only optional margins, paperStyle and a position’s hiddenAnswers, wordBankLayout and wordBankLayoutSet to 0.3.0', () => {
     const { margins, paperStyle, ...rest } = publicExamSchema040.properties
     expect(margins).toBeDefined()
     expect(paperStyle).toBeDefined()
     expect({ ...rest, formatVersion: undefined }).toEqual({ ...publicExamSchema030.properties, formatVersion: undefined })
     expect(publicExamSchema040.required).toEqual(publicExamSchema030.required)
-    const { hiddenAnswers, wordBankLayout, ...position } = publicExamSchema040.$defs.position.properties
+    const { hiddenAnswers, wordBankLayout, wordBankLayoutSet, ...position } = publicExamSchema040.$defs.position.properties
     expect(hiddenAnswers).toBeDefined()
     expect(wordBankLayout).toBeDefined()
+    expect(wordBankLayoutSet).toEqual(expect.objectContaining({ type: 'boolean' }))
     expect(position).toEqual(publicExamSchema030.$defs.position.properties)
     expect(publicExamSchema040.$defs.position.required).toEqual(publicExamSchema030.$defs.position.required)
   })

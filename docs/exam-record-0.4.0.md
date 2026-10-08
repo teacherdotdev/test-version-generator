@@ -59,6 +59,7 @@ Each position has these members:
 | `answerOrder` | no       | A permutation of the Question's answer ids: its choice ids on **Multiple Choice**, or its Word Bank ids on **Matching**. It must list every answer exactly once. Allowed on no other Question Type; True/False answers are always True, then False. |
 | `hiddenAnswers` | no     | The **Hidden Answers**: incorrect choice ids of a **Multiple Choice** Question that this position leaves off, each at most once. Allowed on no other Question Type. See below. |
 | `wordBankLayout` | no    | `beside` or `above`: where a **Matching** Question's Word Bank prints — beside its Items, or above them in columns. Beside stays beside however wide its answers, which wrap in the widest column the Items allow. Allowed on no other Question Type. Test Parrot writes it on every Matching position; see Defaults for a record without it. |
+| `wordBankLayoutSet` | no | `true` when the teacher chose this **Matching** position's `wordBankLayout`, rather than it being placed by the `paperStyle` and the fit rule. Read only beside a `wordBankLayout`; absent means `false`. Allowed on no other Question Type. See Paper Style. |
 | `workSpace`   | no       | `{ "height", "style", "fill" }`, room left below a **Short Answer** Question for a student's working. Allowed on no other Question Type. `height` is in CSS pixels at 96 dpi and is snapped to whole ruled lines of 32 px on import — each 32 px is one row, which the `paperStyle` lays out on the page (closer together under `condensed`); `style` is `blank` or `lines`; `fill` stretches the space to the foot of its page, with `height` the least room it takes. A `height` of 0 with `fill` false is no room, set on purpose; it wins over the room a `paperStyle` would rule there. |
 
 Semantic rules:
@@ -96,6 +97,7 @@ Sections print in the order `sections` lists them, and question numbering runs c
 - Under `condensed`, a Multiple Choice Question's or Part's answers are laid out in four, or else two, columns where every answer fits one line of a column; never in fewer columns than its `columns`.
 - The room a style rules applies to a Short Answer position, and to every Short Answer Part of a Multipart position, that has no `workSpace`. A `workSpace` always wins, including a zero-height one.
 - A `workSpace`'s rows keep their count under every style; `condensed` only sets them closer together on the page. A Matching position's `wordBankLayout` is where its Word Bank prints under every style.
+- Changing an Exam's style never changes what the teacher set (ADR-0044). A `workSpace` is kept as it is. A Matching position whose `wordBankLayoutSet` is `true` keeps its `wordBankLayout`; every other Matching position is placed again by the new style, as in Defaults, so switching back gives the same layouts.
 
 ## Header
 
@@ -126,18 +128,19 @@ Every page is US Letter. By default it prints three quarters of an inch in from 
 
 ## Producers
 
-Record `columns` only when the source layout makes them clear, and a Short Answer position's `workSpace` only when the source prints room to write below it — ruled lines counted, blank space in 32 px rows. Record `paperStyle` only when it is not `standard`, and `workSpace` only where the teacher set it: the room a style rules is not written out as a `workSpace`. Record `wordBankLayout` when the source shows where a Word Bank prints; leave it out to let the importer choose.
+Record `columns` only when the source layout makes them clear, and a Short Answer position's `workSpace` only when the source prints room to write below it — ruled lines counted, blank space in 32 px rows. Record `paperStyle` only when it is not `standard`, and `workSpace` wherever the teacher set it, a zero-height one included under any style: the room a style rules is not written out as a `workSpace`. Record `wordBankLayout` when the source shows where a Word Bank prints; leave it out to let the importer choose. Record `wordBankLayoutSet` only for a layout the teacher chose.
 
 ## Changes from 0.3.0
 
-Four members are new, all optional:
+Five members are new, all optional:
 
 - `hiddenAnswers`, on a Multiple Choice position: an Exam may show fewer of a Question's incorrect answers than it has, never its correct answer or a Locked Answer (ADR-0038).
 - `wordBankLayout`, on a Matching position: where its Word Bank prints, beside or above its Items (ADR-0041).
+- `wordBankLayoutSet`, on a Matching position: whether the teacher chose that layout, so a change of style leaves it (ADR-0044).
 - `margins`: an Exam's Page Margins, one per side, in inches (ADR-0039).
-- `paperStyle`: how every question on the Exam prints (ADR-0041). A Short Answer position's default Work Space now follows it. A zero-height `workSpace` was always conforming; it now means "no room" even where the style would rule lines.
+- `paperStyle`: how every question on the Exam prints (ADR-0041, ADR-0044). A Short Answer position's default Work Space now follows it. A zero-height `workSpace` was always conforming; it now means "no room" even where the style would rule lines.
 
-Nothing else changed, so a `0.3.0` record is a `0.4.0` record that hides nothing, has every Word Bank placed on import, keeps the default margins and prints in the `standard` style. Test Parrot writes `0.4.0` and still imports `0.3.0`, `0.2.0` and `0.1.0`, each that way; a `hiddenAnswers`, `wordBankLayout`, `margins` or `paperStyle` in an older record is an unknown optional member and is ignored.
+Nothing else changed, so a `0.3.0` record is a `0.4.0` record that hides nothing, has every Word Bank placed on import, keeps the default margins and prints in the `standard` style. Test Parrot writes `0.4.0` and still imports `0.3.0`, `0.2.0` and `0.1.0`, each that way; a `hiddenAnswers`, `wordBankLayout`, `wordBankLayoutSet`, `margins` or `paperStyle` in an older record is an unknown optional member and is ignored.
 
 ## Changes in 0.3.0, from 0.2.0
 

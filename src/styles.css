@@ -917,7 +917,7 @@ button { cursor: pointer; }
 }
 /* On a Standard Exam no question prints an answer blank, so the number column
    is only as wide as a three-digit number; a True/False question's T and F,
-   which a student circles, sit before its number in a wider one. A Question
+   which a student circles, sit before its number in a wider one. A Paper
    Style that prints an answer blank before the number widens it again — the
    column an Export Record made before Sections were stored reprints its blank
    in too. `questionIndentOf` in export-plan.ts holds the same widths for the
@@ -1237,7 +1237,7 @@ button { cursor: pointer; }
    either empty or ruled. No margin of its own, so the height packing was told
    is the height it takes. Each line is one row tall with its rule along its
    foot: the first row a quarter shorter than the rest, so the first rule sits
-   close under the question it belongs to, and every other row the Question
+   close under the question it belongs to, and every other row the Paper
    Style's pitch. `WorkSpaceView` sets each row's height from the plan; 32px,
    `WORK_SPACE_LINE_PITCH`, is only the fallback. */
 .work-space { display: flow-root; }

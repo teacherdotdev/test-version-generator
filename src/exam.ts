@@ -141,6 +141,10 @@ export type Exam = {
    *  Exam presentation like answer columns, stored for every Matching
    *  position. See `wordBankLayoutOf` in export-plan.ts. */
   wordBankLayout?: Record<string, WordBankLayout>
+  /** The Matching positions whose Word Bank layout the teacher chose, keyed by
+   *  question id. A change of Paper Style places every other one again and
+   *  never these (ADR-0044). Absent means the teacher chose none. */
+  wordBankLayoutSet?: Record<string, true>
   /** This Exam's Question Sections, in the order they print. Absent on an Exam
    *  written before Sections were stored: its Sections are then derived, one
    *  per Question Type (see `sectionsOf`). */
@@ -305,7 +309,8 @@ export function defaultWorkSpaceOf(style: PaperStyle | undefined): WorkSpace {
  *  Multiple Choice question's answer columns, and always a concrete choice:
  *  a position takes one when it arrives on the Exam, from its Paper Style
  *  and whether its Word Bank fits beside (`wordBankLayoutFor` in
- *  export-plan.ts), and a change of style sets every one again. */
+ *  export-plan.ts), and a change of style sets again every one the teacher
+ *  did not choose (`wordBankLayoutSet`, ADR-0044). */
 export type WordBankLayout = 'beside' | 'above'
 
 /** Whether a stored value is a Word Bank layout this build can print. */

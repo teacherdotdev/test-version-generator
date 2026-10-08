@@ -1949,9 +1949,9 @@ function promptsMinWidthOf(style: PaperStyle | undefined): number {
 /**
  * The Word Bank layout a Matching question takes when it arrives on an Exam —
  * added, dragged, imported without one — or when the Exam's Paper Style
- * changes: the style's own placement, and where the style leaves it to fit,
- * beside its Items when its widest answer, measured on one line at the Exam's
- * text size, fits a column that still leaves the Items their least width on a
+ * changes and the teacher has not chosen it (ADR-0044): the style's own
+ * placement, and where the style leaves it to fit, beside its Items when its
+ * widest answer, measured on one line at the Exam's text size, fits a column that still leaves the Items their least width on a
  * page as wide as the Exam's margins leave, and above them otherwise. A bank
  * with more than twice as many answers as there are Items, and more than
  * `MATCHING_BESIDE_LIMIT`, goes above: beside, the set would stand as tall as

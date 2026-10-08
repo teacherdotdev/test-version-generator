@@ -5,6 +5,8 @@ import {
   orderedQuestions,
   questionsInSection,
   sectionsOf,
+  takesWorkSpace,
+  workSpaceOf,
   type Arrangement,
   type Exam,
   type ExamSection,
@@ -185,6 +187,41 @@ describe('an Exam PDF carrying its Exam', () => {
     const imported = selectedExam(planned.saved.questionBank, planned.saved.workingCopy).exam
     const importedMatching = imported.questions.find((question) => question.type === 'matching')!
     expect(imported.wordBankLayout).toEqual({ [importedMatching.id]: 'above' })
+  })
+
+  test('carries whether the teacher chose a Word Bank’s layout, so a change of style after import leaves it', async () => {
+    const matchingId = exam.questions.find((question) => question.type === 'matching')!.id
+    const matchingOf = (record: ExamRecord) =>
+      record.positions.find((position) => position.wordBankLayout !== undefined)!
+    const chosen: Exam = { ...exam, wordBankLayout: { [matchingId]: 'above' }, wordBankLayoutSet: { [matchingId]: true } }
+    const { package: written } = await examPackage({ exam: chosen, arrangement, ownerOf, loadMedia: noImages })
+    expect(matchingOf(written.exams[0]!).wordBankLayoutSet).toBe(true)
+    // A layout the teacher did not choose says nothing: absent is false.
+    const plain = await examPackage({ exam, arrangement, ownerOf, loadMedia: noImages })
+    expect(matchingOf(plain.package.exams[0]!)).not.toHaveProperty('wordBankLayoutSet')
+
+    const importedFrom = async (record: typeof written) => {
+      const proposal = await inspectImportRecord(new TextEncoder().encode(JSON.stringify(record)))
+      return planImport(proposal, initialSelection(proposal)).exams[0]!.saved.workingCopy
+    }
+    const imported = await importedFrom(written)
+    expect(Object.values(imported.wordBankLayoutSet ?? {})).toEqual([true])
+    expect(await importedFrom(plain.package)).not.toHaveProperty('wordBankLayoutSet')
+  })
+
+  test('carries a Work Space of none the teacher set under any style, so a lining style after import leaves it', async () => {
+    const none = { height: 0, style: 'blank' as const, fill: false }
+    // Set under Classic, then the Exam went back to Standard, which rules
+    // nothing there either: the teacher's "None" still travels.
+    const sheet: Exam = { ...exam, workSpace: { 'forces-1': none } }
+    const { package: written } = await examPackage({ exam: sheet, arrangement, ownerOf, loadMedia: noImages })
+    expect(written.exams[0]!.positions.find((position) => position.workSpace)?.workSpace).toEqual(none)
+
+    const proposal = await inspectImportRecord(new TextEncoder().encode(JSON.stringify(written)))
+    const { questionBank, workingCopy } = planImport(proposal, initialSelection(proposal)).exams[0]!.saved
+    const shortAnswer = questionBank.questions.find((question) => takesWorkSpace(question.type))!
+    const classic = selectedExam(questionBank, { ...workingCopy, paperStyle: 'classic' }).exam
+    expect(workSpaceOf(classic, shortAnswer.id)).toEqual(none)
   })
 
   test('places a Word Bank on import that its record does not, by its Paper Style and the fit rule', async () => {

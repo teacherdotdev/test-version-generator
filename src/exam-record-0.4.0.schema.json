@@ -180,6 +180,10 @@
             "beside",
             "above"
           ]
+        },
+        "wordBankLayoutSet": {
+          "description": "Whether the teacher chose this Matching position's `wordBankLayout`, rather than it being placed by the Exam's `paperStyle` and the fit rule. A chosen layout stays where it is when the Exam later changes style; any other is placed again. Read only beside a `wordBankLayout`. Absent means false.",
+          "type": "boolean"
         }
       }
     },
