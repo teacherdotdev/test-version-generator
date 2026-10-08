@@ -1198,6 +1198,11 @@ button { cursor: pointer; }
 :where(.exam-page .doc-content) li > p { margin: 0; }
 :where(.exam-page .doc-content) li > :is(ul, ol) { margin: 0.2em 0 0; }
 :where(.exam-page .doc-content) li + li { margin-top: 0.2em; }
+/* A table's cells hold their paragraphs with no gap at their top or foot, as
+   the PDF and DOCX set them: a row of one line is that line and the cell's
+   padding (`TABLE_CELL_PADDING_PX`), not a paragraph gap above and below it. */
+:where(.exam-page .doc-content) :is(td, th) > :first-child { margin-top: 0; }
+:where(.exam-page .doc-content) :is(td, th) > :last-child { margin-bottom: 0; }
 
 /* The choice grid: a table for the column-major layout, borderless everywhere,
    set in from the stem by `CHOICE_INDENT` in export-plan.ts so the answers read
@@ -1557,6 +1562,9 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
 .doc-figure figcaption { font-size: 13px; font-style: italic; }
 .doc-table { border-collapse: collapse; }
 .doc-table td, .doc-table th { padding: 3px 8px; border: 1px solid #b9a893; }
+/* On the exam page a cell is padded as the PDF and DOCX pad it
+   (`TABLE_CELL_PADDING_PX`). */
+.exam-page .doc-table :is(td, th) { padding: 5px 8px; }
 /* Read in full on the Question Bank page and in the Pop-over, a table spans
    its lane with equal columns, as the Question editor and the DOCX export lay
    it out; left to size itself it shrinks to its shortest content. */

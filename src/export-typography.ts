@@ -54,6 +54,12 @@ export const PARAGRAPH_GAP_EM = 1
  *  used to open a paragraph gap of its own. */
 export const LIST_ITEM_GAP_EM = 0.2
 
+/** The room inside a table cell around what it holds, in CSS px: above and
+ *  below, and either side. A cell's first and last paragraphs open no
+ *  paragraph gap of their own, so a row of one line is a line and this
+ *  padding in print, the PDF and DOCX alike. */
+export const TABLE_CELL_PADDING_PX = { y: 5, x: 8 } as const
+
 const POINTS_PER_PX = 0.75
 
 /** A role's size in PDF points. */

@@ -66,6 +66,7 @@ import {
   TITLE_LINE_HEIGHT,
   LIST_ITEM_GAP_EM,
   PARAGRAPH_GAP_EM,
+  TABLE_CELL_PADDING_PX,
   bodyScale,
   pointsOf,
   sectionHeadingPoints,
@@ -652,17 +653,21 @@ function drawTable(context: DrawContext, table: ProseMirrorJSON, x: number, widt
   const rows = childrenOf(table).filter((row) => row.type === 'table_row' || row.type === 'table_header_row')
   const columns = Math.max(1, ...rows.map((row) => childrenOf(row).length))
   const cellWidth = width / columns
+  // Print's `.doc-table` cell padding, and the rule between two rows.
+  const padY = pt(TABLE_CELL_PADDING_PX.y)
+  const padX = pt(TABLE_CELL_PADDING_PX.x)
+  const rule = pt(1)
   for (const row of rows) {
     const top = context.y
-    let bottom = top - BODY_LINE - 8
+    let bottom = top - BODY_LINE - 2 * padY - rule
     for (let column = 0; column < columns; column += 1) {
       const cell = childrenOf(row)[column]
       if (!cell) continue
       const cellContext = {
         ...context,
-        x: x + column * cellWidth + 4,
-        y: top - 4,
-        width: cellWidth - 8,
+        x: x + column * cellWidth + padX,
+        y: top - padY,
+        width: cellWidth - 2 * padX,
       }
       // A cell carries the same rich document vocabulary as a stem: links,
       // marks, math, images, lists, and nested blocks remain semantic content.
@@ -670,7 +675,10 @@ function drawTable(context: DrawContext, table: ProseMirrorJSON, x: number, widt
         x: cellContext.x,
         width: cellContext.width,
       })
-      bottom = Math.min(bottom, cellContext.y - 4)
+      // Its last paragraph opens no room below itself, as print's cells
+      // trim it: the padding is the room.
+      const end = cellContext.y + (childrenOf(cell).at(-1)?.type === 'paragraph' ? BLOCK_AFTER : 0)
+      bottom = Math.min(bottom, end - padY - rule)
     }
     ensureRoom(context, top - bottom)
     for (let column = 0; column < columns; column += 1) {

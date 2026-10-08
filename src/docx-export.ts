@@ -63,6 +63,7 @@ import {
   HEADING_LINE_HEIGHT,
   LIST_ITEM_GAP_EM,
   PARAGRAPH_GAP_EM,
+  TABLE_CELL_PADDING_PX,
   TITLE_LINE_HEIGHT,
   halfPointsOf,
   sectionHeadingHalfPoints,
@@ -804,6 +805,14 @@ function documentTable(
               : []
             return new TableCell({
               width: { size: twips(cellWidth), type: WidthType.DXA },
+              // Print's cell padding; below the last line, the room its
+              // paragraph already leaves is that padding.
+              margins: {
+                top: twips(TABLE_CELL_PADDING_PX.y),
+                bottom: Math.max(0, twips(TABLE_CELL_PADDING_PX.y) - BLOCK_AFTER),
+                left: twips(TABLE_CELL_PADDING_PX.x),
+                right: twips(TABLE_CELL_PADDING_PX.x),
+              },
               shading: header ? { fill: 'F1F1F1' } : undefined,
               borders: {
                 top: CELL_BORDER,

@@ -207,7 +207,10 @@ The implementations are:
   document defaults, heading styles and body paragraphs, the DOCX identity
   line's tab stops, and the PDF's drawn sizes and line pitch.
   Parity ignores size by design, so this is where a DOCX that falls back to
-  Word's own 10pt defaults fails.
+  Word's own 10pt defaults fails. A table's cell padding
+  (`TABLE_CELL_PADDING_PX`) is held the same way: print trims a cell's first
+  and last paragraph margins, so a row of one line is that line and its
+  padding in all three.
 - `src/pdf-math.test.ts` — the PDF's typeset equations: stacked fractions,
   bars over repeating decimals, stretched glyphs cut to their box, and the
   SVG path data they are drawn from.

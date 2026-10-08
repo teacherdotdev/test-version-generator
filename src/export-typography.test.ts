@@ -22,6 +22,7 @@ import {
   HEADING_LINE_HEIGHT,
   LIST_ITEM_GAP_EM,
   PARAGRAPH_GAP_EM,
+  TABLE_CELL_PADDING_PX,
   TITLE_LINE_HEIGHT,
   halfPointsOf,
   pointsOf,
@@ -116,6 +117,13 @@ describe('print’s stylesheet is the table', () => {
     // Far enough apart that a paragraph break never reads as one more line.
     expect(PARAGRAPH_GAP_EM).toBeGreaterThanOrEqual(3 * (BODY_LINE_HEIGHT - 1))
     expect(LIST_ITEM_GAP_EM).toBeLessThan(PARAGRAPH_GAP_EM / 4)
+  })
+
+  test('a table’s cells hold their paragraphs with no paragraph gap at their top or foot', async () => {
+    expect(await rule(':where(.exam-page .doc-content) :is(td, th) > :first-child')).toContain('margin-top: 0;')
+    expect(await rule(':where(.exam-page .doc-content) :is(td, th) > :last-child')).toContain('margin-bottom: 0;')
+    expect(await rule('.exam-page .doc-table :is(td, th)'))
+      .toContain(`padding: ${TABLE_CELL_PADDING_PX.y}px ${TABLE_CELL_PADDING_PX.x}px;`)
   })
 
   test('a Multiple Choice question’s answers are set in from its stem', async () => {
@@ -216,6 +224,20 @@ describe('DOCX sets print’s type rather than Word’s defaults', () => {
     expect(Number(afterList.before) + Number(twipsOf(LIST_ITEM_GAP_EM))).toBe(Number(twipsOf(PARAGRAPH_GAP_EM)))
   })
 
+  test('a table’s cells are padded as print pads them, the last paragraph’s own room counted below', async () => {
+    const zip = await JSZip.loadAsync(
+      await (await createExamDocx(plansOfFixture('a table with a header row'), async () => null)).arrayBuffer(),
+    )
+    const document = await zip.file('word/document.xml')!.async('string')
+    const margins = /<w:tcMar>(.*?)<\/w:tcMar>/s.exec(document)![1]!
+    const side = (name: string) => Number(new RegExp(`<w:${name} w:type="dxa" w:w="(\\d+)"/>`).exec(margins)?.[1])
+    expect(side('top')).toBe(TABLE_CELL_PADDING_PX.y * 15)
+    expect(side('left')).toBe(TABLE_CELL_PADDING_PX.x * 15)
+    expect(side('right')).toBe(TABLE_CELL_PADDING_PX.x * 15)
+    // A cell's paragraph leaves 4pt below itself, about the padding already.
+    expect(side('bottom') + 80).toBeGreaterThanOrEqual(TABLE_CELL_PADDING_PX.y * 15)
+  })
+
   test('the identity line spans the content width, its output ID against the right margin', async () => {
     const zip = await packaged()
     const header = await zip.file('word/header1.xml')!.async('string')
@@ -238,6 +260,17 @@ describe('the PDF draws print’s type', () => {
     const sizeOfText = (text: string) => items.find((item) => item.str.includes(text))?.transform[0]
     expect(sizeOfText('Which particle is neutral?')).toBeCloseTo(pointsOf('body'), 2)
     expect(sizeOfText('Mixed sections')).toBeCloseTo(pointsOf('title'), 2)
+  })
+
+  test('a table row of one line at a line and the cell’s padding, as print sets it', async () => {
+    const { bytes } = await createPublicationPdf(plansOfFixture('a table with a header row'), async () => null, fonts)
+    const page = await (await getDocument({ data: bytes }).promise).getPage(1)
+    const items = (await page.getTextContent()).items as { str: string; transform: number[] }[]
+    const baseline = (text: string) => items.find((item) => item.str.includes(text))!.transform[5]!
+    // A line, the padding above and below it, and the 1px rule between rows.
+    const row = pointsOf('body') * BODY_LINE_HEIGHT + (2 * TABLE_CELL_PADDING_PX.y + 1) * 0.75
+    expect(baseline('Sodium') - baseline('Chlorine')).toBeCloseTo(row, 1)
+    expect(baseline('Element') - baseline('Sodium')).toBeCloseTo(row, 1)
   })
 
   test('lines, list items and paragraphs at print’s spacing', async () => {
