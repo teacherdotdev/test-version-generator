@@ -2685,6 +2685,14 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
   background: white; color: inherit; font: inherit;
 }
 .question-bank-details-dialog textarea { min-height: 90px; resize: vertical; }
+/* The Paper Details dialog's candidate fields: a row of checkboxes. */
+.paper-details-fields {
+  display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 14px 0; padding: 10px 12px;
+  border: 1px solid #e0d3c2; border-radius: 8px;
+}
+.paper-details-fields legend { padding: 0 4px; font-weight: 600; }
+.paper-details-fields label { display: flex; align-items: center; gap: 6px; }
+.paper-details-reset { margin: -4px 0 4px; }
 .bank-import-announcements:empty { display: none; }
 
 /* The footer is chrome, like the document bar: it belongs to the app, not to

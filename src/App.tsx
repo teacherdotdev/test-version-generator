@@ -125,6 +125,7 @@ import {
   Award,
   BookOpenText,
   Captions,
+  ClipboardList,
   Check,
   CircleDot,
   Crop,
@@ -167,6 +168,7 @@ import {
   DEFAULT_PAPER_STYLE,
   PAPER_STYLES,
   PAPER_STYLE_LABELS,
+  PAPER_STYLE_RULES,
 } from './paper-style'
 import { BEFORE_NAVIGATE_EVENT, navigate, replaceRoute, useLocationSearch, useRoute } from './use-route'
 import { Footer } from './site-chrome'
@@ -198,6 +200,7 @@ import { questionBankCollection, type QuestionBankCollectionItem } from './resou
 import { QuestionBankExportDialog } from './question-bank-export-dialog'
 import { QuestionBankImportDialog } from './question-bank-import-dialog'
 import { MarginsIcon, PaperStylePreview } from './format-icons'
+import { PaperDetailsDialog } from './paper-details-dialog'
 import {
   keepMultipartParts,
   multipartMode,
@@ -2023,6 +2026,9 @@ function ExamEditor({
   // Where the Margins panel opened from the Format menu stands, while it is open.
   const [marginsPanel, setMarginsPanel] = useState<MenuPoint | null>(null)
   const closeMarginsPanel = useCallback(() => setMarginsPanel(null), [])
+  // Whether the Paper Details dialog opened from the Format menu is open.
+  const [editingPaperDetails, setEditingPaperDetails] = useState(false)
+  const closePaperDetails = useCallback(() => setEditingPaperDetails(false), [])
   const closeExportHistory = useCallback(() => {
     setHistoryOpen(false)
     requestAnimationFrame(() => historyButton.current?.focus())
@@ -2601,6 +2607,16 @@ function ExamEditor({
             disabled: isHistoricalBrowsing,
             onSelect: () => setMarginsPanel(documentMenu.point),
           },
+          {
+            // The facts its Paper Style may print: a Cover Page's subject,
+            // duration, instructions and candidate fields, and the paper code
+            // at each page's foot (ADR-0045).
+            kind: 'action',
+            label: 'Paper details…',
+            icon: <ClipboardList />,
+            disabled: isHistoricalBrowsing,
+            onSelect: () => setEditingPaperDetails(true),
+          },
         ] : documentMenu.kind === 'file' ? [
           {
             kind: 'action',
@@ -2661,6 +2677,14 @@ function ExamEditor({
           },
         ]}
         onClose={() => setDocumentMenu(null)}
+      />}
+
+      {editingPaperDetails && <PaperDetailsDialog
+        details={state.workingCopy.paperDetails}
+        coverPage={PAPER_STYLE_RULES[state.workingCopy.paperStyle ?? DEFAULT_PAPER_STYLE].coverPage}
+        disabled={isHistoricalBrowsing}
+        onSave={(details) => store.setPaperDetails(details)}
+        onClose={closePaperDetails}
       />}
 
       {marginsPanel && <MarginsPanel
