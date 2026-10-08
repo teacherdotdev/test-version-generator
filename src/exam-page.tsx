@@ -675,6 +675,7 @@ function EditablePoints({
   label,
   points,
   text,
+  onRule = false,
   onSet,
 }: {
   /** What it is the Points of, for a screen reader: "question 3", "question 3 part b (ii)". */
@@ -682,6 +683,9 @@ function EditablePoints({
   points: number
   /** The `[n]` as the style prints it. */
   text: string
+  /** Set on the last rule of a Work Space, inside its row, rather than on a
+   *  line of its own. */
+  onRule?: boolean
   onSet: (points: number | null) => void
 }) {
   const [editing, setEditing] = useState(false)
@@ -700,8 +704,9 @@ function EditablePoints({
     onPointerDown: (event: { stopPropagation: () => void }) => event.stopPropagation(),
     onContextMenu: (event: { stopPropagation: () => void }) => event.stopPropagation(),
   }
+  const Line = onRule ? 'span' : 'p'
   return (
-    <p className="points-after">
+    <Line className={onRule ? undefined : 'points-after'}>
       {editing ? (
         <input
           className="points-after-input"
@@ -742,7 +747,7 @@ function EditablePoints({
           {text}
         </button>
       )}
-    </p>
+    </Line>
   )
 }
 
@@ -829,11 +834,11 @@ export function QuestionView({
   // A Short Answer Part's or Subpart's work space, with the bar that sizes it
   // in the gap below it, exactly as a Short Answer question's bar sits below it.
   const answeringHere = answeringPartsIn(item.parts ?? [])
-  const renderPartWorkSpace = (partId: string, space: PlannedWorkSpace) => {
+  const renderPartWorkSpace = (partId: string, space: PlannedWorkSpace, points?: ReactNode) => {
     const here = answeringHere.find(({ part }) => part.id === partId)
     return (
       <div className="part-work-space">
-        <WorkSpaceView space={space} />
+        <WorkSpaceView space={space} points={points} />
         <WorkSpaceHandle
           label={`Work space for question ${numberLabelOf(question)} part ${here?.name ?? ''}`}
           space={here?.part.workSpace ?? space}
@@ -849,13 +854,14 @@ export function QuestionView({
   // The `[n]` the Paper Style prints after the question or one of its Parts
   // or Subparts, as the control that changes it.
   const renderPoints: RenderPrintedPoints | undefined = onSetPoints
-    ? ({ partId, points, text }) => {
+    ? ({ partId, points, text, onRule }) => {
         const here = partId === null ? undefined : answeringHere.find(({ part }) => part.id === partId)
         return (
           <EditablePoints
             label={`question ${numberLabelOf(question)}${here ? ` part ${here.name}` : ''}`}
             points={points}
             text={text}
+            onRule={onRule}
             onSet={(next) => onSetPoints(question.id, partId, next)}
           />
         )

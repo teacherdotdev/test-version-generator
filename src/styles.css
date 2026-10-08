@@ -1292,6 +1292,16 @@ button { cursor: pointer; }
 }
 /* Dotted lines to write on, under a Paper Style that rules them so. */
 .work-space[data-ruling='dotted'] .work-space-line { border-bottom: 1.5px dotted #4a4038; }
+/* An answer's `[n]` on its last rule, at the right end, the rule stopping
+   short of it (`pointsOnLastRule`): the row keeps its height, and its rule is
+   drawn by the span beside the Points. */
+.work-space-line.work-space-line--points,
+.work-space[data-ruling='dotted'] .work-space-line.work-space-line--points {
+  display: flex; align-items: flex-end; gap: 8px; border-bottom: 0;
+}
+.work-space-rule { flex: 1; align-self: stretch; border-bottom: 1px solid #8f847a; }
+.work-space[data-ruling='dotted'] .work-space-rule { border-bottom: 1.5px dotted #4a4038; }
+.work-space-points { flex: none; white-space: nowrap; }
 
 /* On the sheet a teacher edits, blank space is otherwise invisible, so the
    question that owns it shows its extent while hovered, selected or being

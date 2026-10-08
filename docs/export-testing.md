@@ -135,13 +135,19 @@ reads `heading:1 Answer Section Total: 9 points`. Print, PDF and DOCX each set
 the total against the right margin; where it stands is geometry and is not
 compared.
 
-Points a Paper Style prints on the test (Exam Board) are paragraphs of their
-own, set against the right margin by every adapter: `para [2]` after an
-answer's grid or Work Space, `para [Total: 9]` after a Multipart question,
-and a Section's total after its last question where a style prints one.
-Only the piece that ends a split question carries the question's closing
+Points a Paper Style prints on the test (Exam Board) after an answer stand on
+the last rule of its ruled Work Space, at its right end, the rule stopping
+short of them, as exam papers set `……………… [3]`: the Work Space's line
+carries them, `space:lines:3:dotted [3]` (`pointsOnLastRule`). Print draws
+them in the last `.work-space-line`, the PDF on its last rule, and DOCX as
+the last row's text after a right tab whose leader is the rule. Where no
+ruled Work Space ends the answer — blank room, none, a choice grid, a
+Matching set — they are a paragraph of their own against the right margin,
+`para [2]`. A Multipart question's `para [Total: 9]`, and a Section's total
+where a style prints one, are always paragraphs of their own. Only the piece
+that ends a split question carries the question's own Points and closing
 lines. Packing measures them through the same `Measure`, since the print
-view the measure renders draws them.
+view the measure renders draws them: Points on a rule add no height.
 
 A Cover Page is the test's own first page, never the Answer Key's: its title
 as `heading:title`, each Paper Detail it prints as `para`, a `field:<label>`

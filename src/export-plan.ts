@@ -267,6 +267,15 @@ export type PlannedWorkSpace = {
   ruling?: 'dotted'
 }
 
+/** Whether Points printed after an answer that ends in this Work Space stand
+ *  on its last ruled line, at its right end — `……………… [3]` — the last rule
+ *  stopping short of them, rather than on a line of their own. Only a ruled
+ *  space that takes room has a last rule to set them on. Every adapter, and
+ *  so the measure, draws by this. */
+export function pointsOnLastRule(space: PlannedWorkSpace | null | undefined): boolean {
+  return !!space && space.style === 'lines' && space.lines > 0 && space.height > 0
+}
+
 /** The rows a planned work space is drawn in. Every adapter draws by this. */
 export function rowsOfPlanned(space: PlannedWorkSpace): WorkSpaceRows {
   return { pitch: space.pitch ?? WORK_SPACE_LINE_PITCH, first: space.firstRow ?? WORK_SPACE_LINE_PITCH }
@@ -448,11 +457,17 @@ export type PlannedQuestion = {
   /** How its number prints, when the Paper Style numbers otherwise than
    *  `1.` — a bold `1` under Exam Board. */
   printedNumber?: string
-  /** The lines its Paper Style prints after the whole question, against the
-   *  right margin, in order (ADR-0045): its Points after its answer — `[2]` —
-   *  or a Multipart question's total — `[Total: 9]` — and, after a Section's
-   *  last question, that Section's total. Absent when the style prints none,
-   *  or nothing in it has points. Only the question's last piece prints them. */
+  /** Its Points as the Paper Style prints them after its answer — `[2]` —
+   *  as a Part's are (ADR-0045): on the last line of a ruled Work Space
+   *  (`pointsOnLastRule`), otherwise on a line of their own against the right
+   *  margin. Absent on a Multipart question, whose Parts carry their own, on
+   *  an unpointed question, and under every style that prints none. */
+  pointsAfter?: string
+  /** The totals its Paper Style prints after the whole question, against the
+   *  right margin, in order (ADR-0045): a Multipart question's — `[Total: 9]`
+   *  — and, after a Section's last question, that Section's. Absent when the
+   *  style prints none, or nothing in it has points. Only the question's last
+   *  piece prints them. */
   closingPoints?: string[]
 }
 
@@ -526,8 +541,11 @@ export type QuestionItem = {
    *  Part's Subparts, or — when the stem and its first Part cannot share a
    *  page — between its stem's blocks. */
   parts: PlannedPart[] | null
-  /** The question's closing Points lines (`PlannedQuestion.closingPoints`), on
-   *  the piece that ends it; absent on every other piece. */
+  /** The question's own Points after its answer (`PlannedQuestion.pointsAfter`),
+   *  on the piece that ends it; absent on every other piece. */
+  pointsAfter?: string
+  /** The question's closing totals (`PlannedQuestion.closingPoints`), on the
+   *  piece that ends it; absent on every other piece. */
   closingPoints?: string[]
 }
 
@@ -1326,6 +1344,7 @@ function deriveQuestion(
     ...(totalPoints !== undefined ? { totalPoints } : {}),
     // A matching set's numbers print on its Items.
     ...(matching ? {} : printedNumberBy(rules, number)),
+    ...(multipart ? {} : pointsAfterOf(rules, totalPoints)),
     ...closingPointsOf(rules, multipart, totalPoints),
   }
 }
@@ -1335,14 +1354,15 @@ function printedNumberBy(rules: PaperStyleRules, number: number): { printedNumbe
   return 'printed' in printed ? { printedNumber: printed.printed } : {}
 }
 
-/** What a question prints after itself under this style: a Multipart
- *  question's total, or any other question's Points after its answer. */
+/** The total a question prints after itself under this style: a Multipart
+ *  question's. Any other question's Points print after its answer instead
+ *  (`pointsAfter`). */
 function closingPointsOf(
   rules: PaperStyleRules,
   multipart: boolean,
   totalPoints: number | undefined,
 ): { closingPoints: string[] } | Record<string, never> {
-  const template = multipart ? rules.points.questionTotal : rules.points.pointsAfterAnswer
+  const template = multipart ? rules.points.questionTotal : undefined
   return template && totalPoints !== undefined ? { closingPoints: [labelled(template, totalPoints)] } : {}
 }
 
@@ -1402,6 +1422,7 @@ function wholeQuestion(question: PlannedQuestion): QuestionItem {
     matching: question.matching,
     workSpace: question.workSpace,
     parts: question.parts,
+    ...(question.pointsAfter ? { pointsAfter: question.pointsAfter } : {}),
     ...(question.closingPoints ? { closingPoints: question.closingPoints } : {}),
   }
 }
@@ -1588,6 +1609,9 @@ function pieceOf(
       sets.length === 0 ? null : { ...sets[0]!, prompts: sets.flatMap((set) => set.prompts) },
     workSpace: segments.find((segment) => segment.workSpace !== null)?.workSpace ?? null,
     parts: question.parts ? joinedParts(segments.flatMap((segment) => segment.parts)) : null,
+    ...(question.pointsAfter && segments.some((segment) => segment.closes)
+      ? { pointsAfter: question.pointsAfter }
+      : {}),
     ...(question.closingPoints && segments.some((segment) => segment.closes)
       ? { closingPoints: question.closingPoints }
       : {}),

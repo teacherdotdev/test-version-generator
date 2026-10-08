@@ -10,6 +10,7 @@ import {
   isAnswerKeyHeader,
   pageSizeOf,
   planExport,
+  pointsOnLastRule,
   questionIndentOf,
   unmeasured,
   type Measure,
@@ -524,12 +525,16 @@ describe('Exam Board', () => {
 
   test('prints each answer’s [n] after it, and a Multipart question’s total after the question', () => {
     const [mc, tf, mx, sa, mp] = testItems(examOf(WITH_POINTS, 'exam-board'))
-    expect(mc!.closingPoints).toEqual(['[1]'])
+    expect(mc!.pointsAfter).toBe('[1]')
     // Unpointed prints nothing.
+    expect(tf!.pointsAfter).toBeUndefined()
     expect(tf!.closingPoints).toBeUndefined()
     // A Matching set takes its Points as a whole.
-    expect(mx!.closingPoints).toEqual(['[2]'])
-    expect(sa!.closingPoints).toEqual(['[4]'])
+    expect(mx!.pointsAfter).toBe('[2]')
+    expect(sa!.pointsAfter).toBe('[4]')
+    // An answer's Points are its own; only a total closes the question.
+    expect([mc, mx, sa].every((item) => item!.closingPoints === undefined)).toBe(true)
+    expect(mp!.pointsAfter).toBeUndefined()
     expect(mp!.closingPoints).toEqual(['[Total: 5]'])
     expect(mp!.parts![0]!.pointsAfter).toBe('[2]')
     // A Part that holds Subparts has no Points of its own; its Subparts do.
@@ -538,7 +543,7 @@ describe('Exam Board', () => {
     // No other style prints Points on the test.
     for (const style of ['standard', 'classic', 'condensed'] as const) {
       const items = testItems(examOf(WITH_POINTS, style))
-      expect(items.every((item) => item.closingPoints === undefined)).toBe(true)
+      expect(items.every((item) => item.closingPoints === undefined && item.pointsAfter === undefined)).toBe(true)
       expect(items[4]!.parts!.every((part) => part.pointsAfter === undefined)).toBe(true)
     }
   })
@@ -557,8 +562,22 @@ describe('Exam Board', () => {
     }
     const pieces = testItems(examOf([long], 'exam-board'), measure)
     expect(pieces.length).toBeGreaterThan(1)
-    expect(pieces.slice(0, -1).every((piece) => piece.closingPoints === undefined)).toBe(true)
-    expect(pieces.at(-1)!.closingPoints).toEqual(['[5]'])
+    expect(pieces.slice(0, -1).every((piece) => piece.pointsAfter === undefined)).toBe(true)
+    expect(pieces.at(-1)!.pointsAfter).toBe('[5]')
+  })
+
+  test('sets an answer’s Points on the last ruled line of its Work Space, and on a line of their own where there is none', () => {
+    const exam = examOf([worth(open('ruled'), 2), worth(open('blank'), 3), worth(open('none'), 4)], 'exam-board', {
+      workSpace: {
+        blank: { height: 64, style: 'blank', fill: false },
+        none: { height: 0, style: 'lines', fill: false },
+      },
+    })
+    const [ruled, blank, none] = testItems(exam)
+    expect(pointsOnLastRule(ruled!.workSpace)).toBe(true)
+    expect(pointsOnLastRule(blank!.workSpace)).toBe(false)
+    expect(pointsOnLastRule(none!.workSpace)).toBe(false)
+    expect(pointsOnLastRule(null)).toBe(false)
   })
 
   test('measures the Points it prints, so they move a question that no longer fits', () => {
@@ -566,7 +585,7 @@ describe('Exam Board', () => {
     const box = 1123 - 2 * 72 - 42 - 36
     const measure = (withPoints: boolean): Measure => ({
       itemHeight: (item) =>
-        item.kind === 'question' ? box / 2 + (withPoints ? (item.closingPoints?.length ?? 0) * 20 : 0) : 0,
+        item.kind === 'question' ? box / 2 + (withPoints && item.pointsAfter ? 20 : 0) : 0,
     })
     const exam = examOf([worth(open('one'), 1), worth(open('two'), 1)], 'exam-board', {
       workSpace: { one: { height: 0, style: 'blank', fill: false }, two: { height: 0, style: 'blank', fill: false } },
@@ -653,8 +672,10 @@ describe('Exam Board', () => {
         sectionOf: { one: 's1', two: 's1', three: 's2' },
       })
       const [one, two, three] = testItems(exam)
-      expect(one!.closingPoints).toEqual(['[2]'])
-      expect(two!.closingPoints).toEqual(['[3]', 'Section total: 5'])
+      expect(one!.pointsAfter).toBe('[2]')
+      expect(one!.closingPoints).toBeUndefined()
+      expect(two!.pointsAfter).toBe('[3]')
+      expect(two!.closingPoints).toEqual(['Section total: 5'])
       // A Section with nothing worth Points prints no total.
       expect(three!.closingPoints).toBeUndefined()
     } finally {

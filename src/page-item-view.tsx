@@ -11,7 +11,7 @@
 // reads a page's furniture: a header, a footer and a page number belong to the
 // page, not to the items on it.
 
-import { Fragment, type ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { TITLE_PX, sectionHeadingStyles } from './export-typography'
 import { Check, Lock, RotateCcw } from 'lucide-react'
 import { DifficultyBadge, TopicBadge } from './badges'
@@ -22,6 +22,7 @@ import {
   headerHeightOf,
   numberColumnOf,
   partsOpenNumberLine,
+  pointsOnLastRule,
   printsNumberLine,
   subpartsOpenLabelLine,
   type AnswerKeyEntryItem,
@@ -208,7 +209,11 @@ export function MatchingSetView({
 // as the plan says, and either empty or ruled with the plan's own count of
 // lines, each one pitch tall with its rule along the bottom. Nothing is drawn
 // for a question that has no room, so a zero-height space measures as nothing.
-export function WorkSpaceView({ space }: { space: PlannedWorkSpace }) {
+//
+// `points` are the `[n]` of the answer the space ends, when they stand on its
+// last rule (`pointsOnLastRule`): at the rule's right end, the rule stopping
+// short of them, in the row's own height.
+export function WorkSpaceView({ space, points }: { space: PlannedWorkSpace; points?: ReactNode }) {
   if (space.height <= 0) return null
   const rows = rowsOfPlanned(space)
   return (
@@ -220,13 +225,17 @@ export function WorkSpaceView({ space }: { space: PlannedWorkSpace }) {
       data-ruling={space.ruling}
       style={{ height: `${space.height}px` }}
     >
-      {Array.from({ length: space.lines }, (_unused, index) => (
-        <div
-          className="work-space-line"
-          key={index}
-          style={{ height: `${index === 0 ? rows.first : rows.pitch}px` }}
-        />
-      ))}
+      {Array.from({ length: space.lines }, (_unused, index) => {
+        const height = { height: `${index === 0 ? rows.first : rows.pitch}px` }
+        return points !== undefined && index === space.lines - 1 ? (
+          <div className="work-space-line work-space-line--points" key={index} style={height}>
+            <span className="work-space-rule" />
+            <span className="work-space-points">{points}</span>
+          </div>
+        ) : (
+          <div className="work-space-line" key={index} style={height} />
+        )
+      })}
     </div>
   )
 }
@@ -239,12 +248,15 @@ export function PointsAfter({ text }: { text: string }) {
 }
 
 /** What a printed `[n]` is the Points of: a Part or Subpart by its id, or —
- *  `partId` `null` — the question itself. */
-export type PrintedPoints = { partId: string | null; points: number; text: string }
+ *  `partId` `null` — the question itself. `onRule` when it stands on the last
+ *  rule of a Work Space, inside that rule's row, rather than on a line of its
+ *  own. */
+export type PrintedPoints = { partId: string | null; points: number; text: string; onRule: boolean }
 
-/** Draws a printed `[n]` in place of `PointsAfter`. The sheet uses it to make
- *  the `[n]` the control that changes the Points it shows; it must take the
- *  same height `PointsAfter` does, since the page was measured with that. */
+/** Draws a printed `[n]` in place of `PointsAfter`, or of the bare text on a
+ *  rule. The sheet uses it to make the `[n]` the control that changes the
+ *  Points it shows; it must take the same room the plain one does, since the
+ *  page was measured with that. */
 export type RenderPrintedPoints = (printed: PrintedPoints) => ReactNode
 
 function printedPoints(
@@ -252,10 +264,41 @@ function printedPoints(
   partId: string | null,
   points: number | undefined,
   render: RenderPrintedPoints | undefined,
+  onRule = false,
 ): ReactNode {
-  return render && points !== undefined
-    ? render({ partId, points, text })
-    : <PointsAfter text={text} />
+  if (render && points !== undefined) return render({ partId, points, text, onRule })
+  return onRule ? text : <PointsAfter text={text} />
+}
+
+/** An answer's room and the `[n]` after it: on the space's last rule where it
+ *  has one, otherwise on a line of their own below it. */
+function AnswerSpace({
+  id,
+  space,
+  pointsAfter,
+  points,
+  renderWorkSpace,
+  renderPoints,
+}: {
+  /** The Part's or Subpart's id, or `null` for the question itself. */
+  id: string | null
+  space: PlannedWorkSpace | null
+  pointsAfter: string | undefined
+  points: number | undefined
+  renderWorkSpace?: (partId: string, space: PlannedWorkSpace, points?: ReactNode) => ReactNode
+  renderPoints?: RenderPrintedPoints
+}) {
+  const onRule = pointsAfter !== undefined && pointsOnLastRule(space)
+  const ruled = onRule ? printedPoints(pointsAfter, id, points, renderPoints, true) : undefined
+  return (
+    <>
+      {space
+        && (renderWorkSpace && id !== null
+          ? renderWorkSpace(id, space, ruled)
+          : <WorkSpaceView space={space} points={ruled} />)}
+      {!onRule && pointsAfter && printedPoints(pointsAfter, id, points, renderPoints)}
+    </>
+  )
 }
 
 // One Part of a Multipart question, drawn the way a question of its kind is, one level
@@ -271,7 +314,7 @@ export function PartContent({
 }: {
   part: PlannedPart
   showCorrectness?: boolean
-  renderWorkSpace?: (partId: string, space: PlannedWorkSpace) => ReactNode
+  renderWorkSpace?: (partId: string, space: PlannedWorkSpace, points?: ReactNode) => ReactNode
   /** How the sheet draws a Part's or Subpart's printed `[n]`. */
   renderPoints?: RenderPrintedPoints
 }) {
@@ -290,12 +333,14 @@ export function PartContent({
       <div className="part-body">
         {!part.continued && <DocView className="question-stem" content={part.stem} />}
         {part.grid && <ChoiceGridView grid={part.grid} showCorrectness={showCorrectness} />}
-        {part.workSpace
-          && (renderWorkSpace
-            ? renderWorkSpace(part.id, part.workSpace)
-            : <WorkSpaceView space={part.workSpace} />)}
-        {!part.continued && part.pointsAfter
-          && printedPoints(part.pointsAfter, part.id, part.points, renderPoints)}
+        <AnswerSpace
+          id={part.id}
+          space={part.workSpace}
+          pointsAfter={part.continued ? undefined : part.pointsAfter}
+          points={part.points}
+          renderWorkSpace={renderWorkSpace}
+          renderPoints={renderPoints}
+        />
         {/* A Part with no lead-in opens with Subpart (i) on its own line. */}
         {part.subparts.length > 0 && (
           <div
@@ -331,7 +376,7 @@ function SubpartContent({
 }: {
   subpart: PlannedSubpart
   showCorrectness: boolean
-  renderWorkSpace?: (partId: string, space: PlannedWorkSpace) => ReactNode
+  renderWorkSpace?: (partId: string, space: PlannedWorkSpace, points?: ReactNode) => ReactNode
   renderPoints?: RenderPrintedPoints
 }) {
   return (
@@ -346,12 +391,14 @@ function SubpartContent({
       <div className="part-body">
         <DocView className="question-stem" content={subpart.stem} />
         {subpart.grid && <ChoiceGridView grid={subpart.grid} showCorrectness={showCorrectness} />}
-        {subpart.workSpace
-          && (renderWorkSpace
-            ? renderWorkSpace(subpart.id, subpart.workSpace)
-            : <WorkSpaceView space={subpart.workSpace} />)}
-        {subpart.pointsAfter
-          && printedPoints(subpart.pointsAfter, subpart.id, subpart.points, renderPoints)}
+        <AnswerSpace
+          id={subpart.id}
+          space={subpart.workSpace}
+          pointsAfter={subpart.pointsAfter}
+          points={subpart.points}
+          renderWorkSpace={renderWorkSpace}
+          renderPoints={renderPoints}
+        />
       </div>
     </div>
   )
@@ -372,7 +419,7 @@ export function QuestionContent({
   showCorrectness?: boolean
   /** The sheet's own drawing of a Short Answer Part's work space, with its
    *  sizing handle; everywhere else the space is drawn plain. */
-  renderPartWorkSpace?: (partId: string, space: PlannedWorkSpace) => ReactNode
+  renderPartWorkSpace?: (partId: string, space: PlannedWorkSpace, points?: ReactNode) => ReactNode
   /** How the sheet draws each printed `[n]` — the question's, a Part's or a
    *  Subpart's. A total, which no one sets, is always drawn plain. */
   renderPoints?: RenderPrintedPoints
@@ -407,7 +454,14 @@ export function QuestionContent({
         {item.grid && (
           <ChoiceGridView grid={item.grid} showCorrectness={showCorrectness} />
         )}
-        {item.workSpace && <WorkSpaceView space={item.workSpace} />}
+        {item.workSpace && (
+          <WorkSpaceView
+            space={item.workSpace}
+            points={item.pointsAfter && pointsOnLastRule(item.workSpace)
+              ? printedPoints(item.pointsAfter, null, item.question.totalPoints, renderPoints, true)
+              : undefined}
+          />
+        )}
         {/* With no stem above them, Part (a) opens on the number's line. */}
         {item.parts && item.parts.length > 0 && (
           <div
@@ -432,18 +486,14 @@ export function QuestionContent({
       {item.matching && (
         <MatchingSetView set={item.matching} showCorrectness={showCorrectness} />
       )}
-      {item.closingPoints && (
+      {/* The question's own `[n]`, where no ruled Work Space carries it,
+          then the totals no one sets: a Multipart question's, and any
+          Section's. */}
+      {((item.pointsAfter && !pointsOnLastRule(item.workSpace)) || item.closingPoints) && (
         <div className="question-closing">
-          {item.closingPoints.map((text, index) => (
-            <Fragment key={index}>
-              {/* Only a question that is not Multipart prints its own Points
-                  here, and always first (`closingPointsOf` in export-plan.ts);
-                  a Multipart question's total, and any Section's, follow. */}
-              {index === 0 && !item.question.parts
-                ? printedPoints(text, null, item.question.totalPoints, renderPoints)
-                : <PointsAfter text={text} />}
-            </Fragment>
-          ))}
+          {item.pointsAfter && !pointsOnLastRule(item.workSpace)
+            && printedPoints(item.pointsAfter, null, item.question.totalPoints, renderPoints)}
+          {(item.closingPoints ?? []).map((text, index) => <PointsAfter text={text} key={index} />)}
         </div>
       )}
     </>

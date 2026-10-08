@@ -22,6 +22,7 @@ import {
   COVER_INSTRUCTIONS_HEADING,
   printedLabel,
   partsOpenNumberLine,
+  pointsOnLastRule,
   printedNumberOf,
   printsNumberLine,
   runningFootOf,
@@ -535,14 +536,25 @@ function planMatching(set: MatchingSet, images: ImageOrdinals): ContentLine[] {
 /** A work space as the vocabulary writes it. Its height is geometry and is not
  *  compared; whether it is there, blank or ruled, and how many rules it
  *  carries, is content a student writes on. */
-export function workSpaceLine(style: string, lines: number, ruling?: string): ContentLine {
+/** A work space's line; `points` are what stands on its last rule, read as
+ *  its own text: `space:lines:3:dotted [3]`. */
+export function workSpaceLine(style: string, lines: number, ruling?: string, points?: string): ContentLine {
   if (style !== 'lines') return 'space:blank'
-  return ruling === 'dotted' ? `space:lines:${lines}:dotted` : `space:lines:${lines}`
+  const space = ruling === 'dotted' ? `space:lines:${lines}:dotted` : `space:lines:${lines}`
+  return points ? `${space} ${normalizeSpace(points).trim()}` : space
 }
 
-/** A planned work space's line, when it takes any room. */
-function plannedSpaceLines(space: PlannedWorkSpace | null): ContentLine[] {
-  return space && space.height > 0 ? [workSpaceLine(space.style, space.lines, space.ruling)] : []
+/** A planned work space's line, when it takes any room, and the Points after
+ *  the answer it ends — on its last rule when it has one
+ *  (`pointsOnLastRule`), otherwise a paragraph of their own. */
+function answerSpaceLines(space: PlannedWorkSpace | null, pointsAfter?: string): ContentLine[] {
+  if (pointsAfter && pointsOnLastRule(space)) {
+    return [workSpaceLine(space!.style, space!.lines, space!.ruling, pointsAfter)]
+  }
+  return [
+    ...(space && space.height > 0 ? [workSpaceLine(space.style, space.lines, space.ruling)] : []),
+    ...pointsLines(pointsAfter ? [pointsAfter] : undefined),
+  ]
 }
 
 /** Points printed after an answer or a question: a paragraph of their own. */
@@ -573,7 +585,7 @@ function planQuestion(item: QuestionItem, images: ImageOrdinals): ContentLine[] 
     ...stem,
     ...(item.grid ? planGrid(item.grid, images) : []),
     ...(item.matching ? planMatching(item.matching, images) : []),
-    ...plannedSpaceLines(item.workSpace),
+    ...answerSpaceLines(item.workSpace, item.pointsAfter),
     ...(item.parts ?? []).flatMap((part, index) =>
       planPart(part, images, opening && index === 0 ? opener : [])),
     ...pointsLines(item.closingPoints),
@@ -613,8 +625,7 @@ function planAnswering(
   return [
     ...(stem.length > 0 ? stem : [line('para', renderInline(opener))]),
     ...(part.grid ? planGrid(part.grid, images) : []),
-    ...plannedSpaceLines(part.workSpace),
-    ...pointsLines(part.pointsAfter ? [part.pointsAfter] : undefined),
+    ...answerSpaceLines(part.workSpace, part.pointsAfter),
   ]
 }
 

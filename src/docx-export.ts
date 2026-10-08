@@ -92,6 +92,7 @@ import {
   questionIndentOf,
   MATCHING_BANK_WIDTH,
   partsOpenNumberLine,
+  pointsOnLastRule,
   printsNumberLine,
   subpartsOpenLabelLine,
   PART_INDENT,
@@ -994,7 +995,15 @@ export const WORK_SPACE_STYLES = {
 
 const WORK_SPACE_RULE_TWIPS = 10
 
-function workSpaceParagraphs(space: PlannedWorkSpace, indentTwips: number): Paragraph[] {
+// Points on the last rule (`pointsOnLastRule`) are that row's own text, set
+// against `rightTwips` by a right tab whose leader is the rule — dots under a
+// dotted ruling — so the rule stops short of them, as exam papers set
+// `……………… [3]`.
+function workSpaceParagraphs(
+  space: PlannedWorkSpace,
+  indentTwips: number,
+  points?: { text: string; rightTwips: number },
+): Paragraph[] {
   if (space.height <= 0) return []
   const style = WORK_SPACE_STYLES[space.style]
   const exactly = (heightTwips: number) => ({
@@ -1007,7 +1016,19 @@ function workSpaceParagraphs(space: PlannedWorkSpace, indentTwips: number): Para
   const ruled = space.style === 'lines' ? space.lines : 0
   const rows = rowsOfPlanned(space)
   const paragraphs = Array.from({ length: ruled }, (_unused, index) =>
-    new Paragraph({
+    points && index === ruled - 1
+      ? new Paragraph({
+          style,
+          indent,
+          spacing: exactly(twips(index === 0 ? rows.first : rows.pitch)),
+          tabStops: [{
+            type: TabStopType.RIGHT,
+            position: points.rightTwips,
+            leader: space.ruling === 'dotted' ? LeaderType.DOT : LeaderType.UNDERSCORE,
+          }],
+          children: [new TextRun({ text: `\t${points.text}` })],
+        })
+      : new Paragraph({
       style,
       indent,
       spacing: exactly(twips(index === 0 ? rows.first : rows.pitch) - WORK_SPACE_RULE_TWIPS),
@@ -1073,11 +1094,32 @@ function questionContent(
         )]
       : []),
     ...(item.matching ? matchingContent(item.matching, build) : []),
-    ...(item.workSpace ? workSpaceParagraphs(item.workSpace, indent) : []),
+    ...answerSpaceContent(item.workSpace, item.pointsAfter, indent, build),
     ...(item.parts ?? []).flatMap((part, index) =>
       partContent(part, indentPx, build, opening && index === 0 ? { prefix, start: 0, stops: [indent] } : undefined),
     ),
     ...(item.closingPoints ?? []).map(pointsAfterParagraph),
+  ]
+}
+
+/** An answer's room and its Points: on the room's last rule where it has
+ *  one, otherwise a paragraph of their own below it. */
+function answerSpaceContent(
+  space: PlannedWorkSpace | null,
+  pointsAfter: string | undefined,
+  indentTwips: number,
+  build: BuildContext,
+): Paragraph[] {
+  const onRule = pointsAfter !== undefined && pointsOnLastRule(space)
+  return [
+    ...(space
+      ? workSpaceParagraphs(
+          space,
+          indentTwips,
+          onRule ? { text: pointsAfter, rightTwips: twips(build.pageWidth) } : undefined,
+        )
+      : []),
+    ...(pointsAfter && !onRule ? [pointsAfterParagraph(pointsAfter)] : []),
   ]
 }
 
@@ -1157,8 +1199,7 @@ function answeringContent(
     ...(part.grid
       ? [choiceGridTable(part.grid, build, build.pageWidth - indentPx - CHOICE_INDENT, indentPx + CHOICE_INDENT)]
       : []),
-    ...(part.workSpace ? workSpaceParagraphs(part.workSpace, indent) : []),
-    ...(part.pointsAfter ? [pointsAfterParagraph(part.pointsAfter)] : []),
+    ...answerSpaceContent(part.workSpace, part.pointsAfter, indent, build),
   ]
 }
 

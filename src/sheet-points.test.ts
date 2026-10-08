@@ -79,6 +79,17 @@ describe('Points on the exam sheet', () => {
     ])
   })
 
+  test('an [n] that ends a ruled Work Space is the control at the end of its last rule', () => {
+    const items = sheetQuestions('a paper with points in the exam board paper style')
+    const lastRule = (markup: string) =>
+      /<div class="work-space-line work-space-line--points"[^>]*>.*?<\/div>/s.exec(markup)?.[0] ?? ''
+    // The Short Answer question's dotted lines carry its [3] on the last one.
+    expect(lastRule(sheetMarkup(items[3]!))).toContain('aria-label="Points for question 5: 3 points"')
+    // A Multiple Choice question has no rule, so its [1] stands on its own line.
+    expect(sheetMarkup(items[0]!)).not.toContain('work-space-line--points')
+    expect(sheetMarkup(items[0]!)).toMatch(/<p class="points-after"><button[^>]*aria-label="Points for question 1/)
+  })
+
   test('a Multipart question’s printed total is the sum of its Parts, and not a control', () => {
     const multipart = sheetQuestions('a paper with points in the exam board paper style').at(-1)!
     const markup = sheetMarkup(multipart)

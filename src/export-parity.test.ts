@@ -217,13 +217,15 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     expect(lines).toContain('para (a) State one condition seeds need to germinate.')
     expect(lines).toContain('para (i) Which colour are the cupboard seedlings?')
     expect(lines).toContain('para (ii) Explain the difference in their height.')
-    // The style's three dotted lines, then the answer's Points after them.
+    // The style's three dotted lines, the answer's Points on the last of
+    // them, at its right end.
     const shortAnswer = lines.indexOf('para 5 Explain why a plant kept in the dark loses mass.')
-    expect(lines.slice(shortAnswer + 1, shortAnswer + 3)).toEqual(['space:lines:3:dotted', 'para [3]'])
+    expect(lines[shortAnswer + 1]).toBe('space:lines:3:dotted [3]')
+    expect(lines).not.toContain('para [3]')
     // The teacher's own two lines on Part (a) win over the style's three.
     const partA = lines.indexOf('para (a) State one condition seeds need to germinate.')
-    expect(lines.slice(partA + 1, partA + 3)).toEqual(['space:lines:2:dotted', 'para [2]'])
-    expect(lines.at(-2)).toBe('para [6]')
+    expect(lines[partA + 1]).toBe('space:lines:2:dotted [2]')
+    expect(lines.at(-2)).toBe('space:lines:3:dotted [6]')
     expect(lines.at(-1)).toBe('para [Total: 9]')
     // A Multiple Choice and a Matching set print their Points after their answers.
     expect(lines).toContain('para [1]')
@@ -242,6 +244,29 @@ describe('the DOCX Export Adapter carries the planned document', () => {
 
     expectSameDocument(planned, await docxOf(fixture))
     expectSameDocument(planned, printFingerprint(plans))
+  })
+
+  test('keeps an answer’s Points on a line of their own where no ruled Work Space ends it', async () => {
+    const pointed = FIXTURES.find((item) => item.name === 'a paper with points in the exam board paper style')!
+    // The teacher gives the Short Answer question blank room, and Part (a) none.
+    const fixture = {
+      ...pointed,
+      exam: {
+        ...pointed.exam,
+        workSpace: {
+          'eb-sa': { height: 64, style: 'blank' as const, fill: false },
+          'eb-mp-a': { height: 0, style: 'lines' as const, fill: false },
+        },
+      },
+    }
+    const plans = planOf(fixture)
+    const lines = layoutFingerprint([plans[0]!]).pages.flatMap((page) => page.content)
+    const shortAnswer = lines.indexOf('para 5 Explain why a plant kept in the dark loses mass.')
+    expect(lines.slice(shortAnswer + 1, shortAnswer + 3)).toEqual(['space:blank', 'para [3]'])
+    const partA = lines.indexOf('para (a) State one condition seeds need to germinate.')
+    expect(lines[partA + 1]).toBe('para [2]')
+    expectSameDocument(layoutFingerprint(plans), await docxOf(fixture))
+    expectSameDocument(layoutFingerprint(plans), printFingerprint(plans))
   })
 
   test('cuts an A4 plan to A4 exactly in Word', async () => {

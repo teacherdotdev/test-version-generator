@@ -344,9 +344,13 @@ function paragraphStyleOf(paragraph: XmlNode): string | undefined {
 
 function blockLines(container: XmlNode, reader: Reader): ContentLine[] {
   const lines: ContentLine[] = []
-  const open: { space: { style: 'blank' | 'lines'; rules: number; ruling?: string } | null } = { space: null }
+  const open: {
+    space: { style: 'blank' | 'lines'; rules: number; ruling?: string; points?: string } | null
+  } = { space: null }
   const closeSpace = () => {
-    if (open.space) lines.push(workSpaceLine(open.space.style, open.space.rules, open.space.ruling))
+    if (open.space) {
+      lines.push(workSpaceLine(open.space.style, open.space.rules, open.space.ruling, open.space.points))
+    }
     open.space = null
   }
   for (const node of container.children) {
@@ -361,6 +365,14 @@ function blockLines(container: XmlNode, reader: Reader): ContentLine[] {
       const rule = path(node, 'w:pPr', 'w:pBdr', 'w:bottom')
       if (path(node, 'w:pPr', 'w:pBdr')) open.space!.rules += 1
       if (rule?.attrs['w:val'] === 'dotted') open.space!.ruling = 'dotted'
+      // The last rule, drawn as a tab's leader up to the answer's Points.
+      const leader = path(node, 'w:pPr', 'w:tabs', 'w:tab')?.attrs['w:leader']
+      if (leader) {
+        open.space!.rules += 1
+        if (leader === 'dot') open.space!.ruling = 'dotted'
+        const points = renderInline(inlineSegments(node, [], reader))
+        if (points) open.space!.points = points
+      }
       continue
     }
     closeSpace()

@@ -409,6 +409,31 @@ describe('PDF Export Adapter', () => {
     expect(rules).toBeGreaterThan(5)
   })
 
+  test('sets an answer’s [n] on the last of its ruled lines, at the right margin', async () => {
+    const { plans } = plansOf('a paper with points in the exam board paper style')
+    const { bytes } = await createPublicationPdf(plans, noImages, fonts)
+    const document = await getDocument({ data: bytes, disableWorker: true }).promise
+    const pages = await Promise.all(Array.from({ length: plans[0]!.pages.length }, async (_, index) =>
+      (await (await document.getPage(index + 1)).getTextContent()).items.flatMap((item) =>
+        'str' in item && item.str.trim()
+          ? [{ text: item.str.trim(), x: item.transform[4] as number, y: item.transform[5] as number, width: item.width as number }]
+          : [])))
+    const page = pages.find((items) => items.some((item) => item.text.startsWith('Explain why a plant')))!
+    const stem = page.find((item) => item.text.startsWith('Explain why a plant'))!
+    const points = page.find((item) => item.text === '[3]')!
+    // Its three dotted rows, as planned: [3] stands in the last of them —
+    // below the second rule and above the third — not on a line under it.
+    const space = plans[0]!.pages.flatMap((planned) => planned.items)
+      .find((item) => item.kind === 'question' && item.question.id === 'eb-sa')
+    const rows = space?.kind === 'question' ? space.workSpace! : null
+    const below = stem.y - points.y
+    const pt = (px: number) => px * 0.75
+    expect(below).toBeGreaterThan(pt(rows!.firstRow! + rows!.pitch!))
+    expect(below).toBeLessThan(pt(rows!.firstRow! + 2 * rows!.pitch!) + pt(20))
+    // Against the right margin, as print sets it.
+    expect(points.x + points.width).toBeCloseTo(595.28 - pt(72), 0)
+  })
+
   // Content the plan put on a page is drawn there even when it runs past
   // the foot of the page (ADR-0046): the export goes ahead, and the pages it
   // ran past are named, counted across the whole file.

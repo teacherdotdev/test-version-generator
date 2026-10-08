@@ -170,7 +170,14 @@ function blockLines(
   // A work space is drawn, not written: the rules are what it says.
   if (has(node, 'work-space')) {
     const rules = node.children.filter((child) => has(child, 'work-space-line')).length
-    return [workSpaceLine(node.attrs['data-style'] ?? 'blank', rules, node.attrs['data-ruling'])]
+    // An answer's `[n]` on its last rule is the rule's own text.
+    const points = find(node, 'work-space-points')
+    return [workSpaceLine(
+      node.attrs['data-style'] ?? 'blank',
+      rules,
+      node.attrs['data-ruling'],
+      points ? normalizeSpace(textOf(points)).trim() : undefined,
+    )]
   }
   // A Cover Page's candidate field is its label and the box beside it.
   if (has(node, 'cover-field')) {

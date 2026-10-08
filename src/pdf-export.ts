@@ -44,6 +44,7 @@ import {
   printedLabel,
   printedNumberOf,
   partsOpenNumberLine,
+  pointsOnLastRule,
   printsNumberLine,
   subpartsOpenLabelLine,
   questionIndentOf,
@@ -812,18 +813,36 @@ function drawWorkSpace(
   width: number,
   /** Room to keep below the space for the Points printed after it. */
   reserve = 0,
+  /** The answer's Points, set on the last rule at its right end, the rule
+   *  stopping short of them (`pointsOnLastRule`). */
+  points?: string,
 ): void {
   if (space.height <= 0) return
   const height = Math.max(0, Math.min(pt(space.height), context.y - context.bottom - reserve))
   const top = context.y
   const rows = rowsOfPlanned(space)
   const dotted = space.ruling === 'dotted'
+  const font = context.fonts.regular
+  if (points) assertSupported(points, font)
+  const pointsWidth = points ? font.widthOfTextAtSize(points, BODY_SIZE) : 0
   for (let rule = 1; rule <= space.lines; rule += 1) {
     const y = top - pt(rows.first + rows.pitch * (rule - 1))
     if (y < top - height - 0.01) break
+    // Print's 8px between the shortened rule and the Points, which sit with
+    // the foot of their line on the rule.
+    const last = points !== undefined && rule === space.lines
+    if (last) {
+      context.page.drawText(points, {
+        x: x + width - pointsWidth,
+        y: y + (BODY_LINE - BODY_SIZE) / 2 + BODY_SIZE * 0.2,
+        font,
+        size: BODY_SIZE,
+        color: INK,
+      })
+    }
     context.page.drawLine({
       start: { x, y },
-      end: { x: x + width, y },
+      end: { x: last ? x + width - pointsWidth - pt(8) : x + width, y },
       // A dotted line is round dots, a dot's width and two more apart.
       ...(dotted
         ? { thickness: 1.1, color: INK, dashArray: [0, 2.6], lineCap: LineCapStyle.Round }
@@ -973,9 +992,14 @@ function drawAnswering(
   if (part.stem.length > 0) drawBlocks(context, part.stem, { x: bodyX, width: bodyWidth })
   else context.y -= BODY_LINE
   if (part.grid) drawChoiceGrid(context, part.grid, bodyX + pt(CHOICE_INDENT), bodyWidth - pt(CHOICE_INDENT))
-  const points = part.pointsAfter ? [part.pointsAfter] : []
+  const onRule = part.pointsAfter !== undefined && pointsOnLastRule(part.workSpace)
+  const points = part.pointsAfter && !onRule ? [part.pointsAfter] : []
   if (part.workSpace) {
-    drawWorkSpace(context, part.workSpace, bodyX, bodyWidth, reserve + points.length * pointsLineHeight())
+    drawWorkSpace(
+      context, part.workSpace, bodyX, bodyWidth,
+      reserve + points.length * pointsLineHeight(),
+      onRule ? part.pointsAfter : undefined,
+    )
   }
   drawPointsAfter(context, points, bodyX, bodyWidth)
 }
@@ -996,8 +1020,13 @@ function drawQuestion(context: DrawContext, item: QuestionItem): void {
   // Points printed after the question keep their room below a space that
   // fills the page, as packing kept it.
   const closing = item.closingPoints ?? []
-  const reserve = closing.length * pointsLineHeight()
-  if (item.workSpace) drawWorkSpace(context, item.workSpace, bodyX, bodyWidth, reserve)
+  const onRule = item.pointsAfter !== undefined && pointsOnLastRule(item.workSpace)
+  const own = item.pointsAfter && !onRule ? [item.pointsAfter] : []
+  const reserve = (own.length + closing.length) * pointsLineHeight()
+  if (item.workSpace) {
+    drawWorkSpace(context, item.workSpace, bodyX, bodyWidth, reserve, onRule ? item.pointsAfter : undefined)
+  }
+  drawPointsAfter(context, own, context.x, context.width)
   const parts = item.parts ?? []
   // With no stem above them, Part (a) prints on the number's line.
   const opening = partsOpenNumberLine(item)
