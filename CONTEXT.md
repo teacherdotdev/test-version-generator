@@ -37,7 +37,7 @@ The versioned, format-owned machine-readable representation of one Question Bank
 _Avoid_: PDF metadata, extracted questions
 
 **Exam Record**:
-The versioned, format-owned machine-readable composition of one Exam: its name and, for each position, the Question it references in a Question Bank Record travelling in the same Test Parrot Package, with that position's answer columns, answer order, Hidden Answers, Word Bank layout and Work Space, and the Question Section it is in, and the Exam's heading and text sizes, Question Style and Page Margins. It carries the Exam's Sections in print order, each with its Section Heading and Section Directions, so a test an assistant converts keeps its own parts in its own order. It never references a Question outside its package.
+The versioned, format-owned machine-readable composition of one Exam: its name and, for each position, the Question it references in a Question Bank Record travelling in the same Test Parrot Package, with that position's answer columns, answer order, Hidden Answers, Word Bank layout and Work Space, and the Question Section it is in, and the Exam's heading and text sizes, Paper Style and Page Margins. It carries the Exam's Sections in print order, each with its Section Heading and Section Directions, so a test an assistant converts keeps its own parts in its own order. It never references a Question outside its package.
 _Avoid_: Exam layout, test JSON
 
 **Test Parrot Package**:
@@ -78,6 +78,10 @@ An optional classification of a question as easy, medium, or hard.
 **Topic**:
 An optional, free-form label describing subject matter assessed by a question. A question may have more than one Topic.
 _Avoid_: Concept
+
+**Marks**:
+What answering something correctly is worth, as a whole number: an optional part of a Question that is the same on every Exam using it. Marks belong to what a student answers — a Multiple Choice, True/False or Short Answer Question, a whole Matching set, or a Part or Subpart that answers — so a Multipart question's Marks, and an Exam's total, are always the sum of their parts and never set apart from them. Something with no Marks is unmarked, not worth nothing: it adds nothing to a total, and an Exam shows a total only when some of its Questions have Marks.
+_Avoid_: Points, score, weight
 
 **Authored Image Size**:
 How wide a teacher makes a block image: the width of what it shows, as a share of its printable container, such as the Question Content lane, a Panel or an answer-choice cell. It never exceeds the container and always preserves the picture's proportions, so the editor resizes a picture from its corners and sides alike, in proportion. A picture no one has sized fits its container at its own width, or the container's when that is narrower. A picture taken from a Source Document for a Question's own content arrives at about the width it had on its page, and a Picture Crop keeps what it shows at the size it printed at before.
@@ -134,7 +138,7 @@ What a Question asks for, settled when it is created and never changed afterward
 _Avoid_: Question format, question kind
 
 **True/False**:
-A Question Type whose answer is one of exactly two fixed choices, True and False, which the teacher picks between rather than writes. The pair is not printed as lettered answers: a T and an F print beside its number for a student to circle — or, under a Question Style that asks for one, an answer blank to write on — and the Answer Key records T or F rather than a choice letter. It does not Vary: True before False is a convention a student reads, not an authored order.
+A Question Type whose answer is one of exactly two fixed choices, True and False, which the teacher picks between rather than writes. The pair is not printed as lettered answers: a T and an F print beside its number for a student to circle — or, under a Paper Style that asks for one, an answer blank to write on — and the Answer Key records T or F rather than a choice letter. It does not Vary: True before False is a convention a student reads, not an authored order.
 _Avoid_: Binary question, T/F question, two-choice multiple choice
 
 **Matching**:
@@ -146,7 +150,7 @@ One numbered thing to match in a Matching set, in authored order. It is matched 
 _Avoid_: Prompt (in teacher-facing text), stem (for an Item), left side
 
 **Word Bank**:
-The lettered answers a Matching set's Items are matched against, in authored order. A letter is a position — Vary may shuffle a Word Bank, as it shuffles Multiple Choice answers — and no answer is correct on its own: several Items may name the same answer, and an answer no Item names is a distractor. Where a Word Bank prints is Exam presentation, like a Multiple Choice question's answer columns, and always one of two: beside its Items or above them in columns. A Matching question takes one when it arrives on an Exam — by its Question Style, which puts it above under Classic and otherwise beside its Items when its widest answer fits a column beside them — and keeps it until the teacher flips it or the Exam changes Question Style, which sets every Matching question's again.
+The lettered answers a Matching set's Items are matched against, in authored order. A letter is a position — Vary may shuffle a Word Bank, as it shuffles Multiple Choice answers — and no answer is correct on its own: several Items may name the same answer, and an answer no Item names is a distractor. Where a Word Bank prints is Exam presentation, like a Multiple Choice question's answer columns, and always one of two: beside its Items or above them in columns. Where the teacher has set none, the Exam's Paper Style supplies it — above under Classic, and otherwise beside its Items when its widest answer fits a column beside them — and a placement the teacher set always wins, so changing Paper Style never moves one.
 _Avoid_: Choices (for a Matching set), answer list, right side
 
 **Locked Answer**:
@@ -170,16 +174,16 @@ A Question Type whose Question is a stem followed by its Parts. The stem is ordi
 _Avoid_: Stimulus, passage, document-based question, question group, source
 
 **Part**:
-One lettered question within a Multipart question, in authored order: a Multiple Choice Part with its own stem and answers, or a Short Answer Part with its own stem and optional Suggested Answer. Unlike a Question's type, a Part's type may be switched while it is edited; only the answers of the type it ends as are saved. Parts are never shuffled, since they are lettered in place and often build on one another, but a Multiple Choice Part's answers Vary as a Multiple Choice question's do. A Multipart question with no Parts is incomplete rather than invalid. Question Metadata belongs to the Multipart question, not its Parts; its Answer Key entry records one line per Part.
+One lettered question within a Multipart question, in authored order: a Multiple Choice Part with its own stem and answers, a Short Answer Part with its own stem and optional Suggested Answer, or a stem alone followed by its Subparts. Unlike a Question's type, a Part's type may be switched while it is edited; only the answers of the type it ends as are saved. Parts are never shuffled, since they are lettered in place and often build on one another, but a Multiple Choice Part's answers Vary as a Multiple Choice question's do. A Multipart question with no Parts is incomplete rather than invalid. Question Metadata belongs to the Multipart question, not its Parts; its Answer Key entry records one line per Part, or per Subpart where a Part has them.
 _Avoid_: Sub-question, item (Item is Matching's), sub-part
 
-**Work Space**:
-Room an Exam leaves below a Short Answer question or Short Answer Part for a student's working: blank or ruled, as tall as the teacher drags it, or filling the rest of its page. It is Exam presentation set on the exam sheet like answer columns, never Question Content, so the same Question may take different room on another Exam; Duplicate copies it. Where the teacher has set none, the Exam's Question Style supplies it — ruled lines under Classic and Condensed, none under Standard — and a Work Space the teacher set, None included, always wins. It is kept as a number of rows; the Question Style decides how far apart they lie on the page, closer under Condensed, and the first row is a little shorter, so the first rule sits close under its question.
-_Avoid_: White space, answer box, response area
+**Subpart**:
+One question numbered (i), (ii)… within a Part, in authored order: a Multiple Choice or Short Answer question like a Part, but never holding Subparts of its own. A Part that has Subparts answers nothing itself — its stem is their shared lead-in — so 2(a)(i) is as deep as a Multipart question goes. Like Parts, Subparts are never shuffled.
+_Avoid_: Sub-question, sub-sub-part, nested part
 
-**Question Style**:
-One preset for how every question on an Exam prints — Standard, Classic or Condensed — chosen from the Format menu and never set per question or per Question Type. It decides what prints before a question's number (T and F to circle, or an answer blank to write on), how answers and a Word Bank are lettered and laid out, how far apart questions stand and how closely Work Space is ruled, and what Work Space a Short Answer question or Part leaves when the teacher has set none. It is Exam presentation like the heading and text sizes; Standard is the sheet as it always printed, and the Answer Key is the same under every style.
-_Avoid_: Theme, template, question format, layout preset
+**Work Space**:
+Room an Exam leaves below a Short Answer question or Short Answer Part for a student's working: blank or ruled, as tall as the teacher drags it, or filling the rest of its page. It is Exam presentation set on the exam sheet like answer columns, never Question Content, so the same Question may take different room on another Exam; Duplicate copies it. Where the teacher has set none, the Exam's Paper Style supplies it — ruled lines under Classic and Condensed, none under Standard — and a Work Space the teacher set, None included, always wins. It is kept as a number of rows; the Paper Style decides how far apart they lie on the page, closer under Condensed, and the first row is a little shorter, so the first rule sits close under its question.
+_Avoid_: White space, answer box, response area
 
 **Page Header**:
 The line an Exam prints at the top of each test page, beside the paper's ID. By default it is Name, Class and Date blanks on the first page and a Name blank on later ones; an Exam may reword the first page's line and the later pages' line, as plain text in which underscores are the blanks, or clear either. The ID is the one value the header fills in for each paper and is never part of the line. The Exam's title prints on its own line under the first page's header, and Answer Key pages carry the ID alone.
@@ -188,6 +192,18 @@ _Avoid_: Letterhead, banner, identity line
 **Page Margins**:
 How far in from each edge of the sheet an Exam's pages print, in inches: three quarters of an inch on every side unless the Exam sets its own, one value for all four sides or each side apart. It is Exam presentation, set from the Format menu like the heading and text sizes; every page of the test and the Answer Key prints with it, and the Exam's questions are packed into the room it leaves.
 _Avoid_: Padding, page border, gutter
+
+**Paper Style**:
+How an Exam's paper is drawn, apart from what it asks and how its Questions are arranged: its paper size, fonts, how Questions, Parts and Subparts are labelled, how ruled Work Space looks, where Marks and their totals print, its running header and footer, and its Cover Page. An Exam names one Paper Style — Standard, Classic, Condensed or Exam Board — chosen from the Format menu and never set per question; it decides what prints before a question's number, how answers and a Word Bank are lettered and laid out, how far apart questions stand, and what Work Space or Word Bank layout a question has when the teacher has set none. Standard is the sheet as it always printed, and switching between them never changes the Exam or its Questions, so switching back restores the same paper. A Paper Style is a description Test Parrot draws, never code of its own, and no Paper Style carries an exam board's name, marks or wording.
+_Avoid_: Question Style, template, theme, format, layout preset
+
+**Paper Details**:
+Facts about one Exam that its Paper Style may print — its subject line, duration, paper code, instructions and which candidate fields to ask for — written by the teacher for that Exam. The total of its Marks is never a Paper Detail: it is always counted.
+_Avoid_: Exam metadata, cover fields
+
+**Cover Page**:
+A first page some Paper Styles put before the Questions, arranging the Exam's Paper Details, its candidate fields and its total Marks. Whether there is one, and how it is set out, belongs to the Paper Style; what it says belongs to the Exam.
+_Avoid_: Title page, front page
 
 **Question Section**:
 An ordered group of Questions within an Exam, of any Question Type, fixed in the Exam and its exported output. An Exam's Sections print in whatever order the teacher arranges them, and every Question in an Exam belongs to exactly one Section. A Section has its own Section Heading and Section Directions, and an emptied Section stays, and prints its heading and directions, until the teacher deletes it or merges it with a neighbour — so the sheet and the paper always put every Question on the same page; deleting a Section Removes its Questions, while merging moves them into the neighbour, under its wording. Every heading on an Exam, its title included, prints at one of three sizes, and its questions and answers at one of three text sizes chosen apart from the headings. The Answer Key groups its entries by Section and uses the test's headings.
