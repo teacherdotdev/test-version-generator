@@ -1700,6 +1700,86 @@ export const FIXTURES: readonly Fixture[] = [
     },
   ),
 
+  // A table under a picture in a Multipart question's Part (a), on an Exam
+  // Board page of A4, its notes cell wrapping over many lines. Measured at
+  // nothing, so the plan puts it all on the first page of questions, where
+  // it fits with room to spare: the PDF must draw it there, a wrapped cell's
+  // lines each taking one line of the page and no more.
+  fixture(
+    'a wrapping table under a picture in an exam board part',
+    {
+      title: 'Rolling Ball',
+      paperStyle: 'exam-board',
+      questions: [
+        multipart(
+          'eb-tb',
+          [paragraph(text('This question is about motion.'))],
+          [
+            {
+              ...part(
+                'eb-tb-a',
+                [
+                  paragraph(text('A class rolls a ball down a ramp and times it.')),
+                  {
+                    type: 'image-block',
+                    attrs: { src: `/local-images/${'f'.repeat(64)}`, caption: 'Fig. 1.1' },
+                  },
+                  paragraph(text('Complete the table.', mark('strong'))),
+                  {
+                    type: 'table',
+                    content: [
+                      {
+                        type: 'table_header_row',
+                        content: [
+                          { type: 'table_header', content: [paragraph(text('Height of ramp / cm'))] },
+                          { type: 'table_header', content: [paragraph(text('Time / s'))] },
+                          { type: 'table_header', content: [paragraph(text('Notes'))] },
+                        ],
+                      },
+                      {
+                        type: 'table_row',
+                        content: [
+                          { type: 'table_cell', content: [paragraph()] },
+                          { type: 'table_cell', content: [paragraph(text('2'))] },
+                          {
+                            type: 'table_cell',
+                            content: [paragraph(text(
+                              'Record each time to the nearest tenth of a second. '.repeat(8).trim(),
+                            ))],
+                          },
+                        ],
+                      },
+                      {
+                        type: 'table_row',
+                        content: [
+                          { type: 'table_cell', content: [paragraph(text('20'))] },
+                          { type: 'table_cell', content: [paragraph()] },
+                          { type: 'table_cell', content: [paragraph()] },
+                        ],
+                      },
+                      {
+                        type: 'table_row',
+                        content: [
+                          { type: 'table_cell', content: [paragraph()] },
+                          { type: 'table_cell', content: [paragraph()] },
+                          { type: 'table_cell', content: [paragraph(text('Repeat'))] },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+                suggestedAnswer(),
+              ),
+              attrs: { id: 'eb-tb-a', columns: DEFAULT_COLUMNS, marks: 3 },
+            },
+          ],
+        ),
+      ],
+    },
+    arrangement(['eb-tb']),
+    { images: true },
+  ),
+
   // Each Paper Style over every Question Type, so every adapter prints its
   // blanks, its letters, its Word Bank and its default Work Space the way the
   // plan resolved them. Two questions to a page, so the PDF has room to draw

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { bodyPoints, pointsOf, titlePoints } from './export-typography'
+import { BODY_LINE_HEIGHT, bodyPoints, pointsOf, sectionHeadingPoints, titlePoints } from './export-typography'
 import { PDFDocument } from 'pdf-lib'
 import { getDocument, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import {
@@ -8,7 +8,7 @@ import {
   type PdfFontLoader,
 } from './pdf-export'
 import { FIXTURES, PIXEL_PNG } from './export-fixtures'
-import { SECTION_INSTRUCTIONS, planExport, questionIndentOf } from './export-plan'
+import { SECTION_INSTRUCTIONS, planExport, questionIndentOf, unmeasured } from './export-plan'
 import {
   DEFAULT_EXPORT_CONFIGURATION,
   EMPTY_EXPORT_HISTORY,
@@ -402,6 +402,61 @@ describe('PDF Export Adapter', () => {
     await expect(createPublicationPdf(changed, noImages, fonts)).rejects.toThrow(
       'does not fit its planned page',
     )
+  })
+
+  // A paragraph that wraps takes one line of the page per line it wraps
+  // onto. Each line once asked for room for every line above it as well, so
+  // a cell wrapping over many lines, well inside its planned page, failed.
+  test('draws a table cell that wraps over many lines on the page planned for it', async () => {
+    const { plans } = plansOf('a wrapping table under a picture in an exam board part')
+    const test = plans[0]!
+    expect(test.pageSize.paper).toBe('a4')
+    // The Cover Page, then the question with its table.
+    expect(test.pages.map((page) => page.items.map((item) => item.kind))).toEqual([['cover'], ['section-heading', 'question']])
+
+    const bytes = await createPublicationPdf(plans, pixel, fonts)
+
+    const document = await getDocument({ data: bytes.slice(), disableWorker: true }).promise
+    expect(document.numPages).toBe(plans.reduce((sum, plan) => sum + plan.pages.length, 0))
+    const page = await document.getPage(2)
+    const lines = new Set((await page.getTextContent()).items
+      .filter((item) => 'str' in item && /tenth|second|Record|nearest/.test(item.str))
+      .map((item) => ('transform' in item ? Math.round(item.transform[5] as number) : 0)))
+    // The notes cell wraps over many lines of its own.
+    expect(lines.size).toBeGreaterThan(10)
+  })
+
+  // Print opens 4px above a Section's Directions, once, and sets their lines
+  // at the body line height. The PDF opened the 4px above every line they
+  // wrapped onto, so long Directions came out taller than they were packed.
+  test('sets wrapped Section Directions at one line height apart', async () => {
+    const plan = planExport({
+      exam: {
+        title: 'Directions',
+        questions: [{ id: 'o1', type: 'open', columns: 2, doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Name a planet.' }] }] } }],
+        sectionHeadings: {
+          open: {
+            title: 'Short Answer',
+            instructions: 'Read every question carefully before you begin, write your answers in the spaces provided, show all of your working, and check each answer when you have finished the paper.',
+          },
+        },
+      },
+      arrangement: { id: 'a', letter: 'A', questionOrder: ['o1'], choiceOrder: {} },
+      selection: { test: true, answerKey: false },
+      measure: unmeasured,
+    })
+    const bytes = await createPublicationPdf([plan], noImages, fonts)
+    const page = await (await getDocument({ data: bytes.slice(), disableWorker: true }).promise).getPage(1)
+    const directions = /Read|question|carefully|spaces|working|finished|paper/
+    const baselines = [...new Set((await page.getTextContent()).items
+      .filter((item) => 'str' in item && directions.test(item.str))
+      .map((item) => ('transform' in item ? Math.round((item.transform[5] as number) * 100) / 100 : 0)))]
+      .sort((a, b) => b - a)
+    expect(baselines.length).toBeGreaterThan(1)
+    const pitch = sectionHeadingPoints('normal').instructions * BODY_LINE_HEIGHT
+    for (let index = 1; index < baselines.length; index += 1) {
+      expect(baselines[index - 1]! - baselines[index]!).toBeCloseTo(pitch, 1)
+    }
   })
 
   // An Exam's own section wording reaches the PDF, and a part it cleared does

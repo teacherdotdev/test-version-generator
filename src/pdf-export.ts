@@ -426,7 +426,6 @@ function drawInline(
     x += pieceWidth
   }
 
-  const top = context.y
   for (const placed of lines) {
     // Text sits `size` below the top of its line, with the rest of the line
     // below its baseline; an equation that reaches past either pushes the
@@ -438,7 +437,10 @@ function drawInline(
       ? piece.typeset.descent * piece.size * MATH_SIZE - (line - piece.size)
       : 0))
     const height = above + line + below
-    if (placed.length > 0) ensureRoom(context, top - context.y + height)
+    // Room for this line alone: the lines above it have already moved
+    // `context.y` past themselves, and counting them again from the
+    // paragraph's top asked a line of n for 2n - 1 lines of room.
+    if (placed.length > 0) ensureRoom(context, height)
     const lineTop = context.y - above
     for (const { piece, x, width: pieceWidth } of placed) drawPiece(context, piece, x, pieceWidth, lineTop, line)
     context.y -= height
@@ -1058,10 +1060,13 @@ function drawItem(context: DrawContext, item: PageItem): void {
         })
       }
       if (item.instructions) {
-        // Body text, under the 4px (3pt) print opens above the directions.
+        // Body text, under the 4px (3pt) print opens once above the
+        // directions — below a title, since without one it folds into the
+        // heading's own gap above.
+        if (item.title) context.y -= 3
         drawTextLine(context, item.instructions, {
           size: size.instructions,
-          line: size.instructions * BODY_LINE_HEIGHT + 3,
+          line: size.instructions * BODY_LINE_HEIGHT,
         })
       }
       context.y -= 8
