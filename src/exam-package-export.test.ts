@@ -147,24 +147,24 @@ function printed(sheet: Exam, order: Arrangement) {
 }
 
 describe('an Exam PDF carrying its Exam', () => {
-  test('carries the Question Style, and only the Work Space the teacher set, "None" included where the style rules lines', async () => {
+  test('carries the Paper Style, and only the Work Space the teacher set, "None" included where the style rules lines', async () => {
     const recordOf = async (sheet: Exam) =>
       (await examPackage({ exam: sheet, arrangement, ownerOf, loadMedia: noImages })).package.exams[0]!
     const shortAnswerOf = (record: ExamRecord) =>
       record.positions.find((position) => position.workSpace !== undefined)?.workSpace
 
     // The room the style rules is the style's, and is not written out.
-    const ruled = await recordOf({ ...exam, workSpace: {}, questionStyle: 'condensed' })
-    expect(ruled.questionStyle).toBe('condensed')
+    const ruled = await recordOf({ ...exam, workSpace: {}, paperStyle: 'condensed' })
+    expect(ruled.paperStyle).toBe('condensed')
     expect(shortAnswerOf(ruled)).toBeUndefined()
 
     // "None" set against the style travels, so it still wins on import.
     const none = { height: 0, style: 'blank' as const, fill: false }
-    const cleared = await recordOf({ ...exam, workSpace: { 'forces-1': none }, questionStyle: 'classic' })
+    const cleared = await recordOf({ ...exam, workSpace: { 'forces-1': none }, paperStyle: 'classic' })
     expect(shortAnswerOf(cleared)).toEqual(none)
 
     const plain = await recordOf(exam)
-    expect(plain).not.toHaveProperty('questionStyle')
+    expect(plain).not.toHaveProperty('paperStyle')
     expect(shortAnswerOf(plain)).toEqual({ height: 96, style: 'lines', fill: false })
   })
 
@@ -187,11 +187,11 @@ describe('an Exam PDF carrying its Exam', () => {
     expect(imported.wordBankLayout).toEqual({ [importedMatching.id]: 'above' })
   })
 
-  test('places a Word Bank on import that its record does not, by its Question Style and the fit rule', async () => {
+  test('places a Word Bank on import that its record does not, by its Paper Style and the fit rule', async () => {
     const { package: written } = await examPackage({ exam, arrangement, ownerOf, loadMedia: noImages })
     for (const position of written.exams[0]!.positions) delete position.wordBankLayout
-    const importedWith = async (questionStyle: Exam['questionStyle'], width: number) => {
-      const record = { ...written, exams: [{ ...written.exams[0]!, ...(questionStyle ? { questionStyle } : {}) }] }
+    const importedWith = async (paperStyle: Exam['paperStyle'], width: number) => {
+      const record = { ...written, exams: [{ ...written.exams[0]!, ...(paperStyle ? { paperStyle } : {}) }] }
       const proposal = await inspectImportRecord(new TextEncoder().encode(JSON.stringify(record)))
       const planned = planImport(proposal, initialSelection(proposal), undefined, undefined, () => width).exams[0]!
       return Object.values(planned.saved.workingCopy.wordBankLayout ?? {})

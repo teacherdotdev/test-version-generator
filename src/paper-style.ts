@@ -1,6 +1,6 @@
-// What an Exam's Question Style says about how its questions print.
+// What an Exam's Paper Style says about how its questions print.
 //
-// A Question Style is one test-wide preset, chosen from the Format menu like
+// A Paper Style is one test-wide preset, chosen from the Format menu like
 // the heading and text sizes (ADR-0025), and never set per question or per
 // Question Type (ADR-0041). It decides what prints before a question's number,
 // how answers are lettered and laid out, how a matching set's Word Bank sits,
@@ -9,29 +9,29 @@
 // so print, PDF, DOCX, the Export Preview and the exam sheet all draw the same
 // thing; nothing here is read by an adapter.
 //
-// `'standard'` is the sheet as it printed before Question Styles existed, so an
+// `'standard'` is the sheet as it printed before Paper Styles existed, so an
 // Exam that never chose one prints exactly as it always did.
 
 import type { WorkSpace } from './exam'
 
-export type QuestionStyle = 'standard' | 'classic' | 'condensed'
+export type PaperStyle = 'standard' | 'classic' | 'condensed'
 
-export const QUESTION_STYLES: readonly QuestionStyle[] = [
+export const PAPER_STYLES: readonly PaperStyle[] = [
   'standard',
   'classic',
   'condensed',
 ]
 
-export const DEFAULT_QUESTION_STYLE: QuestionStyle = 'standard'
+export const DEFAULT_PAPER_STYLE: PaperStyle = 'standard'
 
-/** Whether a stored value is a Question Style this build can print. The single
+/** Whether a stored value is a Paper Style this build can print. The single
  *  guard, so storage and import agree on what a readable record is. */
-export function isQuestionStyle(value: unknown): value is QuestionStyle {
-  return QUESTION_STYLES.includes(value as QuestionStyle)
+export function isPaperStyle(value: unknown): value is PaperStyle {
+  return PAPER_STYLES.includes(value as PaperStyle)
 }
 
-/** How each Question Style is named, and said in a line, in the Format menu. */
-export const QUESTION_STYLE_LABELS: Record<QuestionStyle, { label: string; description: string }> = {
+/** How each Paper Style is named, and said in a line, in the Format menu. */
+export const PAPER_STYLE_LABELS: Record<PaperStyle, { label: string; description: string }> = {
   standard: {
     label: 'Standard',
     description: 'Circle the letter or T/F; no blanks before numbers.',
@@ -64,7 +64,7 @@ export type Lettering = 'upper' | 'lower'
  *  again only when the Exam changes style (`wordBankLayoutFor`). */
 export type BankPlacement = 'fit' | 'above'
 
-export type QuestionStyleRules = {
+export type PaperStyleRules = {
   /** What prints before a True/False question's number. */
   trueFalseMarks: readonly string[]
   /** What prints before a Multiple Choice question's number. */
@@ -101,7 +101,7 @@ export const STANDARD_QUESTION_GAP = 26
  *  a third of an inch. */
 const STANDARD_WORK_SPACE_PITCH = 32
 
-export const QUESTION_STYLE_RULES: Record<QuestionStyle, QuestionStyleRules> = {
+export const PAPER_STYLE_RULES: Record<PaperStyle, PaperStyleRules> = {
   // The sheet as ADR-0029 left it: T and F to circle, a letter circled on its
   // answer, no blanks, and no room a teacher did not ask for.
   standard: {
@@ -148,6 +148,6 @@ export const QUESTION_STYLE_RULES: Record<QuestionStyle, QuestionStyleRules> = {
  *  build no longer knows, such as one a recorded Layout Plan kept from before
  *  a style was renamed: its page keeps what the plan resolved, and only the
  *  question gap falls back to the sheet's own. */
-export function questionStyleRules(style: QuestionStyle | undefined): QuestionStyleRules {
-  return QUESTION_STYLE_RULES[isQuestionStyle(style) ? style : DEFAULT_QUESTION_STYLE]
+export function paperStyleRules(style: PaperStyle | undefined): PaperStyleRules {
+  return PAPER_STYLE_RULES[isPaperStyle(style) ? style : DEFAULT_PAPER_STYLE]
 }

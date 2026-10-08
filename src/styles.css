@@ -928,12 +928,12 @@ button { cursor: pointer; }
    shortens the blank before it rather than pushing into the question. */
 .question-number--blank .question-marks { min-width: 0; overflow: hidden; white-space: nowrap; }
 .question-number--blank .question-count { flex: none; }
-/* A Condensed Exam stands its questions closer together: the Question Style's
-   `questionGap` in question-style.ts. The drop line keeps to the middle of
+/* A Condensed Exam stands its questions closer together: the Paper Style's
+   `questionGap` in paper-style.ts. The drop line keeps to the middle of
    the narrower gap. */
-[data-question-style='condensed'] .exam-question { margin-bottom: 12px; }
-[data-question-style='condensed'] .exam-question[data-drop="before"]::after { top: -7px; }
-[data-question-style='condensed'] .exam-question[data-drop="after"]::after { bottom: -7px; }
+[data-paper-style='condensed'] .exam-question { margin-bottom: 12px; }
+[data-paper-style='condensed'] .exam-question[data-drop="before"]::after { top: -7px; }
+[data-paper-style='condensed'] .exam-question[data-drop="after"]::after { bottom: -7px; }
 .exam-question, .exam-question * { -webkit-user-drag: none; }
 .exam-question:active { cursor: grabbing; }
 
@@ -1296,11 +1296,11 @@ button { cursor: pointer; }
 .work-space-handle:focus-visible { outline: 2px solid #9f5037; outline-offset: 1px; }
 .exam-question--sizing, .exam-question--sizing * { cursor: ns-resize !important; }
 /* The note and the bar start where the body does: past the number column and
-   its 6px gap, however wide the Question Style makes that column. Condensed's
+   its 6px gap, however wide the Paper Style makes that column. Condensed's
    narrower gap between questions takes a smaller note. */
 .exam-question:has(> .question-number--marks) > :is(.answer-visibility-note, .work-space-handle) { left: 70px; }
 .exam-question:has(> .question-number--blank) > :is(.answer-visibility-note, .work-space-handle) { left: 98px; }
-[data-question-style='condensed'] .answer-visibility-note { bottom: -12px; font-size: 10px; line-height: 12px; }
+[data-paper-style='condensed'] .answer-visibility-note { bottom: -12px; font-size: 10px; line-height: 12px; }
 
 /* Marks on the sheet (ADR-0042): a chip in the right margin beside a
    question, Part or Subpart, level with its first line. An editor annotation:
@@ -1413,10 +1413,10 @@ button { cursor: pointer; }
   width: 18px; height: 16px; color: #8b7868;
 }
 .context-menu-format-icon svg { width: 18px; height: 14px; stroke-width: 1.4; }
-/* A radio's picture of what choosing it looks like — a Question Style's
+/* A radio's picture of what choosing it looks like — a Paper Style's
    sketch — in place of its icon: wider than an icon, at its own 1:1 size so
    its one-pixel lines stay crisp, and set against the label's first line. */
-/* A Question Style's sketch, drawn half as large again as its 32 by 24
+/* A Paper Style's sketch, drawn half as large again as its 32 by 24
    viewBox: its label and two lines of description already make the row that
    tall, so the sketch can use the room. Strokes stay a pixel wide. */
 .context-menu-preview {

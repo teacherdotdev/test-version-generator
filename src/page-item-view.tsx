@@ -338,7 +338,7 @@ export function QuestionContent({
   const column = numberColumnOf(item.question)
   return (
     <>
-      {/* The column holds the number, and whatever the Question Style puts
+      {/* The column holds the number, and whatever the Paper Style puts
           before it — a True/False question's marks, or an answer blank —
           `questionIndentOf` in export-plan.ts is the same width for the
           adapters. */}

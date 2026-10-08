@@ -171,7 +171,7 @@ function mediaSources(proposal: ImportProposal): Map<string, string> {
  * The student test an Exam would print, laid out by the same Layout Plan the
  * export uses. It is built the way the import will build the Exam
  * (`import-preview.ts`), so what is previewed is what arrives — Work Space and
- * the lines a Question Style rules included.
+ * the lines a Paper Style rules included.
  */
 async function examPreviewPlan(
   proposal: ImportProposal,

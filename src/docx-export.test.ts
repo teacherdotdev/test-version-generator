@@ -25,7 +25,7 @@ import { descendants, parseXml, path } from './xml'
 import { FIXTURES, PIXEL_PNG, paragraph, text } from './export-fixtures'
 import { CHOICE_INDENT, pageSizeOf, planExport, questionIndentOf, unmeasured, STUDENT_TEST } from './export-plan'
 import type { Arrangement, Exam } from './exam'
-import { ANSWER_BLANK } from './question-style'
+import { ANSWER_BLANK } from './paper-style'
 
 const exam: Exam = {
   title: 'Chemistry: Unit 3 / Review',

@@ -1249,21 +1249,32 @@ describe('the dirty flag and persistence', () => {
     expect(store.getState().dirty).toBe(false)
   })
 
-  test('the Question Style is saved Exam presentation, undoable, and Standard stores nothing', async () => {
+  test('the Paper Style is saved Exam presentation, undoable, and Standard stores nothing', async () => {
     const { store } = await withExamWorkingCopy(1)
     await store.save()
 
-    store.setQuestionStyle('classic')
+    store.setPaperStyle('classic')
     expect(store.getState().dirty).toBe(true)
-    expect(store.selectedExam().exam.questionStyle).toBe('classic')
+    expect(store.selectedExam().exam.paperStyle).toBe('classic')
 
-    store.setQuestionStyle('standard')
-    expect(store.getState().workingCopy.questionStyle).toBeUndefined()
-    expect(store.selectedExam().exam.questionStyle).toBeUndefined()
+    store.setPaperStyle('standard')
+    expect(store.getState().workingCopy.paperStyle).toBeUndefined()
+    expect(store.selectedExam().exam.paperStyle).toBeUndefined()
     expect(store.getState().dirty).toBe(false)
 
     store.undo()
-    expect(store.selectedExam().exam.questionStyle).toBe('classic')
+    expect(store.selectedExam().exam.paperStyle).toBe('classic')
+  })
+
+  test('a Working Copy stored before the Paper Style was renamed keeps its style', async () => {
+    const stored = createAuthoringState()
+    const legacy = {
+      ...stored,
+      workingCopy: { ...stored.workingCopy, questionStyle: 'condensed' },
+    } as unknown as AuthoringState
+    const store = await loadExamStore(memory(legacy), createMemoryBackend<SavedState>())
+    expect(store.getState().workingCopy.paperStyle).toBe('condensed')
+    expect(store.getState().workingCopy).not.toHaveProperty('questionStyle')
   })
 
   test('header lines are saved Exam presentation, and the default stores nothing', async () => {
@@ -1331,7 +1342,7 @@ describe('the dirty flag and persistence', () => {
       (store) => store.setHeaderLine('later', ''),
       (store) => store.setTextSize('small'),
       (store) => store.setMargins(['bottom'], 1),
-      (store) => store.setQuestionStyle('condensed'),
+      (store) => store.setPaperStyle('condensed'),
     ]
     for (const act of cases) {
       const { backend, store, questions } = await withExamWorkingCopy(1)
@@ -1736,10 +1747,10 @@ describe('work space', () => {
     expect(store.getState().workingCopy.workSpace?.[id]).toBeUndefined()
   })
 
-  test('under a Question Style that rules lines, starts from its lines, and keeps "None" as a setting of its own', async () => {
+  test('under a Paper Style that rules lines, starts from its lines, and keeps "None" as a setting of its own', async () => {
     const { store, questions } = await withExamWorkingCopy(1, 'open')
     const id = questions[0]!.id
-    store.setQuestionStyle('classic')
+    store.setPaperStyle('classic')
     // Nothing stored: the position prints the style's three lines.
     expect(store.getState().workingCopy.workSpace?.[id]).toBeUndefined()
 
@@ -1752,13 +1763,13 @@ describe('work space', () => {
     expect(store.selectedExam().exam.workSpace?.[id]?.height).toBe(0)
   })
 
-  test('is never changed by switching Question Style', async () => {
+  test('is never changed by switching Paper Style', async () => {
     const { store, questions } = await withExamWorkingCopy(1, 'open')
     const id = questions[0]!.id
     store.setQuestionWorkSpace([id], { height: 160, style: 'blank' })
     const stored = store.getState().workingCopy.workSpace
     for (const style of ['classic', 'condensed', 'standard'] as const) {
-      store.setQuestionStyle(style)
+      store.setPaperStyle(style)
       expect(store.getState().workingCopy.workSpace).toEqual(stored)
     }
   })
@@ -1874,7 +1885,7 @@ describe('a Matching question’s Word Bank layout', () => {
 
   test('arrives above under Classic, whatever fits', async () => {
     const store = await measuredStore(40)
-    store.setQuestionStyle('classic')
+    store.setPaperStyle('classic')
     const question = createQuestion('matching')
     store.createInQuestionBank(question)
     store.addToWorkingCopy(question)
@@ -1906,27 +1917,27 @@ describe('a Matching question’s Word Bank layout', () => {
     expect(store.getState().dirty).toBe(false)
   })
 
-  test('is set again for every Matching question when the Question Style changes, in one undo step', async () => {
+  test('is set again for every Matching question when the Paper Style changes, in one undo step', async () => {
     const { store, questions } = await withExamWorkingCopy(2, 'matching')
     const [first, second] = questions.map(({ id }) => id)
     store.setWordBankLayout([first!], 'above')
     expect(store.getState().workingCopy.wordBankLayout).toEqual({ [first!]: 'above', [second!]: 'beside' })
 
-    store.setQuestionStyle('classic')
+    store.setPaperStyle('classic')
     expect(store.getState().workingCopy.wordBankLayout).toEqual({ [first!]: 'above', [second!]: 'above' })
     // A teacher's own choice holds until the style changes again.
     store.setWordBankLayout([second!], 'beside')
-    store.setQuestionStyle('standard')
+    store.setPaperStyle('standard')
     expect(store.getState().workingCopy.wordBankLayout).toEqual({ [first!]: 'beside', [second!]: 'beside' })
     // Choosing the style the Exam already has changes nothing.
-    store.setQuestionStyle('standard')
+    store.setPaperStyle('standard')
 
     store.undo()
-    expect(store.getState().workingCopy.questionStyle).toBe('classic')
+    expect(store.getState().workingCopy.paperStyle).toBe('classic')
     expect(store.getState().workingCopy.wordBankLayout).toEqual({ [first!]: 'above', [second!]: 'beside' })
     store.undo()
     store.undo()
-    expect(store.getState().workingCopy).not.toHaveProperty('questionStyle')
+    expect(store.getState().workingCopy).not.toHaveProperty('paperStyle')
     expect(store.getState().workingCopy.wordBankLayout).toEqual({ [first!]: 'above', [second!]: 'beside' })
   })
 

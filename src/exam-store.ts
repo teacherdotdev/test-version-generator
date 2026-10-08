@@ -68,7 +68,7 @@ import {
 } from './section-headings'
 import { isExamHeader, sameExamHeader, withHeaderLine, type HeaderLine } from './page-header'
 import { isPageMargins, sameMargins, withMargin, type MarginSide } from './page-margins'
-import { DEFAULT_QUESTION_STYLE, isQuestionStyle, type QuestionStyle } from './question-style'
+import { DEFAULT_PAPER_STYLE, isPaperStyle, type PaperStyle } from './paper-style'
 import {
   bankQuestionById,
   createWorkingCopy,
@@ -236,7 +236,7 @@ function isWorkingCopy(value: unknown): value is ExamWorkingCopy {
     (draft.header === undefined || isExamHeader(draft.header)) &&
     (draft.textSize === undefined || isTextSize(draft.textSize)) &&
     (draft.margins === undefined || isPageMargins(draft.margins)) &&
-    (draft.questionStyle === undefined || isQuestionStyle(draft.questionStyle))
+    (draft.paperStyle === undefined || isPaperStyle(draft.paperStyle))
   )
 }
 
@@ -270,7 +270,7 @@ const WORKING_COPY_SETTINGS: Readonly<Record<string, (value: unknown) => boolean
   header: isExamHeader,
   textSize: isTextSize,
   margins: isPageMargins,
-  questionStyle: isQuestionStyle,
+  paperStyle: isPaperStyle,
 }
 
 // A draft an earlier build stored, in the current shape. Its questions are
@@ -295,7 +295,10 @@ function upgradedStoredState(value: unknown): unknown {
   }
   const draft = state.workingCopy
   if (typeof draft === 'object' && draft !== null && !Array.isArray(draft)) {
-    const workingCopy: Record<string, unknown> = { ...draft }
+    // A build before ADR-0044 stored the Paper Style under its old name.
+    const { questionStyle: legacyStyle, ...rest } = draft as Record<string, unknown>
+    const workingCopy: Record<string, unknown> = { ...rest }
+    if (workingCopy.paperStyle === undefined && legacyStyle !== undefined) workingCopy.paperStyle = legacyStyle
     for (const [setting, readable] of Object.entries(WORKING_COPY_SETTINGS)) {
       if (workingCopy[setting] !== undefined && !readable(workingCopy[setting])) {
         delete workingCopy[setting]
@@ -353,7 +356,7 @@ export type ExamStore = {
   setTextSize(size: TextSize): void
   /** How every question on this Exam prints. Switching never touches a Work
    *  Space the teacher set. */
-  setQuestionStyle(style: QuestionStyle): void
+  setPaperStyle(style: PaperStyle): void
   /** Rewords one test-page header line; `null` restores its default. */
   setHeaderLine(line: HeaderLine, text: string | null): void
   /** Sets how far in from `sides` of the sheet the Exam's pages print, in
@@ -507,7 +510,7 @@ function sameExamWorkingCopy(left: ExamWorkingCopy, right: ExamWorkingCopy): boo
     && sameExamHeader(left.header, right.header)
     && (left.textSize ?? DEFAULT_TEXT_SIZE) === (right.textSize ?? DEFAULT_TEXT_SIZE)
     && sameMargins(left.margins, right.margins)
-    && (left.questionStyle ?? DEFAULT_QUESTION_STYLE) === (right.questionStyle ?? DEFAULT_QUESTION_STYLE)
+    && (left.paperStyle ?? DEFAULT_PAPER_STYLE) === (right.paperStyle ?? DEFAULT_PAPER_STYLE)
 }
 
 /** The Part or Subpart that answers with this id, when it belongs to a Multipart question
@@ -647,7 +650,7 @@ function withQuestionsAdded(
 }
 
 /** Each of `questionIds` that is a Matching question on this Exam takes the
- *  Word Bank layout its Question Style and the fit rule give it now
+ *  Word Bank layout its Paper Style and the fit rule give it now
  *  (`wordBankLayoutFor`), replacing any it had: how a Matching position gets
  *  its layout when it arrives, and how a change of style sets them all again. */
 function withWordBankLayouts(
@@ -870,11 +873,11 @@ export function createExamStore(options: {
         return { ...current, workingCopy }
       }),
 
-    setQuestionStyle: (style) =>
+    setPaperStyle: (style) =>
       change((current) => {
-        if ((current.workingCopy.questionStyle ?? DEFAULT_QUESTION_STYLE) === style) return current
-        const styled: ExamWorkingCopy = { ...current.workingCopy, questionStyle: style }
-        if (style === DEFAULT_QUESTION_STYLE) delete styled.questionStyle
+        if ((current.workingCopy.paperStyle ?? DEFAULT_PAPER_STYLE) === style) return current
+        const styled: ExamWorkingCopy = { ...current.workingCopy, paperStyle: style }
+        if (style === DEFAULT_PAPER_STYLE) delete styled.paperStyle
         // A style is a preset for the whole sheet: taking one sets every
         // Matching question's Word Bank where that style puts it, over any
         // the teacher moved, in the same undoable step (ADR-0041).
@@ -1035,7 +1038,7 @@ export function createExamStore(options: {
           }
           // What the position prints now: its own setting, or its Question
           // Style's default when it has none.
-          const style = current.workingCopy.questionStyle
+          const style = current.workingCopy.paperStyle
           const prior = workSpaceIn(currentSpaces, style, questionId)
           const next: WorkSpace = {
             height: snapWorkSpaceHeight(patch.height ?? prior.height),
@@ -1049,7 +1052,7 @@ export function createExamStore(options: {
           ) continue
           // No room at all is the absence of a setting, not a stored zero, so
           // taking work space away leaves the Working Copy as it was before —
-          // unless the Question Style would rule lines there: then "None" is
+          // unless the Paper Style would rule lines there: then "None" is
           // the teacher's own setting, stored, and wins over the style.
           if (hasWorkSpace(next) || hasWorkSpace(defaultWorkSpaceOf(style))) {
             nextSpaces[questionId] = next

@@ -1,6 +1,6 @@
 # Exam Record 0.3.0
 
-> **Superseded by [Exam Record 0.4.0](exam-record-0.4.0.md).** Test Parrot no longer writes `0.3.0` records; it still reads them, as Exams that hide no answers, keep the default Page Margins and print in the Standard Question Style.
+> **Superseded by [Exam Record 0.4.0](exam-record-0.4.0.md).** Test Parrot no longer writes `0.3.0` records; it still reads them, as Exams that hide no answers, keep the default Page Margins and print in the Standard Paper Style.
 
 The **Exam Record** is the portable composition of one Exam: its name, its test-page header lines, its Question Sections in print order and how each one's heading reads, how large its headings and text print, and, for each position, the Question it uses, the Section it is in, and that position's answer columns, answer order and Work Space. It never carries Question Content. It references Questions in Question Bank Records that travel beside it in the same [Test Parrot Package](test-parrot-package-0.1.0.md), and it is importable only inside one. See ADR-0022 and ADR-0029.
 

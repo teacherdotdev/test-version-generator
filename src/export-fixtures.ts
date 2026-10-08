@@ -317,11 +317,11 @@ const COMPOSITE_EXAM: Exam = {
   ],
 }
 
-// One question of every type, for the Question Style fixtures. The Short
+// One question of every type, for the Paper Style fixtures. The Short
 // Answer Part has a Work Space of its own, which wins over a style's lines;
 // the Short Answer question has none, so a style's lines show there.
-const QUESTION_STYLE_EXAM: Exam = {
-  title: 'Question Styles',
+const PAPER_STYLE_EXAM: Exam = {
+  title: 'Paper Styles',
   questions: [
     multipleChoice(
       'ys-mc',
@@ -1620,20 +1620,20 @@ export const FIXTURES: readonly Fixture[] = [
     },
   ),
 
-  // Each Question Style over every Question Type, so every adapter prints its
+  // Each Paper Style over every Question Type, so every adapter prints its
   // blanks, its letters, its Word Bank and its default Work Space the way the
   // plan resolved them. Two questions to a page, so the PDF has room to draw
   // them; Condensed's measure fits every answer four across.
-  ...(['classic', 'condensed'] as const).map((questionStyle) =>
+  ...(['classic', 'condensed'] as const).map((paperStyle) =>
     fixture(
-      `every question type in the ${questionStyle} question style`,
-      { ...QUESTION_STYLE_EXAM, title: `${questionStyle} style`, questionStyle },
+      `every question type in the ${paperStyle} paper style`,
+      { ...PAPER_STYLE_EXAM, title: `${paperStyle} style`, paperStyle },
       arrangement(['ys-mc', 'ys-tf', 'ys-mx', 'ys-sa', 'ys-mp']),
       {
         answerKey: true,
         measure: {
           itemHeight: (item: PageItem) => (item.kind === 'question' ? 330 : 40),
-          ...(questionStyle === 'condensed' ? { choiceWidth: () => 80 } : {}),
+          ...(paperStyle === 'condensed' ? { choiceWidth: () => 80 } : {}),
         },
       },
     ),

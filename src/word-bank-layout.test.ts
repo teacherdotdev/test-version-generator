@@ -113,7 +113,7 @@ describe('the Word Bank layout a Matching position takes', () => {
   test('is beside more often under Condensed, whose Items may narrow further', () => {
     const width = FITS + (MATCHING_PROMPTS_MIN_WIDTH - CONDENSED_MATCHING_PROMPTS_MIN_WIDTH)
     expect(placed(matching('m', 3, 3), width)).toBe('above')
-    expect(placed(matching('m', 3, 3), width, { questionStyle: 'condensed' })).toBe('beside')
+    expect(placed(matching('m', 3, 3), width, { paperStyle: 'condensed' })).toBe('beside')
   })
 
   test('is above when its bank is far taller than its Items, rather than repeat beside every piece', () => {
@@ -127,8 +127,8 @@ describe('the Word Bank layout a Matching position takes', () => {
   })
 
   test('is always above under Classic', () => {
-    expect(placed(matching('m', 3, 3), 60, { questionStyle: 'classic' })).toBe('above')
-    expect(wordBankLayoutFor(matching('m', 3, 3), { questionStyle: 'classic' })).toBe('above')
+    expect(placed(matching('m', 3, 3), 60, { paperStyle: 'classic' })).toBe('above')
+    expect(wordBankLayoutFor(matching('m', 3, 3), { paperStyle: 'classic' })).toBe('above')
   })
 })
 
@@ -143,7 +143,7 @@ describe('a Word Bank on the sheet', () => {
   test('without a stored layout, goes where its count puts it, however it measures', () => {
     expect(beside(setOf(exam(matching('m', 6, 7)), widths(100)))).toBe(false)
     expect(beside(setOf(exam(matching('m', 3, 3)), widths(FITS + 100)))).toBe(true)
-    expect(beside(setOf(exam(matching('m', 3, 3), { questionStyle: 'classic' }), widths(60)))).toBe(false)
+    expect(beside(setOf(exam(matching('m', 3, 3), { paperStyle: 'classic' }), widths(60)))).toBe(false)
   })
 
   test('widens its column beside for a wide answer, and keeps today’s column otherwise', () => {
@@ -166,8 +166,8 @@ describe('a Word Bank the teacher placed', () => {
     expect(beside(setOf(exam(matching('m', 3, 3), { wordBankLayout: { m: 'above' } }), { itemHeight: () => 0 }))).toBe(false)
   })
 
-  test('wins over its Question Style and over its count', () => {
-    expect(beside(setOf(exam(matching('m', 3, 3), { questionStyle: 'classic', wordBankLayout: { m: 'beside' } }), widths(60))))
+  test('wins over its Paper Style and over its count', () => {
+    expect(beside(setOf(exam(matching('m', 3, 3), { paperStyle: 'classic', wordBankLayout: { m: 'beside' } }), widths(60))))
       .toBe(true)
     expect(beside(setOf(exam(matching('m', 2, 12), { wordBankLayout: { m: 'beside' } }), { itemHeight: () => 0 })))
       .toBe(true)

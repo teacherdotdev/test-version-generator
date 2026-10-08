@@ -164,10 +164,10 @@ import {
   TEXT_SIZES,
 } from './section-headings'
 import {
-  DEFAULT_QUESTION_STYLE,
-  QUESTION_STYLES,
-  QUESTION_STYLE_LABELS,
-} from './question-style'
+  DEFAULT_PAPER_STYLE,
+  PAPER_STYLES,
+  PAPER_STYLE_LABELS,
+} from './paper-style'
 import { BEFORE_NAVIGATE_EVENT, navigate, replaceRoute, useLocationSearch, useRoute } from './use-route'
 import { Footer } from './site-chrome'
 import { HomePage } from './home-page'
@@ -197,7 +197,7 @@ import { ImportsPage, WaitingImportPage } from './imports-page'
 import { questionBankCollection, type QuestionBankCollectionItem } from './resource-collections'
 import { QuestionBankExportDialog } from './question-bank-export-dialog'
 import { QuestionBankImportDialog } from './question-bank-import-dialog'
-import { MarginsIcon, QuestionStylePreview } from './format-icons'
+import { MarginsIcon, PaperStylePreview } from './format-icons'
 import {
   keepMultipartParts,
   multipartMode,
@@ -2574,21 +2574,21 @@ function ExamEditor({
               },
             })),
           },
-          // One style for every question on the Exam, never per question or
+          // One Paper Style for the whole Exam, never per question or
           // per type (ADR-0041). The sheet reflows as soon as it changes.
           {
             kind: 'submenu',
-            label: 'Questions',
+            label: 'Paper style',
             icon: <ListOrdered />,
-            value: QUESTION_STYLE_LABELS[state.workingCopy.questionStyle ?? DEFAULT_QUESTION_STYLE].label,
-            items: QUESTION_STYLES.map((style) => ({
+            value: PAPER_STYLE_LABELS[state.workingCopy.paperStyle ?? DEFAULT_PAPER_STYLE].label,
+            items: PAPER_STYLES.map((style) => ({
               kind: 'radio' as const,
-              label: QUESTION_STYLE_LABELS[style].label,
-              description: QUESTION_STYLE_LABELS[style].description,
-              preview: <QuestionStylePreview style={style} />,
-              checked: (state.workingCopy.questionStyle ?? DEFAULT_QUESTION_STYLE) === style,
+              label: PAPER_STYLE_LABELS[style].label,
+              description: PAPER_STYLE_LABELS[style].description,
+              preview: <PaperStylePreview style={style} />,
+              checked: (state.workingCopy.paperStyle ?? DEFAULT_PAPER_STYLE) === style,
               onSelect: () => {
-                if (!isHistoricalBrowsing) store.setQuestionStyle(style)
+                if (!isHistoricalBrowsing) store.setPaperStyle(style)
               },
             })),
           },

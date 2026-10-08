@@ -115,8 +115,8 @@ export async function examPackage({
   const positions = printed.map((question): ExamRecordPosition => {
     const ids = recordIds.get(question.id)!
     // Only a Work Space the teacher set travels, "None" included where the
-    // Question Style would rule lines; the room the style rules is the
-    // style's, and the record's `questionStyle` carries it.
+    // Paper Style would rule lines; the room the style rules is the
+    // style's, and the record's `paperStyle` carries it.
     const space = exam.workSpace?.[question.id]
     return {
       question: { bank: ids.bank, question: ids.question },
@@ -131,7 +131,7 @@ export async function examPackage({
       // Every Matching position says where its Word Bank prints.
       ...(question.type === 'matching' ? { wordBankLayout: wordBankLayoutOf(exam, question) } : {}),
       ...(takesWorkSpace(question.type) && space && isWorkSpace(space)
-        && (hasWorkSpace(space) || hasWorkSpace(defaultWorkSpaceOf(exam.questionStyle)))
+        && (hasWorkSpace(space) || hasWorkSpace(defaultWorkSpaceOf(exam.paperStyle)))
         ? { workSpace: { ...space } }
         : {}),
     }
@@ -143,8 +143,8 @@ export async function examPackage({
     sections: sections.map(({ title, instructions }): ExamRecordSection => ({ title, instructions })),
     ...(exam.headingSize && exam.headingSize !== 'normal' ? { headingSize: exam.headingSize } : {}),
     ...(exam.textSize && exam.textSize !== 'normal' ? { textSize: exam.textSize } : {}),
-    ...(exam.questionStyle && exam.questionStyle !== 'standard'
-      ? { questionStyle: exam.questionStyle }
+    ...(exam.paperStyle && exam.paperStyle !== 'standard'
+      ? { paperStyle: exam.paperStyle }
       : {}),
     ...(exam.header ? { header: { ...exam.header } } : {}),
     ...(exam.margins ? { margins: { ...exam.margins } } : {}),

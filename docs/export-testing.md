@@ -117,7 +117,7 @@ An Answer Key line's Marks are text after its answer, ` [n]`, before any
 Question Metadata, and the paper's total shares the key heading's line, so it
 reads `heading:1 Answer Section Total: 9 marks`. Print, PDF and DOCX each set
 the total against the right margin; where it stands is geometry and is not
-compared. No current Question Style prints Marks on the test, so a test line
+compared. No current Paper Style prints Marks on the test, so a test line
 never carries them.
 
 Inline content uses plain text, marked spans, links, math source, stable image
@@ -144,7 +144,7 @@ The implementations are:
   shuffled Versions (distinctness, what moves, names), and partial reprints.
 - `src/export-plan.test.ts` — semantic derivation, numbering, grids, geometry,
   packing, splitting, furniture, streams, and breaks.
-- `src/question-style.test.ts` — each Question Style's rules through the
+- `src/paper-style.test.ts` — each Paper Style's rules through the
   plan: what prints before a number, answer and Word Bank letters and layout,
   the Work Space a style supplies and what overrides it, the question gap
   handed to `Measure`, and an Answer Key that never changes with the style.
@@ -154,7 +154,7 @@ The implementations are:
   under Condensed, above them otherwise, above under Classic), and that the
   plan then prints the stored layout without measuring where it goes.
 - `src/import-preview.test.ts` — the plan the import review previews, Work
-  Space and the lines a Question Style rules included.
+  Space and the lines a Paper Style rules included.
 - `src/export-parity.test.ts` — each fixture through the plan, print-reference,
   and DOCX fingerprints, including deliberate degradation checks.
 - `src/docx-export.test.ts` — DOCX packaging, page sections, friendly names,

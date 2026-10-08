@@ -72,11 +72,11 @@ import {
 import { TITLE_LINE_HEIGHT, TITLE_PX } from './export-typography'
 import {
   ANSWER_BLANK,
-  DEFAULT_QUESTION_STYLE,
-  questionStyleRules,
-  type QuestionStyle,
-  type QuestionStyleRules,
-} from './question-style'
+  DEFAULT_PAPER_STYLE,
+  paperStyleRules,
+  type PaperStyle,
+  type PaperStyleRules,
+} from './paper-style'
 
 // How many columns a choice grid is drawn in — the same set a question's
 // `columns` setting comes from, named here because the plan is what the
@@ -84,26 +84,26 @@ import {
 export type ColumnCount = 1 | 2 | 4
 
 /** What an item is laid out under besides its own content: the Exam's text
- *  size, the width its page's margins leave, and its Question Style, which
+ *  size, the width its page's margins leave, and its Paper Style, which
  *  decides the space left below a question. Absent members are the defaults —
  *  normal text on today's sheet, in the Standard style. */
 export type ItemLayout = {
   textSize?: TextSize
   contentWidth?: number
-  questionStyle?: QuestionStyle
+  paperStyle?: PaperStyle
 }
 
 // Everything the render needs to know about how big things come out. The app
 // supplies a DOM-backed implementation; tests supply stubs.
 export type Measure = {
   /** Height in px of one page item, laid out at the content box's width, at
-   *  the Exam's text size and with the space its Question Style leaves below
+   *  the Exam's text size and with the space its Paper Style leaves below
    *  a question. Each member of `layout` is passed only when it is not the
    *  default. */
   itemHeight(item: PageItem, layout?: ItemLayout): number
   /** The width in px a choice-grid cell needs to hold this answer on one line,
    *  its letter and the cell's padding included. Optional: a measure without
-   *  it never lets a Question Style widen answers past their set columns. */
+   *  it never lets a Paper Style widen answers past their set columns. */
   choiceWidth?(choice: PlannedChoice, textSize?: TextSize): number
   /** How many lines the Exam title wraps onto at this heading size, set
    *  across `width`. Optional: a measure without it plans every title on one
@@ -140,7 +140,7 @@ export type PlannedChoice = {
 // The choice grid, row by row. `cells[row][column]` is `null` where the last
 // column runs out of choices. Filled column-major: reading a column top to
 // bottom gives consecutive letters. A cell's letter is the one the test prints
-// — lower case under a Question Style that letters "a." — while the question's
+// — lower case under a Paper Style that letters "a." — while the question's
 // own `choices` keep the capitals its Answer Key records.
 export type ChoiceGrid = {
   columns: ColumnCount
@@ -160,7 +160,7 @@ export type PlannedPrompt = {
 
 // A Word Bank answer as it prints: its letter is its position in this
 // arrangement's ordering, which is what a student writes in a prompt's blank.
-// It prints as the Question Style letters it; the prompt's own `letter`, which
+// It prints as the Paper Style letters it; the prompt's own `letter`, which
 // the answer key records, keeps its capital.
 export type PlannedBankAnswer = {
   id: string
@@ -223,7 +223,7 @@ export type PlannedWorkSpace = {
   lines: number
   fill: boolean
   /** How far apart its rows lie, and how tall its first one is, in CSS
-   *  pixels: the Question Style's pitch, the first row shortened so the first
+   *  pixels: the Paper Style's pitch, the first row shortened so the first
    *  rule sits close under the question. A plan recorded before either was
    *  stated reads as 32 and 32 (`rowsOfPlanned`), as it printed. */
   pitch?: number
@@ -349,7 +349,7 @@ export type PlannedQuestion = {
    *  numbers from there, one each, and the set's stem prints unnumbered. */
   number: number
   /** What prints in the number column, before the number, as the Exam's
-   *  Question Style decides: the T and F a student circles on a True/False
+   *  Paper Style decides: the T and F a student circles on a True/False
    *  question, or an answer blank to write on — `ANSWER_BLANK` — and nothing
    *  on a Standard Multiple Choice question, whose letter is circled on its
    *  answer. */
@@ -374,7 +374,7 @@ export type PlannedQuestion = {
    *  Question Type. */
   matching: MatchingSet | null
   /** The room this Exam leaves below a Short Answer question for a student's
-   *  work, as the teacher set it or its Question Style supplies it, laid out
+   *  work, as the teacher set it or its Paper Style supplies it, laid out
    *  in the style's rows; `null` for every other Question Type. A Short Answer
    *  question with no room still carries one, zero-height, so the sheet can
    *  offer a handle to drag some open. */
@@ -743,7 +743,7 @@ export const MAX_WORK_SPACE_HEIGHT = maxWorkSpaceHeight()
 // On a Standard Exam the column holds the number alone, as wide as a
 // three-digit number. A True/False question also prints the T and F a student
 // circles, so its column is wider — `.question-number--marks` in styles.css. A
-// Question Style that prints an answer blank before the number widens it
+// Paper Style that prints an answer blank before the number widens it
 // again: `.question-number--blank`.
 const QUESTION_NUMBER_COLUMN_WIDTH = 34
 const MARKS_QUESTION_NUMBER_COLUMN_WIDTH = 64
@@ -752,7 +752,7 @@ const QUESTION_NUMBER_COLUMN_GAP = 6
 
 /** The answer blank a Multiple Choice or True/False question printed before
  *  its number until Sections were stored (ADR-0029). An Export Record made
- *  before then carries it and reprints exactly as it was; a Question Style
+ *  before then carries it and reprints exactly as it was; a Paper Style
  *  that prints a blank there prints this same one (ADR-0041). */
 export const LEGACY_ANSWER_BLANK = ANSWER_BLANK
 
@@ -777,7 +777,7 @@ export function numberColumnOf(
 }
 
 /** Whether a planned question prints an answer blank before its number, to
- *  write a letter or a word on rather than circle one: under a Question Style
+ *  write a letter or a word on rather than circle one: under a Paper Style
  *  that asks for one, or on an Export Record kept from before Sections were
  *  stored. */
 export function hasAnswerBlank(question: { marks?: readonly string[] }): boolean {
@@ -793,14 +793,14 @@ export function questionIndentOf(
 }
 
 /** Whether a question's number column carries something before its number
- *  whatever the Question Style: only True/False, whose answer is one of two
+ *  whatever the Paper Style: only True/False, whose answer is one of two
  *  fixed letters, circled or written on a blank. */
 export function hasMarks(type: QuestionType): boolean {
   return type === 'true-false'
 }
 
 /** The letters a True/False question's student circles, in the order they print. */
-export { TRUE_FALSE_MARKS } from './question-style'
+export { TRUE_FALSE_MARKS } from './paper-style'
 
 // A matching set's prompts keep their own column: a blank for the letter a
 // student writes, then the number (`.matching-prompt` in styles.css,
@@ -830,7 +830,7 @@ export const CHOICE_INDENT = 18
 
 /** The width a Multiple Choice question's choice grid is laid out in, on a
  *  page `contentWidth` wide: past the question's number column — which its
- *  Question Style may widen with an answer blank — set in from the stem.
+ *  Paper Style may widen with an answer blank — set in from the stem.
  *  Without a question, the plain number column of a Standard Exam. */
 export function choiceAreaWidth(
   contentWidth: number,
@@ -938,10 +938,10 @@ function layOutGrid(
   return { columns, ...layOutColumns(choices, columns) }
 }
 
-/** The answers as the test prints them: lower-cased under a Question Style
+/** The answers as the test prints them: lower-cased under a Paper Style
  *  that letters "a.", and otherwise the very same choices. Copies, so the
  *  question's own choices keep the capitals its Answer Key records. */
-function printedChoices(choices: PlannedChoice[], rules: QuestionStyleRules): PlannedChoice[] {
+function printedChoices(choices: PlannedChoice[], rules: PaperStyleRules): PlannedChoice[] {
   return rules.lettering === 'lower'
     ? choices.map((choice) => ({ ...choice, letter: choice.letter.toLowerCase() }))
     : choices
@@ -952,7 +952,7 @@ function printedChoices(choices: PlannedChoice[], rules: QuestionStyleRules): Pl
 // given the letter its answer now carries. A prompt that names no answer, or
 // one the bank no longer holds, is unmatched and gets no letter.
 //
-// The Question Style decides how the bank is lettered on the test. Where it
+// The Paper Style decides how the bank is lettered on the test. Where it
 // sits is the position's own stored layout, beside or above, decided when the
 // question arrived on the Exam or its style last changed (`wordBankLayoutFor`)
 // and never again at layout time. A prompt's letter, the key's, is a capital
@@ -961,7 +961,7 @@ function deriveMatching(
   question: Question,
   arrangement: Arrangement,
   number: number,
-  rules: QuestionStyleRules,
+  rules: PaperStyleRules,
   layout: WordBankLayout,
 ): MatchingSet {
   const ordered = orderedChoices(question, arrangement)
@@ -1030,7 +1030,7 @@ function deriveAnswering(
     stem: part.stem,
     choices,
     grid: multipleChoice ? layOutGrid(choices, part.columns) : null,
-    workSpace: multipleChoice ? null : plannedWorkSpace(workSpaceOf(exam, part.id), workSpaceRowsOf(exam.questionStyle)),
+    workSpace: multipleChoice ? null : plannedWorkSpace(workSpaceOf(exam, part.id), workSpaceRowsOf(exam.paperStyle)),
     ...(!multipleChoice && suggestedBlocks.length > 0 && !blankBlocks(suggestedBlocks)
       ? { suggestedAnswer: structuredClone(suggestedBlocks) }
       : {}),
@@ -1072,7 +1072,7 @@ function deriveQuestion(
   arrangement: Arrangement,
   number: number,
 ): PlannedQuestion {
-  const rules = questionStyleRules(exam.questionStyle)
+  const rules = paperStyleRules(exam.paperStyle)
   const trueFalse = question.type === 'true-false'
   const matching = question.type === 'matching'
   const multipart = question.type === 'multipart'
@@ -1115,7 +1115,7 @@ function deriveQuestion(
       : null,
     ...(matching ? { wordBankLayout: wordBankLayoutOf(exam, question) } : {}),
     workSpace: takesWorkSpace(question.type)
-      ? plannedWorkSpace(workSpaceOf(exam, question.id), workSpaceRowsOf(exam.questionStyle))
+      ? plannedWorkSpace(workSpaceOf(exam, question.id), workSpaceRowsOf(exam.paperStyle))
       : null,
     ...(question.difficulty ? { difficulty: question.difficulty } : {}),
     ...(topicsOf(question).length > 0 ? { topics: [...topicsOf(question)] } : {}),
@@ -1684,10 +1684,10 @@ export type ExportDocument = {
   textSize?: TextSize
   /** The Exam's Page Margins in inches, where not the default. */
   margins?: PageMargins
-  /** The Exam's Question Style, where not Standard. Its rules are already in
+  /** The Exam's Paper Style, where not Standard. Its rules are already in
    *  the items; layout reads it for what packing alone decides — how far apart
    *  questions stand, and whether answers fit across the line. */
-  questionStyle?: QuestionStyle
+  paperStyle?: PaperStyle
 }
 
 /** Semantic derivation, on its own. Exposed so tests and fingerprints can read
@@ -1715,8 +1715,8 @@ export function buildExportDocument(
       : {}),
     ...(exam.textSize && exam.textSize !== DEFAULT_TEXT_SIZE ? { textSize: exam.textSize } : {}),
     ...(exam.margins && !sameMargins(exam.margins, undefined) ? { margins: { ...exam.margins } } : {}),
-    ...(exam.questionStyle && exam.questionStyle !== DEFAULT_QUESTION_STYLE
-      ? { questionStyle: exam.questionStyle }
+    ...(exam.paperStyle && exam.paperStyle !== DEFAULT_PAPER_STYLE
+      ? { paperStyle: exam.paperStyle }
       : {}),
   }
 }
@@ -1787,8 +1787,11 @@ export function readStoredLayoutPlan(plan: LayoutPlan): LayoutPlan {
     }
     return item
   }
+  // A plan recorded before ADR-0044 names its Paper Style by the old name.
+  const { questionStyle: legacyStyle, ...current } = plan as LayoutPlan & { questionStyle?: PaperStyle }
   return {
-    ...plan,
+    ...current,
+    ...(current.paperStyle === undefined && legacyStyle !== undefined ? { paperStyle: legacyStyle } : {}),
     pageSize,
     pages: plan.pages.map((page) => ({ ...page, items: page.items.map(upgraded) })),
   }
@@ -1802,10 +1805,10 @@ export type LayoutPlan = {
   /** How large the pages' content prints, when not normal. Every adapter sets
    *  its body type from this; it is what the items were measured at. */
   textSize?: TextSize
-  /** The Question Style the pages were laid out in, when not Standard. What
+  /** The Paper Style the pages were laid out in, when not Standard. What
    *  it prints is in the items; adapters read this only for the space each
    *  question leaves below itself, which is what packing measured. */
-  questionStyle?: QuestionStyle
+  paperStyle?: PaperStyle
   pages: PlannedPage[]
 }
 
@@ -1819,7 +1822,7 @@ export type PlanRequest = {
   version?: string
 }
 
-/** The column counts a Question Style may widen answers to, widest first. */
+/** The column counts a Paper Style may widen answers to, widest first. */
 const ACROSS_COLUMNS: readonly ColumnCount[] = [4, 2]
 
 /** Whether an answer is text alone — paragraphs of text, marks and math —
@@ -1856,7 +1859,7 @@ function acrossGrid(
   return columns ? layOutGrid(ordered, columns) : grid
 }
 
-// A Question Style that lays answers across the line (Condensed) decides how
+// A Paper Style that lays answers across the line (Condensed) decides how
 // far once the items are known and before they pack, since how many columns an
 // answer fits in is a measurement: each Multiple Choice question's and Part's
 // grid widens as far as every answer still holds one line. The answer key is
@@ -1926,7 +1929,7 @@ function fitWordBanks(
 export type BankAnswerWidth = NonNullable<Measure['bankAnswerWidth']>
 
 /** What an Exam's choice of Word Bank layout reads beside the question. */
-export type WordBankSettings = Pick<Exam, 'questionStyle' | 'textSize' | 'margins'>
+export type WordBankSettings = Pick<Exam, 'paperStyle' | 'textSize' | 'margins'>
 
 /** The width a column beside the Items needs to hold every answer of a Word
  *  Bank on one line, its inset included. */
@@ -1939,13 +1942,13 @@ function bankNeeds(
 }
 
 /** The least room a style leaves a matching set's prompts beside its bank. */
-function promptsMinWidthOf(style: QuestionStyle | undefined): number {
+function promptsMinWidthOf(style: PaperStyle | undefined): number {
   return style === 'condensed' ? CONDENSED_MATCHING_PROMPTS_MIN_WIDTH : MATCHING_PROMPTS_MIN_WIDTH
 }
 
 /**
  * The Word Bank layout a Matching question takes when it arrives on an Exam —
- * added, dragged, imported without one — or when the Exam's Question Style
+ * added, dragged, imported without one — or when the Exam's Paper Style
  * changes: the style's own placement, and where the style leaves it to fit,
  * beside its Items when its widest answer, measured on one line at the Exam's
  * text size, fits a column that still leaves the Items their least width on a
@@ -1964,7 +1967,7 @@ export function wordBankLayoutFor(
   settings: WordBankSettings,
   widthOf?: BankAnswerWidth,
 ): WordBankLayout {
-  const rules = questionStyleRules(settings.questionStyle)
+  const rules = paperStyleRules(settings.paperStyle)
   if (rules.bankPlacement === 'above') return 'above'
   const answers = choicesOf(question)
   if (answers.length === 0) return 'beside'
@@ -1977,7 +1980,7 @@ export function wordBankLayoutFor(
   }))
   const widest = pageSizeOf(settings.margins).contentWidth
     - MATCHING_INDENT
-    - promptsMinWidthOf(settings.questionStyle)
+    - promptsMinWidthOf(settings.paperStyle)
   return bankNeeds(bank, widthOf, settings.textSize) <= widest ? 'beside' : 'above'
 }
 
@@ -1998,15 +2001,15 @@ function resolveLayout(
   document: ExportDocument,
   measure: Measure,
 ): LayoutPlan {
-  const { textSize, questionStyle } = document
+  const { textSize, paperStyle } = document
   const pageSize = pageSizeOf(document.margins)
   // Every item is measured at the Exam's text size, at the width its margins
-  // leave and in its Question Style; an Exam with none of them asks exactly as
+  // leave and in its Paper Style; an Exam with none of them asks exactly as
   // it always did.
   const layout: ItemLayout = {
     ...(textSize ? { textSize } : {}),
     ...(pageSize.contentWidth !== PAGE_CONTENT_WIDTH ? { contentWidth: pageSize.contentWidth } : {}),
-    ...(questionStyle ? { questionStyle } : {}),
+    ...(paperStyle ? { paperStyle } : {}),
   }
   const sized: Measure = Object.keys(layout).length > 0
     ? { itemHeight: (item) => measure.itemHeight(item, layout) }
@@ -2021,7 +2024,7 @@ function resolveLayout(
   const titleExtra = titleGrowth(titleLines, document.headingSize)
   const pages: PackedPage[] = []
   if (document.selection.test) {
-    const rules = questionStyleRules(questionStyle)
+    const rules = paperStyleRules(paperStyle)
     const across = rules.answersAcross
       ? fitAnswersAcross(document.test, measure, textSize, pageSize.contentWidth)
       : document.test
@@ -2030,7 +2033,7 @@ function resolveLayout(
       measure,
       textSize,
       pageSize.contentWidth,
-      promptsMinWidthOf(questionStyle),
+      promptsMinWidthOf(paperStyle),
     )
     pages.push(...paginate(test, sized, pageSize, 'test', 'first', 'later', titleExtra))
   }
@@ -2053,7 +2056,7 @@ function resolveLayout(
     selection: document.selection,
     pageSize,
     ...(textSize ? { textSize } : {}),
-    ...(questionStyle ? { questionStyle } : {}),
+    ...(paperStyle ? { paperStyle } : {}),
     // Every page but the first of the serialized document is preceded by an
     // explicit break. A linear format must reproduce the plan's pagination
     // rather than rediscover one of its own.

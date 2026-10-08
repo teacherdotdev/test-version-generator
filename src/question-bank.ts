@@ -55,7 +55,7 @@ export type ExamWorkingCopy = {
   headingSize?: import('./section-headings').HeadingSize
   textSize?: import('./section-headings').TextSize
   /** How every question on this Exam prints; absent means Standard. */
-  questionStyle?: import('./question-style').QuestionStyle
+  paperStyle?: import('./paper-style').PaperStyle
   /** This Exam's own test-page header lines; absent means the default. */
   header?: import('./page-header').ExamHeader
   /** This Exam's Page Margins, in inches; absent means the default. */

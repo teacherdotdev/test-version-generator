@@ -181,7 +181,7 @@ function columnsMenu(
 
 // Where a Matching question's Word Bank prints on this Exam, offered as Multiple
 // Choice answer columns are: always one of the two, which the question took
-// from the Question Style when it arrived and which a change of style sets
+// from the Paper Style when it arrived and which a change of style sets
 // again (ADR-0041).
 const WORD_BANK_MENU_OPTIONS: readonly { label: string; value: WordBankLayout; icon: ReactNode }[] = [
   { label: 'Beside items', value: 'beside', icon: <Columns2 /> },
@@ -548,7 +548,7 @@ function QuestionHandles({
 //
 // A drag previews locally and commits once, on release — one undo step per
 // gesture, and one repagination rather than one per pixel. Heights snap to
-// whole rows, laid out at the Question Style's pitch — closer under Condensed —
+// whole rows, laid out at the Paper Style's pitch — closer under Condensed —
 // so blank and lined space always agree about size, and what is committed is
 // the stored height of those rows (`storedWorkSpaceHeight`). Dragging
 // a space that fills its page takes over from the fill: the teacher is now
@@ -1660,7 +1660,7 @@ export function ExportPreview({ plan }: { plan: LayoutPlan }) {
           <div
             className="page-content"
             style={pageContentStyle(plan.textSize)}
-            data-question-style={plan.questionStyle}
+            data-paper-style={plan.paperStyle}
           >
             {page.items.map((item) => (
               <PageItemMeasureView key={keyOf(item)} item={item} />
@@ -2186,7 +2186,7 @@ export function ExamPage({
           <div
             className="page-content"
             style={pageContentStyle(plan.textSize)}
-            data-question-style={plan.questionStyle}
+            data-paper-style={plan.paperStyle}
             onClick={clearOnBackground}
           >
             {/* An exam with nothing in it yet offers the first question where

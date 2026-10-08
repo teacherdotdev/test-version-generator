@@ -1,4 +1,4 @@
-// A Question Style's rules, read through the planner's own interface: an Exam
+// A Paper Style's rules, read through the planner's own interface: an Exam
 // in, a Layout Plan out. What each preset prints before a number, how it
 // letters and lays out answers, where it puts a Word Bank, what room it gives a
 // Short Answer position the teacher left alone, and how it spaces questions.
@@ -27,11 +27,11 @@ import {
 import type { ProseMirrorJSON } from './question-doc'
 import {
   ANSWER_BLANK,
-  QUESTION_STYLES,
-  QUESTION_STYLE_RULES,
-  isQuestionStyle,
-  type QuestionStyle,
-} from './question-style'
+  PAPER_STYLES,
+  PAPER_STYLE_RULES,
+  isPaperStyle,
+  type PaperStyle,
+} from './paper-style'
 
 const paragraph = (text: string): ProseMirrorJSON => ({
   type: 'paragraph',
@@ -148,8 +148,8 @@ function multipart(id: string): Question {
 
 const ARRANGEMENT: Arrangement = { id: 'v1', letter: 'A', questionOrder: [], choiceOrder: {} }
 
-function examOf(questions: Question[], questionStyle?: QuestionStyle, extra: Partial<Exam> = {}): Exam {
-  return { title: 'Styles', questions, ...(questionStyle ? { questionStyle } : {}), ...extra }
+function examOf(questions: Question[], paperStyle?: PaperStyle, extra: Partial<Exam> = {}): Exam {
+  return { title: 'Styles', questions, ...(paperStyle ? { paperStyle } : {}), ...extra }
 }
 
 function plan(exam: Exam, measure: Measure = unmeasured) {
@@ -178,31 +178,31 @@ const EVERY_TYPE = [
   multipart('mp'),
 ]
 
-describe('Question Styles', () => {
+describe('Paper Styles', () => {
   test('are three, read by one guard, with Standard the default', () => {
-    expect(QUESTION_STYLES).toEqual(['standard', 'classic', 'condensed'])
-    for (const style of QUESTION_STYLES) expect(isQuestionStyle(style)).toBe(true)
-    expect(isQuestionStyle('fancy')).toBe(false)
-    expect(isQuestionStyle(undefined)).toBe(false)
+    expect(PAPER_STYLES).toEqual(['standard', 'classic', 'condensed'])
+    for (const style of PAPER_STYLES) expect(isPaperStyle(style)).toBe(true)
+    expect(isPaperStyle('fancy')).toBe(false)
+    expect(isPaperStyle(undefined)).toBe(false)
   })
 
   test('Standard plans exactly what an Exam with no style plans', () => {
     const before = plan(examOf(EVERY_TYPE))
     expect(plan(examOf(EVERY_TYPE, 'standard'))).toEqual(before)
-    expect(before.questionStyle).toBeUndefined()
-    expect(buildExportDocument(examOf(EVERY_TYPE, 'standard'), ARRANGEMENT, { test: true, answerKey: false }).questionStyle)
+    expect(before.paperStyle).toBeUndefined()
+    expect(buildExportDocument(examOf(EVERY_TYPE, 'standard'), ARRANGEMENT, { test: true, answerKey: false }).paperStyle)
       .toBeUndefined()
   })
 
   test('a plan names any other style it was laid out in, so a reprint reproduces it', () => {
     for (const style of ['classic', 'condensed'] as const) {
-      expect(plan(examOf(EVERY_TYPE, style)).questionStyle).toBe(style)
+      expect(plan(examOf(EVERY_TYPE, style)).paperStyle).toBe(style)
     }
   })
 
   test('the Answer Key is the same whatever the test prints', () => {
     const standard = keyItems(examOf(EVERY_TYPE))
-    for (const style of QUESTION_STYLES) {
+    for (const style of PAPER_STYLES) {
       expect(keyItems(examOf(EVERY_TYPE, style)), style).toEqual(standard)
     }
   })
@@ -319,7 +319,7 @@ describe('Condensed', () => {
       none: { height: 0, style: 'blank', fill: false },
       blank: { height: 96, style: 'blank', fill: false },
     } as const
-    const exam = (style?: QuestionStyle) =>
+    const exam = (style?: PaperStyle) =>
       examOf([open('sa'), open('none'), open('blank')], style, { workSpace: { ...spaces } })
     const [sa, none, blank] = testItems(exam('condensed'))
     expect(sa!.workSpace).toMatchObject({ height: 18 + 4 * 24, lines: 5, pitch: 24, firstRow: 18 })
@@ -381,10 +381,10 @@ describe('Condensed', () => {
   })
 
   test('packs questions closer together, telling the measure which style it measures', () => {
-    const seen: (QuestionStyle | undefined)[] = []
+    const seen: (PaperStyle | undefined)[] = []
     const measure: Measure = {
       itemHeight: (_item, layout) => {
-        seen.push(layout?.questionStyle)
+        seen.push(layout?.paperStyle)
         return 0
       },
     }
@@ -392,11 +392,11 @@ describe('Condensed', () => {
     expect(seen.every((style) => style === 'condensed')).toBe(true)
     plan(examOf([open('sa')]), measure)
     expect(seen.at(-1)).toBeUndefined()
-    expect(QUESTION_STYLE_RULES.condensed.questionGap).toBeLessThan(QUESTION_STYLE_RULES.standard.questionGap)
+    expect(PAPER_STYLE_RULES.condensed.questionGap).toBeLessThan(PAPER_STYLE_RULES.standard.questionGap)
   })
 })
 
-describe('Hidden Answers under a Question Style', () => {
+describe('Hidden Answers under a Paper Style', () => {
   // Five answers, the first correct, with the third hidden (ADR-0038).
   const question = multipleChoice('mc', ['a', 'b', 'c', 'd', 'e'], 'a')
   const hiding: Arrangement = { ...ARRANGEMENT, hiddenAnswers: { mc: ['c'] } }

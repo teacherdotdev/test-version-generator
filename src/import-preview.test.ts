@@ -1,7 +1,7 @@
 // The import review previews the Exam an import would create through the
 // export's own Layout Plan, so a Short Answer position shows the room it will
 // arrive with: blank or ruled, as tall as the record says, or the lines its
-// Question Style rules where it says nothing.
+// Paper Style rules where it says nothing.
 
 import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
@@ -49,16 +49,16 @@ describe('the import preview’s plan', () => {
     expect(item.workSpace).toMatchObject({ style: 'blank', lines: 0, height: 24 + 32 })
   })
 
-  test('rules the lines the Exam’s Question Style supplies where a position carries none', async () => {
-    const classic = await previewedShortAnswer(record({ questionStyle: 'classic' }))
+  test('rules the lines the Exam’s Paper Style supplies where a position carries none', async () => {
+    const classic = await previewedShortAnswer(record({ paperStyle: 'classic' }))
     expect(classic.workSpace).toMatchObject({ style: 'lines', lines: 3, pitch: 32 })
-    const condensed = await previewedShortAnswer(record({ questionStyle: 'condensed' }))
+    const condensed = await previewedShortAnswer(record({ paperStyle: 'condensed' }))
     expect(condensed.workSpace).toMatchObject({ style: 'lines', lines: 3, pitch: 24 })
   })
 
   test('keeps a position’s “None” over the lines its style would rule', async () => {
     const item = await previewedShortAnswer(
-      record({ questionStyle: 'classic' }, { workSpace: { height: 0, style: 'blank', fill: false } }),
+      record({ paperStyle: 'classic' }, { workSpace: { height: 0, style: 'blank', fill: false } }),
     )
     expect(item.workSpace!.height).toBe(0)
   })

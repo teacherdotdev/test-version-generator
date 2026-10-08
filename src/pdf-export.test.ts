@@ -424,13 +424,13 @@ describe('PDF Export Adapter', () => {
     expect(sizeOf('Brave Otter')).toBeCloseTo(pointsOf('body'), 2)
   })
 
-  // A Question Style's blanks and letters reach the page as the plan resolved
+  // A Paper Style's blanks and letters reach the page as the plan resolved
   // them, and the Answer Key keeps its capitals.
   test.each([
     ['classic', '_______ 1.', 'b. Carbon dioxide'],
     ['condensed', 'T F 2.', 'B. Carbon dioxide'],
-  ] as const)('draws the %s question style’s blanks and letters', async (style, blank, answer) => {
-    const { plans } = plansOf(`every question type in the ${style} question style`)
+  ] as const)('draws the %s paper style’s blanks and letters', async (style, blank, answer) => {
+    const { plans } = plansOf(`every question type in the ${style} paper style`)
     const bytes = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
     let drawn = ''

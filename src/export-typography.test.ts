@@ -14,7 +14,7 @@ import { createExamDocx } from './docx-export'
 import { EMPTY_EXPORT_HISTORY, plansOf, prepareExport } from './export-preparation'
 import { FIXTURES } from './export-fixtures'
 import { CHOICE_INDENT, PAGE_CONTENT_WIDTH, questionIndentOf } from './export-plan'
-import { ANSWER_BLANK, QUESTION_STYLE_RULES } from './question-style'
+import { ANSWER_BLANK, PAPER_STYLE_RULES } from './paper-style'
 import {
   BODY_LINE_HEIGHT,
   EXAM_FONT,
@@ -129,11 +129,11 @@ describe('print’s stylesheet is the table', () => {
   const pxIn = (block: string, property: string) =>
     Number(new RegExp(`${property}:\\s*(\\d+)px`).exec(block)?.[1])
 
-  test('each Question Style stands its questions as far apart as its rules say', async () => {
-    expect(pxIn(await rule('.exam-question'), 'margin-bottom')).toBe(QUESTION_STYLE_RULES.standard.questionGap)
-    expect(pxIn(await rule("[data-question-style='condensed'] .exam-question"), 'margin-bottom'))
-      .toBe(QUESTION_STYLE_RULES.condensed.questionGap)
-    expect(QUESTION_STYLE_RULES.classic.questionGap).toBe(QUESTION_STYLE_RULES.standard.questionGap)
+  test('each Paper Style stands its questions as far apart as its rules say', async () => {
+    expect(pxIn(await rule('.exam-question'), 'margin-bottom')).toBe(PAPER_STYLE_RULES.standard.questionGap)
+    expect(pxIn(await rule("[data-paper-style='condensed'] .exam-question"), 'margin-bottom'))
+      .toBe(PAPER_STYLE_RULES.condensed.questionGap)
+    expect(PAPER_STYLE_RULES.classic.questionGap).toBe(PAPER_STYLE_RULES.standard.questionGap)
   })
 
   test.each([

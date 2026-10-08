@@ -1283,6 +1283,13 @@ describe('the Layout Plan', () => {
     expect(readStoredLayoutPlan(stored as unknown as LayoutPlan).pageSize).toEqual(planOf().pageSize)
   })
 
+  test('a plan recorded before the Paper Style was renamed keeps its style', () => {
+    const stored = { ...planOf(), questionStyle: 'condensed' }
+    const read = readStoredLayoutPlan(stored as unknown as LayoutPlan)
+    expect(read.paperStyle).toBe('condensed')
+    expect(read).not.toHaveProperty('questionStyle')
+  })
+
   test('marks an explicit break before every page but the first', () => {
     const pages = planOf().pages
     expect(pages.length).toBeGreaterThan(1)

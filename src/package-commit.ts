@@ -133,7 +133,7 @@ export function planImport(
       }
       // Every Matching position stores where its Word Bank prints. A record
       // that does not say — written before it could, or by another tool —
-      // takes the layout its Question Style and the fit rule give it here,
+      // takes the layout its Paper Style and the fit rule give it here,
       // once, as a question added to an Exam does (ADR-0041).
       if (question.type === 'matching') {
         wordBankLayout[question.id] = position.wordBankLayout
@@ -174,7 +174,7 @@ export function planImport(
       ...(exam.sectionHeadings ? { sectionHeadings: exam.sectionHeadings } : {}),
       ...(exam.headingSize ? { headingSize: exam.headingSize } : {}),
       ...(exam.textSize ? { textSize: exam.textSize } : {}),
-      ...(exam.questionStyle ? { questionStyle: exam.questionStyle } : {}),
+      ...(exam.paperStyle ? { paperStyle: exam.paperStyle } : {}),
       ...(exam.header ? { header: exam.header } : {}),
       ...(exam.margins ? { margins: exam.margins } : {}),
     }

@@ -18,7 +18,7 @@
 
 import { isExamHeader, sameExamHeader } from './page-header'
 import { isPageMargins, sameMargins } from './page-margins'
-import { DEFAULT_QUESTION_STYLE, isQuestionStyle } from './question-style'
+import { DEFAULT_PAPER_STYLE, isPaperStyle } from './paper-style'
 import {
   DEFAULT_HEADING_SIZE,
   isHeadingSize,
@@ -202,9 +202,9 @@ export function selectedExam(
       : undefined
   const textSize =
     isTextSize(draft.textSize) && draft.textSize !== DEFAULT_TEXT_SIZE ? draft.textSize : undefined
-  const questionStyle =
-    isQuestionStyle(draft.questionStyle) && draft.questionStyle !== DEFAULT_QUESTION_STYLE
-      ? draft.questionStyle
+  const paperStyle =
+    isPaperStyle(draft.paperStyle) && draft.paperStyle !== DEFAULT_PAPER_STYLE
+      ? draft.paperStyle
       : undefined
   const header =
     isExamHeader(draft.header) && Object.keys(draft.header).length > 0 ? draft.header : undefined
@@ -224,7 +224,7 @@ export function selectedExam(
     && previous.exam.headingSize === headingSize
     && sameExamHeader(previous.exam.header, header)
     && previous.exam.textSize === textSize
-    && previous.exam.questionStyle === questionStyle
+    && previous.exam.paperStyle === paperStyle
     && previous.exam.margins === margins
       ? previous.exam
       : {
@@ -237,7 +237,7 @@ export function selectedExam(
           ...(sectionHeadings ? { sectionHeadings } : {}),
           ...(headingSize ? { headingSize } : {}),
           ...(textSize ? { textSize } : {}),
-          ...(questionStyle ? { questionStyle } : {}),
+          ...(paperStyle ? { paperStyle } : {}),
           ...(header ? { header } : {}),
           ...(margins ? { margins } : {}),
         }

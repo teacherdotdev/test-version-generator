@@ -38,7 +38,7 @@ import {
 } from './section-headings'
 import type { ExamHeader } from './page-header'
 import type { PageMargins } from './page-margins'
-import { questionStyleRules, type QuestionStyle } from './question-style'
+import { paperStyleRules, type PaperStyle } from './paper-style'
 import { newMatchingNode } from './matching'
 import { newMultipartPartsNode } from './multipart'
 
@@ -159,9 +159,9 @@ export type Exam = {
   textSize?: TextSize
   /** How every question on it prints: what goes before a number, how answers
    *  are lettered and laid out, what room a Short Answer position leaves when
-   *  the teacher has set none. See `question-style.ts`. Absent means
+   *  the teacher has set none. See `paper-style.ts`. Absent means
    *  `'standard'`. */
-  questionStyle?: QuestionStyle
+  paperStyle?: PaperStyle
   /** This Exam's own test-page header lines, where they depart from the
    *  default blanks. See `page-header.ts`. */
   header?: ExamHeader
@@ -178,7 +178,7 @@ export type WorkSpaceStyle = 'blank' | 'lines'
  *  `height` is in CSS pixels at 96dpi, and is always a whole number of
  *  `WORK_SPACE_LINE_PITCH`s: it stores how many rows of room the teacher
  *  asked for, so switching between blank and lined never moves anything on
- *  the page. The page lays those rows out by the Exam's Question Style
+ *  the page. The page lays those rows out by the Exam's Paper Style
  *  (`workSpaceRowsOf`, `laidWorkSpaceHeight`), so a style that sets them
  *  closer together never rewrites what is stored. `fill` stretches
  *  the space to the foot of whatever page the question lands on — `height` is
@@ -213,9 +213,9 @@ export function workSpaceRows(pitch: number = WORK_SPACE_LINE_PITCH): WorkSpaceR
   return { pitch, first: pitch * (1 - FIRST_ROW_INSET) }
 }
 
-/** The rows a Work Space lies in under an Exam's Question Style. */
-export function workSpaceRowsOf(style: QuestionStyle | undefined): WorkSpaceRows {
-  return workSpaceRows(questionStyleRules(style).workSpacePitch)
+/** The rows a Work Space lies in under an Exam's Paper Style. */
+export function workSpaceRowsOf(style: PaperStyle | undefined): WorkSpaceRows {
+  return workSpaceRows(paperStyleRules(style).workSpacePitch)
 }
 
 /** The height a stored Work Space takes on the page: as many rows as it
@@ -276,34 +276,34 @@ export function isWorkSpace(value: unknown): value is WorkSpace {
 
 /** A question's work space on this Exam. The one reader, so an Exam written
  *  before work space existed, and a question no one has given any, both read
- *  as its Question Style's default — none, unless the style rules answer
+ *  as its Paper Style's default — none, unless the style rules answer
  *  lines. A work space the teacher set, "None" stored as a zero height
  *  included, always wins over the style (ADR-0041). */
 export function workSpaceOf(exam: Exam, questionId: string): WorkSpace {
-  return workSpaceIn(exam.workSpace, exam.questionStyle, questionId)
+  return workSpaceIn(exam.workSpace, exam.paperStyle, questionId)
 }
 
 /** `workSpaceOf`, for callers holding an Exam's settings rather than an Exam:
  *  the stored work space, or the style's default where none is stored. */
 export function workSpaceIn(
   spaces: Readonly<Record<string, WorkSpace>> | undefined,
-  style: QuestionStyle | undefined,
+  style: PaperStyle | undefined,
   questionId: string,
 ): WorkSpace {
   const space = spaces?.[questionId]
   return space && isWorkSpace(space) ? space : defaultWorkSpaceOf(style)
 }
 
-/** The room a Short Answer position leaves under this Question Style when the
+/** The room a Short Answer position leaves under this Paper Style when the
  *  teacher has set none. */
-export function defaultWorkSpaceOf(style: QuestionStyle | undefined): WorkSpace {
-  return questionStyleRules(style).defaultWorkSpace ?? NO_WORK_SPACE
+export function defaultWorkSpaceOf(style: PaperStyle | undefined): WorkSpace {
+  return paperStyleRules(style).defaultWorkSpace ?? NO_WORK_SPACE
 }
 
 /** Where a Matching question's Word Bank prints on one Exam: beside its
  *  Items, or above them in columns. Exam presentation, set on the sheet like a
  *  Multiple Choice question's answer columns, and always a concrete choice:
- *  a position takes one when it arrives on the Exam, from its Question Style
+ *  a position takes one when it arrives on the Exam, from its Paper Style
  *  and whether its Word Bank fits beside (`wordBankLayoutFor` in
  *  export-plan.ts), and a change of style sets every one again. */
 export type WordBankLayout = 'beside' | 'above'

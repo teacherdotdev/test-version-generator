@@ -35,7 +35,7 @@ import {
   prepareExport,
 } from './export-preparation'
 import { printFingerprint } from './print-fingerprint'
-import { QUESTION_STYLES } from './question-style'
+import { PAPER_STYLES } from './paper-style'
 import {
   SUPPORTED_MARKS,
   SUPPORTED_NODES,
@@ -129,10 +129,10 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     expectSameDocument(planned, printFingerprint(planOf(fixture)))
   })
 
-  test('carries Marks on the Answer Key under every Question Style, and never on the test', async () => {
+  test('carries Marks on the Answer Key under every Paper Style, and never on the test', async () => {
     const marked = FIXTURES.find((item) => item.name === 'a marked paper')!
-    for (const questionStyle of QUESTION_STYLES) {
-      const fixture = { ...marked, exam: { ...marked.exam, questionStyle } }
+    for (const paperStyle of PAPER_STYLES) {
+      const fixture = { ...marked, exam: { ...marked.exam, paperStyle } }
       const plans = planOf(fixture)
       const planned = layoutFingerprint(plans)
       const [test, key] = [0, 1].map((stream) =>
@@ -298,9 +298,9 @@ describe('the supported document vocabulary', () => {
     expect([...types].sort()).toEqual([...SECTION_ORDER].sort())
   })
 
-  test('every Question Style appears in a fixture', () => {
-    const styles = new Set(FIXTURES.map((fixture) => fixture.exam.questionStyle ?? 'standard'))
-    expect([...styles].sort()).toEqual([...QUESTION_STYLES].sort())
+  test('every Paper Style appears in a fixture', () => {
+    const styles = new Set(FIXTURES.map((fixture) => fixture.exam.paperStyle ?? 'standard'))
+    expect([...styles].sort()).toEqual([...PAPER_STYLES].sort())
   })
 
   test('every page-header variant appears in a fixture', () => {

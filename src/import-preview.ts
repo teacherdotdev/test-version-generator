@@ -2,7 +2,7 @@
 //
 // It is built the way the import builds the Exam — `planImport`, then the same
 // `selectedExam` the sheet reads — so the preview lays out exactly what will
-// arrive: its Sections, answer columns and order, its Question Style and the
+// arrive: its Sections, answer columns and order, its Paper Style and the
 // Work Space each Short Answer position carries, blank or ruled, or the lines
 // its style supplies where it carries none. Loaded on demand with the
 // importer, since it brings the record parsers.
