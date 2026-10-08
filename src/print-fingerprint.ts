@@ -162,6 +162,11 @@ function pointsText(node: XmlNode | undefined): Segment[] {
   return text ? [{ kind: 'text', text: ` ${text}`, marks: [] }] : []
 }
 
+/** A line's kind, marked `:center` where print centres the block. */
+function alignedKind(kind: string, node: XmlNode): string {
+  return node.attrs['data-align'] === 'center' ? `${kind}:center` : kind
+}
+
 function blockLines(
   node: XmlNode,
   reader: Reader,
@@ -326,7 +331,7 @@ function blockLines(
     const img = node.children.find((child) => child.name === 'img')
     lines.push(
       line(
-        'para',
+        alignedKind('para', node),
         renderInline([
           ...opener,
           { kind: 'image', ordinal: img ? reader.nextImage() : 0 },
@@ -336,7 +341,7 @@ function blockLines(
     const caption = node.children.find((child) => child.name === 'figcaption')
     if (caption) {
       lines.push(
-        line('para', `«emphasis»${normalizeSpace(textOf(caption)).trim()}«/»`),
+        line(alignedKind('para', node), `«emphasis»${normalizeSpace(textOf(caption)).trim()}«/»`),
       )
     }
     return lines
@@ -367,7 +372,7 @@ function blockLines(
     case 'p':
       return [
         line(
-          'para',
+          alignedKind('para', node),
           isBlankParagraph(node)
             ? renderInline(opener)
             : renderInline([...opener, ...inlineSegments(node, [], reader)]),
@@ -497,7 +502,7 @@ function tableLines(table: XmlNode, reader: Reader): ContentLine[] {
       ),
     1,
   )
-  const lines: ContentLine[] = [`table:${rows.length}x${columns}`]
+  const lines: ContentLine[] = [alignedKind(`table:${rows.length}x${columns}`, table)]
   rows.forEach((row, rowIndex) => {
     const cells = row.children.filter(
       (cell) => cell.name === 'td' || cell.name === 'th',

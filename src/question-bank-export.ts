@@ -9,6 +9,7 @@ import {
   type QuestionType,
   type Subpart,
 } from './exam'
+import { isCentred } from './centring'
 import { bankLetter } from './matching'
 import { pointsOnQuestion } from './points'
 import {
@@ -104,6 +105,8 @@ export type SemanticNode = {
   authoredSize?: number
   /** A Picture Crop, on a block image with an `asset` only (0.7.0). */
   crop?: CropBox
+  /** A Centred paragraph, block image or table (0.9.0); absent is left. */
+  align?: 'center'
   /** Importer-only, never written to a record: the Authored Image Size a
    *  0.1.0–0.6.0 record gave, which meant Crepe's ratio against the size the
    *  picture fit at, not a share of its container. */
@@ -370,6 +373,7 @@ function imageSemanticNode(
   return {
     type: block ? 'block-image' : 'inline-image',
     ...(pending ? { pending } : { asset: media!.id }),
+    ...centredOf(node),
     ...(stringValue(attrs.alt) ? { alt: stringValue(attrs.alt) } : {}),
     ...(stringValue(attrs.caption) ? { caption: stringValue(attrs.caption) } : {}),
     ...(authoredSize !== undefined ? { authoredSize } : {}),
@@ -398,6 +402,11 @@ function recordSize(attrs: Record<string, unknown>, media: EmbeddedMedia | undef
   return clampSize((ratio * fitted) / PAGE_CONTENT_WIDTH)
 }
 
+/** A Centred block's `align`, as the record writes it. */
+function centredOf(node: ProseMirrorJSON): { align?: 'center' } {
+  return isCentred(node) ? { align: 'center' } : {}
+}
+
 function semanticNode(node: ProseMirrorJSON, mediaIds: ReadonlyMap<string, EmbeddedMedia>): SemanticNode {
   const attrs = attributes(node)
   const content = () => childNodes(node).map((child) => semanticNode(child, mediaIds))
@@ -416,7 +425,7 @@ function semanticNode(node: ProseMirrorJSON, mediaIds: ReadonlyMap<string, Embed
     case 'hardbreak':
       return { type: 'hard-break' }
     case 'paragraph':
-      return { type: 'paragraph', content: content() }
+      return { type: 'paragraph', ...centredOf(node), content: content() }
     case 'heading':
       return {
         type: 'heading',
@@ -452,7 +461,7 @@ function semanticNode(node: ProseMirrorJSON, mediaIds: ReadonlyMap<string, Embed
     case 'hr':
       return { type: 'rule' }
     case 'table':
-      return { type: 'table', content: content() }
+      return { type: 'table', ...centredOf(node), content: content() }
     case 'table_header_row':
       return { type: 'table-row', header: true, content: content() }
     case 'table_row':
@@ -942,6 +951,7 @@ function editorNode(node: SemanticNode, media?: RecordMediaSizes): ProseMirrorJS
         ...(node.alt !== undefined ? { alt: node.alt } : {}),
         ...(node.caption !== undefined ? { caption: node.caption } : {}),
         ...(node.type === 'block-image' ? editorPictureAttrs(node, media) : {}),
+        ...(node.type === 'block-image' && node.align === 'center' ? { align: 'center' } : {}),
       },
     }
   }
@@ -956,6 +966,7 @@ function editorNode(node: SemanticNode, media?: RecordMediaSizes): ProseMirrorJS
   const attrs: Record<string, unknown> = {}
   if (node.type === 'heading') attrs.level = node.level
   if (node.type === 'ordered-list') attrs.order = node.start
+  if ((node.type === 'paragraph' || node.type === 'table') && node.align === 'center') attrs.align = 'center'
   const converted: ProseMirrorJSON = {
     type,
     ...(node.text !== undefined ? { text: node.text } : {}),

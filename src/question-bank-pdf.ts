@@ -317,11 +317,18 @@ function layoutPieces(context: Context, pieces: readonly Piece[], maxWidth: numb
 function drawPieces(
   context: Context,
   pieces: readonly Piece[],
-  options: { x?: number; width?: number; line?: number } = {},
+  options: { x?: number; width?: number; line?: number; centred?: boolean } = {},
 ): void {
   const x0 = options.x ?? MARGIN
   const line = options.line ?? BODY_LINE
-  for (const laidOut of layoutPieces(context, pieces, options.width ?? CONTENT_WIDTH)) {
+  const maxWidth = options.width ?? CONTENT_WIDTH
+  for (const laidOut of layoutPieces(context, pieces, maxWidth)) {
+    // A Centred paragraph's line stands in the middle of its column, by what
+    // it shows: a space it ends on is not part of it.
+    const end = Math.max(0, ...laidOut.runs.map((run) => run.typeset
+      ? run.x + run.width
+      : run.x + measure(context, run.piece.font, run.text.trimEnd(), run.piece.size)))
+    const shift = options.centred ? Math.max(0, (maxWidth - end) / 2) : 0
     // A line is as tall as its tallest equation needs: a stacked fraction
     // pushes the lines around it apart rather than over them.
     const textSize = Math.max(0, ...laidOut.runs.filter((run) => !run.typeset).map((run) => run.piece.size))
@@ -337,7 +344,7 @@ function drawPieces(
     ensure(context, height)
     for (const run of laidOut.runs) {
       const { piece } = run
-      const x = x0 + run.x
+      const x = x0 + shift + run.x
       if (run.typeset) {
         drawTypesetMath(context.page, context.fonts.regular, run.typeset, run.text, x, context.y - ascent, piece.size, { ink: INK })
         continue
@@ -366,7 +373,7 @@ function drawPieces(
 function drawText(
   context: Context,
   value: string,
-  options: Partial<Piece> & { x?: number; width?: number; line?: number } = {},
+  options: Partial<Piece> & { x?: number; width?: number; line?: number; centred?: boolean } = {},
 ): void {
   drawPieces(
     context,
@@ -498,6 +505,8 @@ function drawImage(context: Context, node: SemanticNode, x: number, width: numbe
   const wholeWidth = targetWidth / keptWidth
   const wholeHeight = targetHeight / keptHeight
   const top = context.y
+  // A Centred picture stands in the middle of its column, its caption under it.
+  if (node.align === 'center') x += Math.max(0, (width - targetWidth) / 2)
   context.page.pushOperators(pushGraphicsState(), rectangle(x, top - targetHeight, targetWidth, targetHeight), clip(), endPath())
   context.page.drawImage(image, {
     x: x - crop.left * wholeWidth,
@@ -507,7 +516,9 @@ function drawImage(context: Context, node: SemanticNode, x: number, width: numbe
   })
   context.page.pushOperators(popGraphicsState())
   context.y -= targetHeight + 4
-  if (node.caption) drawText(context, node.caption, { x, width: targetWidth, font: 'italic', size: 9 })
+  if (node.caption) {
+    drawText(context, node.caption, { x, width: targetWidth, font: 'italic', size: 9, centred: node.align === 'center' })
+  }
   context.y -= 4
 }
 
@@ -538,7 +549,7 @@ function drawBlocks(
   for (const node of nodes) {
     switch (node.type) {
       case 'paragraph':
-        drawPieces(context, inlinePieces(node.content ?? []), { x, width })
+        drawPieces(context, inlinePieces(node.content ?? []), { x, width, centred: node.align === 'center' })
         context.y -= 3
         break
       case 'heading':
@@ -638,9 +649,13 @@ function drawTable(
         borderWidth: 0.6,
       })
       const copy = { ...context, y: top - 4 }
+      const paragraphs = (cell.content ?? []).filter((block) => block.type === 'paragraph')
       drawPieces(copy, inlinePieces(cell.content ?? []), {
         x: x + column * cellWidth + 4,
         width: cellWidth - 8,
+        // A cell's text is drawn as one run; it is centred when its
+        // paragraphs are.
+        centred: paragraphs.length > 0 && paragraphs.every((block) => block.align === 'center'),
       })
     })
     context.y -= height

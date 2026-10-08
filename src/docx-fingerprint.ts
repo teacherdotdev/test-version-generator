@@ -20,7 +20,13 @@ import {
   workSpaceLine,
 } from './export-fingerprint'
 import { child, descendants, parseXml, path, type XmlNode } from './xml'
-import { BLOCKQUOTE_TABLE_STYLE, CANDIDATE_FIELD_TABLE_STYLE, SIDE_BY_SIDE_TABLE_STYLE } from './docx-export'
+import {
+  BLOCKQUOTE_TABLE_STYLE,
+  CANDIDATE_FIELD_TABLE_STYLE,
+  CENTRED_PARAGRAPH_STYLE,
+  CENTRED_TABLE_STYLE,
+  SIDE_BY_SIDE_TABLE_STYLE,
+} from './docx-export'
 
 // ---------------------------------------------------------------------------
 // Package reading
@@ -244,7 +250,7 @@ function paragraphLine(paragraph: XmlNode, reader: Reader): ContentLine {
 
   if (properties && child(properties, 'w:pBdr')) return line('rule', inline)
   if (properties && child(properties, 'w:shd')) return line('code', inline)
-  return line('para', inline)
+  return line(style === CENTRED_PARAGRAPH_STYLE ? 'para:center' : 'para', inline)
 }
 
 /** The `w:tblStyle` a table names, which is how `docx-export.ts` marks the
@@ -308,7 +314,9 @@ function tableLines(table: XmlNode, reader: Reader): ContentLine[] {
       Math.max(widest, row.children.filter((cell) => cell.name === 'w:tc').length),
     1,
   )
-  const lines: ContentLine[] = [`table:${rows.length}x${columns}`]
+  const lines: ContentLine[] = [
+    `table:${rows.length}x${columns}${style === CENTRED_TABLE_STYLE ? ':center' : ''}`,
+  ]
   rows.forEach((row, rowIndex) => {
     const cells = row.children.filter((cell) => cell.name === 'w:tc')
     for (let column = 0; column < columns; column += 1) {

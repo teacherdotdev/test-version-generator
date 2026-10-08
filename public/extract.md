@@ -155,7 +155,7 @@ Completeness means accounting for every source question, not pretending every qu
 1. Classify a question as `multiple-choice`, `true-false`, `matching`, `short-answer` or `multipart` only when the source supports that classification. Version `0.9.0` supports only those five types. If its type is uncertain or it cannot be represented without material loss, leave it out and report it explicitly; never coerce it into the closest supported type.
 2. Preserve the exact wording, punctuation, capitalization, symbols, units, and meaningful whitespace. A Question's stem is what the source prints at its number, and nothing more: never add the directions printed above a group of questions to each one, and take out a mark printed beside it, such as `[2]`, which becomes its `points` (see [Points](#points)). Under “Write the capital of each country below.”, the item `18. Peru` has the stem “Peru”.
 3. Preserve authored question and choice order.
-4. Preserve paragraphs, headings, blockquotes, lists, code, rules, tables, equations, hard breaks, links, images, captions, content printed side by side, and text formatting when present (see [Page layout: boxes and side-by-side content](#page-layout-boxes-and-side-by-side-content)).
+4. Preserve paragraphs, headings, blockquotes, lists, code, rules, tables, equations, hard breaks, links, images, captions, content printed side by side, figures, tables and captions printed centred, and text formatting when present (see [Page layout: boxes and side-by-side content](#page-layout-boxes-and-side-by-side-content)).
 5. Do not rewrite, summarize, correct, simplify, or “improve” source content unless the user explicitly requests editing.
 6. Never invent missing text, choices, answers, correctness, Difficulty, Topics, attribution, or license information.
    **Mark an answer only where the source gives one** — an answer key, a circled or highlighted choice, a filled-in blank. Many tests, worksheets and study guides give none. Then every Multiple Choice and True/False choice is `"correct": false` and no Matching item has an `answer`, even when you are sure what the answer is. Test Parrot prints what you mark in the teacher's answer key, so an answer you supply yourself becomes a key the teacher never wrote.
@@ -183,6 +183,7 @@ Perform a second pass against the original source and verify all of the followin
 - all Question, choice, item, word bank, Part, Part choice, Subpart and Subpart choice IDs are unique and sequential;
 - every meaningful image, including an image used as an answer choice, matching item or word bank answer, is a Pending Image;
 - every picture has its own Pending Image, with pictures printed side by side split rather than merged — one per `panel` of a `side-by-side`;
+- every picture, table and caption the source prints centred has `"align": "center"`, and nothing printed at the left has an `align`;
 - shared material — a passage, picture, table or anything else that directions such as “Use the information above for problems 3 – 5” refer to — appears once, in the stem of the one Multipart Question whose Parts are those problems, and is never repeated in a Part's stem or in another Question;
 - every boxed passage or quote is a `blockquote`, with its “Source: …” line as the ordinary paragraph right after it, and was transcribed as text even when the source stores it as a picture;
 - content printed side by side is one `side-by-side` of two or three `panel`s, left to right, directly in a Question's or Part's stem — never in a choice, matching item, word bank answer or Suggested Answer, never inside a blockquote, list, table or another `side-by-side`, and never for answer choices laid out in a grid;
@@ -829,7 +830,7 @@ Each stem, choice, matching item, word bank answer, Part stem, and Suggested Ans
 
 Supported nodes are:
 
-- `paragraph`
+- `paragraph`, with optional `"align": "center"` when the source centres it, as `table` and `block-image` take too (see [Page layout: boxes and side-by-side content](#page-layout-boxes-and-side-by-side-content))
 - `heading` with `level` from 1 through 6
 - `blockquote`
 - `bullet-list`
@@ -947,7 +948,7 @@ The same formatting rules apply inside stems, choices, matching items, word bank
 
 ## Page layout: boxes and side-by-side content
 
-Most of a page's layout is not content: Test Parrot lays the test out itself. Two things a page does with its content are, and each has one node.
+Most of a page's layout is not content: Test Parrot lays the test out itself. Three things a page does with its content are: a box, content side by side, and a centred figure.
 
 **A boxed source is a `blockquote`.** A passage, quote, speech excerpt or document printed inside a border is a `blockquote` holding its paragraphs. Its attribution — “Source: …”, “— Patrick Henry, 1775” — is the ordinary paragraph right after the blockquote, outside it, even when the source prints it inside the box. Transcribe a boxed passage as text even when the source document stores it as a picture; keep a picture only for genuine artwork, such as a map, chart, cartoon, photograph or graph.
 
@@ -980,6 +981,49 @@ Rules:
 - A `side-by-side` is written only directly in a Question's `stem` or a Multipart Part's `stem`, as one of its top-level blocks: never in a choice, a matching item, a word bank answer or a Suggested Answer, and never inside a blockquote, list, table or panel.
 - Text above or below the items, such as the question or a caption spanning both, stays outside the `side-by-side`, before or after it in the stem.
 - **Answer choices laid out in a grid are not a `side-by-side`.** Write the choices as ordinary `choices`; for a test, the grid is the position's `columns` (see [Tests](#tests)).
+
+**A figure printed centred is centred.** When the source prints a picture, a table, or a figure's caption in the middle of the line, give that `block-image`, `table` or `paragraph` `"align": "center"`. A caption printed on a line of its own, such as “Fig. 1.1” under a figure or “Table 1.1” above or below a table, is an ordinary paragraph where the source prints it, centred when the source centres it; a caption written in a picture's `caption` is centred with its picture:
+
+```json
+{
+  "type": "document",
+  "content": [
+    { "type": "paragraph", "content": [{ "type": "text", "text": "Fig. 1.1 shows a leaf seen through a hand lens." }] },
+    { "type": "block-image", "pending": { "image": 5 }, "alt": "A leaf seen through a hand lens", "align": "center" },
+    { "type": "paragraph", "align": "center", "content": [{ "type": "text", "text": "Fig. 1.1", "marks": [{ "type": "strong" }] }] },
+    { "type": "paragraph", "align": "center", "content": [{ "type": "text", "text": "Table 1.1", "marks": [{ "type": "strong" }] }] },
+    {
+      "type": "table",
+      "align": "center",
+      "content": [
+        {
+          "type": "table-row",
+          "header": true,
+          "content": [
+            { "type": "table-cell", "header": true, "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Leaf" }] }] },
+            { "type": "table-cell", "header": true, "content": [{ "type": "paragraph", "align": "center", "content": [{ "type": "text", "text": "Length / mm" }] }] }
+          ]
+        },
+        {
+          "type": "table-row",
+          "content": [
+            { "type": "table-cell", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "A" }] }] },
+            { "type": "table-cell", "content": [{ "type": "paragraph", "align": "center", "content": [{ "type": "text", "text": "42" }] }] }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Rules:
+
+- `"align": "center"` is the only alignment. Left is the default: leave `align` out for everything the source prints at the left, and never write `"left"`, `"right"` or `"justify"`.
+- Only a `paragraph`, a `block-image` or a `table` takes `align`. A paragraph in a table cell or a `panel` may be centred too, as the numbers in a centred column often are.
+- Centre only what the source centres: a figure, its caption, a table, a centred title line. Body text, questions and answers printed at the left stay left.
+- A paragraph in a list item, a choice, a matching item or a word bank answer is never centred: those open with their own bullet, number or letter.
+- Pictures and tables in a `panel` are already centred across it; `align` there is needed only for a paragraph.
 
 **Boxes around the questions themselves are layout.** A border or shaded box that only frames or groups questions — a box around each question, around a section, or around an answer area — is not content. Ignore it: do not write it as a `blockquote`, a `side-by-side`, a table or a rule.
 

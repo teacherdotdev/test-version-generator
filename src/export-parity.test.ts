@@ -269,6 +269,30 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     expectSameDocument(layoutFingerprint(plans), printFingerprint(plans))
   })
 
+  test('carries a Centred figure, its caption and a Centred table centred, and keeps the number at the left', async () => {
+    const fixture = FIXTURES.find((item) => item.name === 'a centred figure, caption and table')!
+    const plans = planOf(fixture)
+    const lines = layoutFingerprint([plans[0]!]).pages.flatMap((page) => page.content)
+    const figure = lines.indexOf('para:center ⟨image:1⟩')
+    expect(lines[figure - 1]).toBe('para 1. Fig. 1.1 shows a leaf seen through a hand lens.')
+    expect(lines.slice(figure + 1, figure + 3)).toEqual(['para:center «strong»Fig. 1.1«/»', 'table:2x2:center'])
+    expect(lines).toContain('para:center Length / mm')
+    expect(lines).toContain('para Leaf')
+    expect(lines).toContain('para:center Table 1.1')
+    expect(lines).toContain('para Describe the leaf.')
+    // A Centred paragraph that opens its question carries the number.
+    expect(lines).toContain('para:center 2. Table 2.1')
+    expect(lines).toContain('para:center «emphasis»A captioned figure«/»')
+    expectSameDocument(layoutFingerprint(plans), await docxOf(fixture))
+    expectSameDocument(layoutFingerprint(plans), printFingerprint(plans))
+    // In Word the number stays at the left, and a centre tab sets the line.
+    const blob = await createExamDocx(plans, pixel)
+    const xml = await (await JSZip.loadAsync(await blob.arrayBuffer())).file('word/document.xml')!.async('string')
+    const opening = xml.split('<w:p>').find((paragraph) => paragraph.includes('Table 2.1'))!
+    expect(opening).toContain('w:val="center" w:pos=')
+    expect(opening).toContain('<w:jc w:val="left"/>')
+  })
+
   test('cuts an A4 plan to A4 exactly in Word', async () => {
     const fixture = FIXTURES.find((item) => item.name === 'a paper with points in the exam board paper style')!
     const blob = await createExamDocx(planOf(fixture), noImages)
@@ -575,6 +599,15 @@ describe('the comparison detects the discrepancies it exists for', () => {
     const [difference] = compareFingerprints(expected, raw)
     expect(difference?.what).toBe('content')
     expect(difference?.expected).toContain('⟨math:E = mc^2⟩')
+  })
+
+  test('a Centred block drawn at the left', () => {
+    const fixture = FIXTURES.find((item) => item.name === 'a centred figure, caption and table')!
+    const expected = layoutFingerprint(planOf(fixture))
+    const left = degrade(expected, (lines) => lines.map((line) => line.replace(':center', '')))
+    const [difference] = compareFingerprints(expected, left)
+    expect(difference?.what).toBe('content')
+    expect(difference?.expected).toBe('para:center ⟨image:1⟩')
   })
 
   test('a table flattened into tab-separated paragraphs', () => {

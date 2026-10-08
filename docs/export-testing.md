@@ -82,10 +82,12 @@ vocabulary:
 ```text
 heading:<1-6|title> <inline>
 para <inline>
+para:center <inline>
 code <inline>
 list:<bullet|ordered>:<n> <inline>
 rule
 table:<rows>x<columns>
+table:<rows>x<columns>:center
 cell:<row>,<column>
 /table
 box
@@ -106,6 +108,17 @@ takes a `para` line of its own before it, as a table's does. In DOCX both are
 tables — a one-cell bordered one and a borderless one-row one that cannot split
 — marked with the `Blockquote` and `SideBySide` table styles so they read back
 as a box and Panels rather than as tables.
+
+A Centred block's own lines say so: a Centred paragraph, and a Centred
+picture and its caption, are `para:center`, and a Centred table opens
+`table:2x2:center`. Print marks each with `data-align="center"`, the PDF draws
+it in the middle of its column, and DOCX gives it the `Centred` paragraph
+style, or the `CentredTable` table style, so it reads back as centred rather
+than as a Panel's picture, which Word centres too. A Centred paragraph that
+opens a question or a Part keeps its number or letter at the left: DOCX steps
+from it to a centre tab in the middle of the column, as print's number column
+leaves the line. PDF and DOCX lay a table across its whole column, so a
+Centred table moves only in print, where a table is as wide as its content.
 
 A Multipart question with no stem of its own — none, or only empty
 paragraphs — prints Part (a) on its number's line, and a Part with no lead-in

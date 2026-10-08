@@ -410,6 +410,10 @@ type CopyContext = {
    *  carries any, is an unknown optional field, ignored, and every Question
    *  it holds is read as unpointed (ADR-0042). */
   points: boolean
+  /** Whether the record's paragraphs, block images and tables may be
+   *  centred, added in 0.9.0; an older record's `align` is ignored and its
+   *  blocks are read as left. */
+  aligns: boolean
   media: ReadonlyMap<string, { width: number; height: number }>
 }
 
@@ -425,6 +429,12 @@ const SUBPART_VERSIONS: ReadonlySet<string> = new Set(['0.9.0'])
 
 /** The versions that know Points, added in 0.9.0. */
 const POINTS_VERSIONS: ReadonlySet<string> = new Set(['0.9.0'])
+
+/** The versions that know a Centred block, added in 0.9.0. */
+const ALIGN_VERSIONS: ReadonlySet<string> = new Set(['0.9.0'])
+
+/** The record nodes that may be centred. */
+const CENTRABLE_RECORD_NODES: ReadonlySet<string> = new Set(['paragraph', 'block-image', 'table'])
 
 function copyPicture(node: SemanticNode, context: CopyContext): Partial<SemanticNode> {
   const size =
@@ -443,11 +453,17 @@ function copyPicture(node: SemanticNode, context: CopyContext): Partial<Semantic
   }
 }
 
-function copyNode(node: SemanticNode, context: CopyContext): SemanticNode {
+/** `centred` says whether the node may be centred where it stands: never in
+ *  a list item, nor in an answer, an Item or a Word Bank answer, which open
+ *  with their own marker or letter. */
+function copyNode(node: SemanticNode, context: CopyContext, centred = context.aligns): SemanticNode {
   return {
     type: node.type,
     ...(node.text !== undefined ? { text: node.text } : {}),
-    ...(node.content ? { content: node.content.map((child) => copyNode(child, context)) } : {}),
+    ...(node.content
+      ? { content: node.content.map((child) => copyNode(child, context, centred && node.type !== 'list-item')) }
+      : {}),
+    ...(centred && node.align === 'center' && CENTRABLE_RECORD_NODES.has(node.type) ? { align: 'center' as const } : {}),
     ...(node.marks
       ? {
           marks: node.marks.map((mark) =>
@@ -475,13 +491,13 @@ function copyNode(node: SemanticNode, context: CopyContext): SemanticNode {
 }
 
 function copyQuestion(question: QuestionBankRecordQuestion, context: CopyContext): QuestionBankRecordQuestion {
-  const copyDocument = (document: SemanticDocument): SemanticDocument => ({
+  const copyDocument = (document: SemanticDocument, centred = context.aligns): SemanticDocument => ({
     type: 'document',
-    content: document.content.map((node) => copyNode(node, context)),
+    content: document.content.map((node) => copyNode(node, context, centred)),
   })
   const copyChoice = (choice: QuestionBankRecordChoice): QuestionBankRecordChoice => ({
     id: choice.id,
-    content: copyDocument(choice.content),
+    content: copyDocument(choice.content, false),
     correct: choice.correct,
     ...(context.locks && choice.locked !== undefined ? { locked: choice.locked } : {}),
   })
@@ -511,7 +527,7 @@ function copyQuestion(question: QuestionBankRecordQuestion, context: CopyContext
       ? {
           prompts: question.prompts.map((prompt) => ({
             id: prompt.id,
-            content: copyDocument(prompt.content),
+            content: copyDocument(prompt.content, false),
             ...(prompt.answer !== undefined ? { answer: prompt.answer } : {}),
           })),
         }
@@ -520,7 +536,7 @@ function copyQuestion(question: QuestionBankRecordQuestion, context: CopyContext
       ? {
           wordBank: question.wordBank.map((answer) => ({
             id: answer.id,
-            content: copyDocument(answer.content),
+            content: copyDocument(answer.content, false),
           })),
         }
       : {}),
@@ -875,6 +891,7 @@ function parseWith(
           locks: LOCKED_ANSWER_VERSIONS.has(sourceVersion),
           subparts: SUBPART_VERSIONS.has(sourceVersion),
           points: POINTS_VERSIONS.has(sourceVersion),
+          aligns: ALIGN_VERSIONS.has(sourceVersion),
           media: new Map(record.media.map((asset) => [asset.id, asset])),
         }),
       ),

@@ -312,9 +312,37 @@
         },
         "pending": {
           "$ref": "#/$defs/pending"
+        },
+        "align": {
+          "description": "A Centred block: a paragraph, block image or table set in the middle of its column, such as a figure and its “Fig. 1.1” caption. Left is the default and is written by omitting `align`. Centring is ignored in a list item and in an answer choice, matching item or word-bank answer.",
+          "const": "center"
         }
       },
       "allOf": [
+        {
+          "if": {
+            "properties": {
+              "align": true
+            },
+            "required": [
+              "align"
+            ]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "paragraph",
+                  "block-image",
+                  "table"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          }
+        },
         {
           "if": {
             "properties": {

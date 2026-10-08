@@ -80,6 +80,15 @@ describe('the JSON examples in the conversion instructions', () => {
     expect(checked).toBeGreaterThanOrEqual(10)
   })
 
+  test('centre a figure, its caption and a table the source prints centred', () => {
+    const centred = JSON.stringify(examples.filter((example) => JSON.stringify(example).includes('"align"')))
+    expect(centred).toContain('"type":"block-image","pending":{"image":5},"alt":"A leaf seen through a hand lens","align":"center"')
+    expect(centred).toContain('"type":"paragraph","align":"center","content":[{"type":"text","text":"Fig. 1.1"')
+    expect(centred).toContain('"type":"table","align":"center"')
+    // Nothing teaches an alignment Test Parrot does not have.
+    expect(JSON.stringify(examples)).not.toMatch(/"align":"(?!center")/)
+  })
+
   test('show Points on what a student answers and a Part holding Subparts', () => {
     const written = JSON.stringify(examples)
     expect(written).toContain('"points":')

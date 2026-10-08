@@ -3,6 +3,7 @@
 // Questions are stored as plain JSON so the model and the store never need a
 // live editor; only the Crepe dialog turns it back into a ProseMirror document.
 
+import { isCentred, UNCENTRED_CONTAINERS } from './centring'
 import { isLocked, type AnswerLock } from './locked-answers'
 
 export type ProseMirrorJSON = Record<string, unknown>
@@ -123,9 +124,12 @@ export function parsePointsInput(text: string): number | null | undefined {
 // stable id and their boolean `correct`; a choice list is never left with fewer
 // than the two answers the schema requires.
 export function cleanDocument(value: ProseMirrorJSON): ProseMirrorJSON {
-  const cleanNode = (node: ProseMirrorJSON): ProseMirrorJSON => {
+  const cleanNode = (node: ProseMirrorJSON, uncentred = false): ProseMirrorJSON => {
     const clean: ProseMirrorJSON = { type: String(node.type ?? 'paragraph') }
     const attrs = attrsOf(node)
+    // A Centred block keeps `align: 'center'`; anything else — a left block,
+    // the editor's null, a block in a list item or an answer — keeps none.
+    if (attrs && 'align' in attrs && (uncentred || !isCentred(node))) delete attrs.align
     if (attrs) clean.attrs = attrs
     if (typeof node.text === 'string') clean.text = node.text
     if (Array.isArray(node.marks)) {
@@ -139,8 +143,9 @@ export function cleanDocument(value: ProseMirrorJSON): ProseMirrorJSON {
       })
     }
     if (Array.isArray(node.content)) {
+      const within = uncentred || UNCENTRED_CONTAINERS.has(String(node.type))
       clean.content = node.content.map((child) =>
-        cleanNode(child as ProseMirrorJSON),
+        cleanNode(child as ProseMirrorJSON, within),
       )
     }
     if (node.type === 'multipleChoice') {

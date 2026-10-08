@@ -62,6 +62,7 @@ import {
   type QuestionItem,
   rowsOfPlanned,
 } from './export-plan'
+import { isCentred } from './centring'
 import { DIFFICULTY_LABELS } from './exam'
 import {
   BODY_LINE_HEIGHT,
@@ -404,7 +405,7 @@ type PlacedPiece = { piece: InlinePiece; x: number; width: number }
 function drawInline(
   context: DrawContext,
   pieces: readonly InlinePiece[],
-  options: { x?: number; width?: number; size?: number; line?: number } = {},
+  options: { x?: number; width?: number; size?: number; line?: number; centred?: boolean } = {},
 ): void {
   const x0 = options.x ?? context.x
   const width = options.width ?? context.width
@@ -457,7 +458,12 @@ function drawInline(
     // paragraph's top asked a line of n for 2n - 1 lines of room.
     if (placed.length > 0) ensureRoom(context, height)
     const lineTop = context.y - above
-    for (const { piece, x, width: pieceWidth } of placed) drawPiece(context, piece, x, pieceWidth, lineTop, line)
+    // A Centred paragraph's line stands in the middle of its column, by what
+    // it shows: a space it ends on is not part of it.
+    const shown = placed.filter(({ piece }) => piece.typeset !== undefined || piece.text.trim() !== '')
+    const end = Math.max(x0, ...shown.map(({ x, width: pieceWidth }) => x + pieceWidth))
+    const shift = options.centred ? Math.max(0, (width - (end - x0)) / 2) : 0
+    for (const { piece, x, width: pieceWidth } of placed) drawPiece(context, piece, x + shift, pieceWidth, lineTop, line)
     context.y -= height
   }
 }
@@ -572,7 +578,7 @@ function drawBlocks(
     previous = node.type as string
     switch (node.type) {
       case 'paragraph':
-        drawInline(context, textPieces(node), { x, width })
+        drawInline(context, textPieces(node), { x, width, centred: isCentred(node) })
         context.y -= BLOCK_AFTER
         break
       case 'heading': {
@@ -623,11 +629,12 @@ function drawBlocks(
         drawImage(context, { src: attrs.src }, x, width, options.centred)
         break
       case 'image-block': {
-        drawImage(context, attrs, x, width, options.centred)
+        const centred = options.centred || isCentred(node)
+        drawImage(context, attrs, x, width, centred)
         const caption = stringOf(attrs.caption)
         if (caption) {
           const captionWidth = context.fonts.regular.widthOfTextAtSize(caption, SMALL_SIZE)
-          const inset = options.centred ? Math.max(0, (width - captionWidth) / 2) : 0
+          const inset = centred ? Math.max(0, (width - captionWidth) / 2) : 0
           drawTextLine(context, caption, { size: SMALL_SIZE, x: x + inset, width: width - inset })
         }
         break

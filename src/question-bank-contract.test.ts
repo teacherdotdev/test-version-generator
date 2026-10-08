@@ -115,6 +115,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     const names = await filesIn(exampleRoot)
 
     expect(names).toEqual([
+      'centred-figure.json',
       'complete-rich-text.json',
       'cropped-picture.json',
       'locked-answers.json',
@@ -358,6 +359,69 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     })
   })
 
+  test('a Centred figure, caption and table reach the editor centred, and are written back centred', async () => {
+    const proposal = await inspectFixture(exampleRoot, 'centred-figure.json')
+    const stem = proposal.record.bank.questions[0]!.stem
+    const aligned = (content: readonly { align?: string }[]) => content.map((node) => node.align ?? 'left')
+    expect(aligned(stem.content)).toEqual(['left', 'center', 'center', 'left', 'center', 'center', 'left'])
+
+    const editor = recordDocumentToEditorNodes(stem, proposal.record.media)
+    expect(editor.map((node) => (node.attrs as { align?: string } | undefined)?.align ?? 'left')).toEqual(
+      ['left', 'center', 'center', 'left', 'center', 'center', 'left'],
+    )
+    expect(editor[1]!.type).toBe('image-block')
+    expect(JSON.stringify(editor[4])).toContain('"text":"42"')
+
+    const questions = importedQuestionsFromRecord(proposal.record)
+    const png = [...(await mediaBeside(exampleRoot))].find(([path]) => path.includes('c414cd0e'))![1]
+    const prepared = await prepareQuestionBankExport({
+      id: 'local-bank',
+      name: 'Centred Figure',
+      createdAt: 'not-public',
+      lastUpdatedAt: 'not-public',
+      questions,
+    }, async () => ({ data: png, mimeType: 'image/png', width: 1, height: 1 }))
+    const generated = JSON.parse(decoder.decode(prepared.recordBytes)) as QuestionBankRecord
+    const validate = new Ajv2020({ strict: true }).compile(publicSchema)
+    expect(validate(generated), JSON.stringify(validate.errors)).toBe(true)
+    const written = generated.bank.questions[0]!.stem.content
+    expect(aligned(written)).toEqual(['left', 'center', 'center', 'left', 'center', 'center', 'left'])
+    // The table's own cell keeps its centred paragraph.
+    expect(JSON.stringify(written[4])).toContain('"align":"center","content":[{"type":"text","text":"42"}]')
+  })
+
+  test('a list item’s and an answer’s blocks import to the left', async () => {
+    const record = (await fixture(exampleRoot, 'centred-figure.json')) as {
+      bank: { questions: Record<string, unknown>[] }
+      media: unknown[]
+    }
+    record.media = []
+    const centred = { type: 'paragraph', align: 'center', content: [{ type: 'text', text: 'Leaf A' }] }
+    record.bank.questions[0] = {
+      id: 'q1',
+      type: 'multiple-choice',
+      stem: {
+        type: 'document',
+        content: [{ type: 'bullet-list', content: [{ type: 'list-item', content: [centred] }] }],
+      },
+      choices: [
+        { id: 'q1-c1', correct: true, content: { type: 'document', content: [centred] } },
+        { id: 'q1-c2', correct: false, content: { type: 'document', content: [centred] } },
+      ],
+    }
+    const proposal = await inspectQuestionBankRecordValue(record, undefined, packageFiles(await mediaBeside(exampleRoot)))
+    expect(JSON.stringify(proposal.record.bank)).not.toContain('"align"')
+  })
+
+  test('a record older than 0.9.0 has no Centred blocks: its `align` is ignored and every block is left', async () => {
+    const record = (await fixture(exampleRoot, 'centred-figure.json')) as { formatVersion: string }
+    record.formatVersion = '0.8.0'
+    const proposal = await inspectQuestionBankRecordValue(record, undefined, packageFiles(await mediaBeside(exampleRoot)))
+    expect(JSON.stringify(proposal.record)).not.toContain('"align"')
+    const [imported] = importedQuestionsFromRecord(proposal.record)
+    expect(JSON.stringify(imported)).not.toContain('"align"')
+  })
+
   test('a Locked Answer says so, an unlocked one says it was unlocked, and both reach the editor', async () => {
     const proposal = await inspectFixture(exampleRoot, 'locked-answers.json')
     const [planets, photosynthesis, falling] = proposal.record.bank.questions
@@ -524,6 +588,8 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       string
     >
     expect(Object.keys(manifest).sort()).toEqual([
+      'align-on-heading.json',
+      'align-right.json',
       'bad-reference.json',
       'base64-media.json',
       'crop-inverted.json',
@@ -563,7 +629,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     const validate = new Ajv2020({ allErrors: true, strict: true }).compile(publicSchema)
     for (const [name, code] of Object.entries(manifest)) {
       // An inverted crop is well-formed: only the importer can compare its sides.
-      if (/^(?:pending-|side-by-side-|crop-(?!inverted)|base64-|locked-|subparts-|points-)/.test(name))
+      if (/^(?:pending-|side-by-side-|crop-(?!inverted)|base64-|locked-|subparts-|points-|align-)/.test(name))
         expect(validate(await fixture(invalidRoot, name)), name).toBe(false)
       // Only the importer can compare a crop's sides, or look for a file.
       if (['crop-inverted.json', 'missing-media-file.json', 'invalid-media.json'].includes(name))

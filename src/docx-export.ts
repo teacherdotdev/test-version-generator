@@ -54,6 +54,7 @@ import {
   type ParagraphChild,
   type TabStopDefinition,
 } from 'docx'
+import { isCentred } from './centring'
 import { arrangementRange } from './export-preparation'
 import {
   BODY_LINE_HEIGHT,
@@ -371,6 +372,10 @@ type BlockContext = {
   /** Tab stops the prefix steps through, in twips: where a Part's letter and
    *  a Subpart's label stand when they open on the number's line. */
   tabStops?: number[]
+  /** Where the column the blocks stand in ends, in twips from the margin,
+   *  when it is not `contentWidth`: what a Centred block opening on a
+   *  question's or a Part's line is centred against. */
+  right?: number
 }
 
 // Body text's spacing, from the one table in `export-typography.ts`, at the
@@ -444,6 +449,40 @@ function inlineParagraph(
   )
 }
 
+/** The paragraph and table styles that mark a Centred block, so a reader of
+ *  the package — the DOCX fingerprint among them — can tell an authored centre
+ *  from a Panel's, which centres its pictures and tables by itself. */
+export const CENTRED_PARAGRAPH_STYLE = 'Centred'
+export const CENTRED_TABLE_STYLE = 'CentredTable'
+
+/**
+ * A Centred block's paragraph: centred in its column. One that opens with a
+ * question's number or a Part's letter keeps that at the left, as print's
+ * number column does, and steps to a centre tab in the middle of the column
+ * to its right — Word would otherwise centre the number with the line.
+ */
+function centredParagraph(
+  context: BlockContext,
+  build: BuildContext,
+): { context: BlockContext; options: IParagraphOptions } {
+  if (!context.prefix) {
+    return { context, options: { style: CENTRED_PARAGRAPH_STYLE, alignment: AlignmentType.CENTER } }
+  }
+  const right = context.right ?? twips(build.contentWidth)
+  const centre = Math.round((context.indent + right) / 2)
+  return {
+    context: { ...context, prefix: [...context.prefix, new TextRun({ text: '\t' })] },
+    options: {
+      style: CENTRED_PARAGRAPH_STYLE,
+      alignment: AlignmentType.LEFT,
+      tabStops: [
+        ...(context.tabStops ?? []).map((position) => ({ type: TabStopType.LEFT, position })),
+        { type: TabStopType.CENTER, position: centre },
+      ],
+    },
+  }
+}
+
 const HEADINGS = [
   HeadingLevel.HEADING_1,
   HeadingLevel.HEADING_2,
@@ -497,8 +536,11 @@ function blockOf(
 ): (Paragraph | Table)[] {
   const attrs = attrsOf(node)
   switch (node.type) {
-    case 'paragraph':
-      return [inlineParagraph(node, context, build)]
+    case 'paragraph': {
+      if (context.list || !isCentred(node)) return [inlineParagraph(node, context, build)]
+      const centred = centredParagraph(context, build)
+      return [inlineParagraph(node, centred.context, build, centred.options)]
+    }
 
     case 'heading': {
       const level = Math.min(Math.max(Number(attrs.level) || 1, 1), 6)
@@ -607,11 +649,14 @@ function blockOf(
     case 'image-block': {
       const caption = stringOf(attrs.caption)
       const image = build.images.get(pictureKey(attrs))
+      const centred = isCentred(node) && !context.list ? centredParagraph(context, build) : undefined
+      const figureContext = centred?.context ?? context
       const figure = new Paragraph(
-        paragraphOptions(context, {
+        paragraphOptions(figureContext, {
           alignment: context.centred ? AlignmentType.CENTER : undefined,
+          ...centred?.options,
           children: [
-            ...(context.prefix ?? []),
+            ...(figureContext.prefix ?? []),
             image
               ? imageRun(image, build.contentWidth, attrs)
               : new TextRun({
@@ -629,6 +674,7 @@ function blockOf(
             { ...context, prefix: undefined, hanging: undefined },
             {
               alignment: context.centred ? AlignmentType.CENTER : undefined,
+              ...(centred ? { style: CENTRED_PARAGRAPH_STYLE, alignment: AlignmentType.CENTER } : {}),
               children: [new TextRun({ text: caption, italics: true, size: halfPointsOf('small') })],
             },
           ),
@@ -791,7 +837,8 @@ function documentTable(
   )
   const cellWidth = build.contentWidth / columns
   return new Table({
-    alignment: context.centred ? AlignmentType.CENTER : undefined,
+    ...(isCentred(node) ? { style: CENTRED_TABLE_STYLE } : {}),
+    alignment: context.centred || isCentred(node) ? AlignmentType.CENTER : undefined,
     width: { size: twips(build.contentWidth), type: WidthType.DXA },
     columnWidths: gridOf(Array.from({ length: columns }, () => cellWidth)),
     indent: context.indent
@@ -1068,6 +1115,7 @@ function questionContent(
     indent,
     hanging: numbered ? indent : undefined,
     prefix: numbered ? prefix : undefined,
+    right: twips(build.pageWidth),
   }
 
   // A Multipart question with no stem opens with Part (a) on its number's
@@ -1196,8 +1244,9 @@ function answeringContent(
         hanging: lead ? twips(indentPx - lead.start) : twips(PART_INDENT),
         prefix,
         ...(lead ? { tabStops: lead.stops } : {}),
+        right: twips(build.pageWidth),
       }
-    : { indent }
+    : { indent, right: twips(build.pageWidth) }
   const stem = blocks(part.stem, context, { ...build, contentWidth: build.pageWidth - indentPx })
   return [
     ...(stem.length > 0 || !prefix ? stem : [new Paragraph(paragraphOptions(context, { children: prefix }))]),
@@ -1661,6 +1710,12 @@ export function createExamDocxDocument(
       paragraphStyles: [
         { id: WORK_SPACE_STYLES.blank, name: 'Work Space', basedOn: 'Normal' },
         { id: WORK_SPACE_STYLES.lines, name: 'Work Space Lines', basedOn: 'Normal' },
+        {
+          id: CENTRED_PARAGRAPH_STYLE,
+          name: 'Centred',
+          basedOn: 'Normal',
+          paragraph: { alignment: AlignmentType.CENTER },
+        },
       ],
     },
     sections: sections.length > 0 ? sections : [{ children: [] }],

@@ -1595,6 +1595,10 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
 .doc-panel > .doc-figure { text-align: center; }
 .doc-panel > .doc-table { margin-inline: auto; }
 .doc-panel > .doc-math--block { text-align: center; }
+/* A Centred block (`centring.ts`): a paragraph, a figure with its caption, or
+   a table, set in the middle of its column — in a Panel or a cell too. */
+.doc-content p[data-align='center'], .doc-figure[data-align='center'] { text-align: center; }
+.doc-table[data-align='center'] { margin-inline: auto; }
 
 .dialog-backdrop {
   position: fixed; inset: 0; z-index: 100; padding: 28px; display: grid; place-items: center;
@@ -3616,6 +3620,12 @@ a.import-card-main:hover .exam-sheet, a.import-card-main:focus-visible .exam-she
 }
 .milkdown .side-by-side-panel-content > .picture-block { text-align: center; }
 .milkdown .side-by-side-panel-content > [data-type="image-block"] { margin-inline: auto; }
+/* A Centred block in the editor, as it prints: its element carries
+   `data-align` (see `centring-editor.ts`). */
+.milkdown .ProseMirror p[data-align='center'] { text-align: center; }
+.milkdown .picture-block[data-align='center'],
+.milkdown .picture-block[data-align='center'] .picture-caption { text-align: center; }
+.milkdown .milkdown-table-block[data-align='center'] table { margin-inline: auto; }
 .milkdown .side-by-side-controls {
   position: absolute; top: -14px; left: 4px; z-index: 2; display: flex; gap: 4px;
   opacity: 0; transition: opacity 120ms;

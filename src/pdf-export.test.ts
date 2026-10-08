@@ -364,6 +364,43 @@ describe('PDF Export Adapter', () => {
     expect(g!.bottom).toBeGreaterThan(f!.bottom)
   })
 
+  test('draws a Centred picture and its caption in the middle of the question’s column, and a left paragraph at its left', async () => {
+    const { plans } = plansOf('a centred figure, caption and table')
+    const { bytes } = await createPublicationPdf(plans, pixel, fonts)
+    const page = await (await getDocument({ data: bytes, disableWorker: true }).promise).getPage(1)
+    const operators = await page.getOperatorList()
+    const images: { left: number; width: number }[] = []
+    let left = 0
+    let width = 0
+    for (const [index, op] of operators.fnArray.entries()) {
+      const args = operators.argsArray[index] as number[]
+      if (op === OPS.transform) {
+        const unit = args[0] === 1 && args[3] === 1
+        if (unit && (args[4] !== 0 || args[5] !== 0)) left = args[4]!
+        else if (!unit && args[4] === 0 && args[5] === 0) width = args[0]!
+      }
+      if (op === OPS.paintImageXObject) images.push({ left, width })
+    }
+    const margin = 72 * 0.75
+    const body = margin + questionIndentOf({ type: 'open' }) * 0.75
+    const lane = 816 * 0.75 - margin - body
+    const middle = body + lane / 2
+    // The figure, half the lane wide, and its centre the lane's.
+    expect(images[0]!.width).toBeCloseTo(lane / 2, 0)
+    expect(Math.abs(images[0]!.left + images[0]!.width / 2 - middle)).toBeLessThan(1)
+    const text = (await page.getTextContent()).items as { str: string; transform: number[]; width: number }[]
+    const at = (words: string) => text.find((item) => item.str.includes(words))!
+    for (const centred of ['Fig. 1.1', 'Table 1.1']) {
+      const item = text.find((candidate) => candidate.str.trim() === centred)!
+      expect(Math.abs(item.transform[4]! + item.width / 2 - middle), centred).toBeLessThan(1)
+    }
+    expect(at('Describe the leaf.').transform[4]).toBeCloseTo(body, 0)
+    // A Centred paragraph that opens a question leaves its number at the left.
+    expect(text.find((item) => item.str.trim() === '2.')!.transform[4]).toBeLessThan(body)
+    const opening = text.find((item) => item.str.trim() === 'Table 2.1')!
+    expect(Math.abs(opening.transform[4]! + opening.width / 2 - middle)).toBeLessThan(1)
+  })
+
   test('requires the font variants used by authored formatting', async () => {
     const { plans } = plansOf('every inline mark')
     const requested: string[] = []

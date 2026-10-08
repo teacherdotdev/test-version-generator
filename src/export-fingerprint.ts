@@ -39,6 +39,7 @@ import {
   type PlannedWorkSpace,
   type QuestionItem,
 } from './export-plan'
+import { centredKind } from './centring'
 import { arrangementRange } from './export-preparation'
 import type { ProseMirrorJSON } from './question-doc'
 import { MARGIN_SIDES, type MarginSide } from './page-margins'
@@ -76,10 +77,12 @@ export type ExportFingerprint = {
 //
 //   heading:<1-6|title> <inline>   a heading, at its level
 //   para <inline>                  an ordinary paragraph
+//   para:center <inline>           …a Centred one, or a Centred figure or its caption
 //   code <inline>                  a code block
 //   list:<bullet|ordered>:<n> <inline>
 //   rule                           a horizontal rule
 //   table:<rows>x<columns>         a table or a choice grid opens
+//   table:<rows>x<columns>:center  …a Centred table
 //   cell:<row>,<column>            one cell opens; its own lines follow
 //   /table                         the table closes
 //   box                            a Blockquote's border opens; its lines follow
@@ -315,9 +318,12 @@ function planBlock(
     ? `list:${context.list.ordered ? 'ordered' : 'bullet'}:${context.list.level}`
     : 'para'
 
+  // A Centred block's own lines say so; a list item's never are.
+  const own = context.list ? kind : centredKind(kind, node)
+
   switch (node.type) {
     case 'paragraph':
-      return [line(kind, renderInline([...opener, ...inlineSegments(node, images)]))]
+      return [line(own, renderInline([...opener, ...inlineSegments(node, images)]))]
 
     case 'heading': {
       const level = Math.min(Math.max(Number(attrs.level) || 1, 1), 6)
@@ -408,7 +414,7 @@ function planBlock(
     case 'image-block': {
       const caption = stringOf(attrs.caption)
       const figure = line(
-        kind,
+        own,
         renderInline([
           ...opener,
           { kind: 'image', ordinal: images.take(stringOf(attrs.src)) },
@@ -417,7 +423,7 @@ function planBlock(
       return caption
         ? [
             figure,
-            line(kind, renderInline([{ kind: 'text', text: caption, marks: ['emphasis'] }])),
+            line(own, renderInline([{ kind: 'text', text: caption, marks: ['emphasis'] }])),
           ]
         : [figure]
     }
@@ -453,7 +459,7 @@ function planTable(node: ProseMirrorJSON, images: ImageOrdinals): ContentLine[] 
     (widest, row) => Math.max(widest, childrenOf(row).length),
     1,
   )
-  const lines: ContentLine[] = [`table:${rows.length}x${columns}`]
+  const lines: ContentLine[] = [centredKind(`table:${rows.length}x${columns}`, node)]
   rows.forEach((row, rowIndex) => {
     for (let column = 0; column < columns; column += 1) {
       lines.push(`cell:${rowIndex},${column}`)

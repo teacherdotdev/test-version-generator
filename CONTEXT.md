@@ -91,6 +91,10 @@ _Avoid_: Image ratio, image height
 The part of a block image's Media Asset that Question Content shows, measured on the upright picture. The whole Media Asset is kept, so a crop can always be widened again: in the editor a double click shows the cropped-away parts as a ghost around what is kept. Every output shows only the kept part.
 _Avoid_: Cropped image, trimmed picture
 
+**Centred**:
+Said of a paragraph, block picture or table in Question Content that is set in the middle of its column, as a figure, its caption and a table often are; everything else is left, and nothing is right-aligned or justified. A Panel centres its pictures and tables by itself, and a list item's or an answer's blocks are never centred.
+_Avoid_: Center-aligned, alignment
+
 **Blockquote**:
 Rich text set apart from the stem around it, printed inside a black border — the home of a quoted source passage, even one the source document stored as a picture. Its source attribution is an ordinary paragraph after it, not part of it.
 _Avoid_: Box, callout, frame, stimulus

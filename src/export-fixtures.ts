@@ -1120,6 +1120,58 @@ export const FIXTURES: readonly Fixture[] = [
     { images: true },
   ),
 
+  // A Centred figure with its caption, and a Centred table with a centred
+  // cell; a Centred block that opens its question keeps the number at the left.
+  fixture(
+    'a centred figure, caption and table',
+    {
+      title: 'Centred',
+      questions: [
+        open(
+          'o1',
+          paragraph(text('Fig. 1.1 shows a leaf seen through a hand lens.')),
+          {
+            type: 'image-block',
+            attrs: { src: `/local-images/${'d'.repeat(64)}`, size: 0.5, align: 'center' },
+          },
+          { ...paragraph(text('Fig. 1.1', mark('strong'))), attrs: { align: 'center' } },
+          {
+            type: 'table',
+            attrs: { align: 'center' },
+            content: [
+              {
+                type: 'table_header_row',
+                content: [
+                  { type: 'table_header', content: [paragraph(text('Leaf'))] },
+                  { type: 'table_header', content: [{ ...paragraph(text('Length / mm')), attrs: { align: 'center' } }] },
+                ],
+              },
+              {
+                type: 'table_row',
+                content: [
+                  { type: 'table_cell', content: [paragraph(text('A'))] },
+                  { type: 'table_cell', content: [{ ...paragraph(text('42')), attrs: { align: 'center' } }] },
+                ],
+              },
+            ],
+          },
+          { ...paragraph(text('Table 1.1')), attrs: { align: 'center' } },
+          paragraph(text('Describe the leaf.')),
+        ),
+        open(
+          'o2',
+          { ...paragraph(text('Table 2.1')), attrs: { align: 'center' } },
+          {
+            type: 'image-block',
+            attrs: { src: `/local-images/${'e'.repeat(64)}`, caption: 'A captioned figure', align: 'center' },
+          },
+        ),
+      ],
+    },
+    arrangement(['o1', 'o2']),
+    { images: true },
+  ),
+
   fixture(
     'bullet, ordered and nested lists',
     {

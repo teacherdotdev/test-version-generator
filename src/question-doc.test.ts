@@ -54,6 +54,52 @@ function choiceList(...ids: string[]): ProseMirrorJSON {
 }
 
 describe('cleanDocument', () => {
+  test('keeps a Centred paragraph, picture and table centred, and a left block free of any align', () => {
+    const centred = { align: 'center' }
+    const cleaned = cleanDocument(
+      doc(
+        { type: 'image-block', attrs: { src: '/a.png', align: 'center' } },
+        { type: 'paragraph', attrs: centred, content: [{ type: 'text', text: 'Fig. 1.1' }] },
+        {
+          type: 'table',
+          attrs: centred,
+          content: [{
+            type: 'table_row',
+            content: [{ type: 'table_cell', content: [{ type: 'paragraph', attrs: centred }] }],
+          }],
+        },
+        { type: 'paragraph', attrs: { align: null } },
+        { type: 'heading', attrs: { level: 2, align: 'center' } },
+        { type: 'paragraph', attrs: { align: 'right' } },
+      ),
+    )
+    const [image, caption, table, left, heading, right] = cleaned.content as ProseMirrorJSON[]
+    expect(image!.attrs).toEqual({ src: '/a.png', align: 'center' })
+    expect(caption!.attrs).toEqual(centred)
+    expect(table!.attrs).toEqual(centred)
+    expect(JSON.stringify(table)).toContain('"table_cell","content":[{"type":"paragraph","attrs":{"align":"center"}')
+    expect(left!.attrs).toEqual({})
+    expect(heading!.attrs).toEqual({ level: 2 })
+    expect(right!.attrs).toEqual({})
+  })
+
+  test('keeps the blocks of a list item or an answer to the left', () => {
+    const centred = { type: 'paragraph', attrs: { align: 'center' } }
+    const cleaned = cleanDocument(
+      doc(
+        { type: 'bullet_list', content: [{ type: 'list_item', content: [centred] }] },
+        {
+          type: 'multipleChoice',
+          content: [
+            { type: 'multipleChoiceChoice', attrs: { id: 'a', correct: true }, content: [centred] },
+            { type: 'multipleChoiceChoice', attrs: { id: 'b', correct: false }, content: [centred] },
+          ],
+        },
+      ),
+    )
+    expect(JSON.stringify(cleaned)).not.toContain('align')
+  })
+
   test('keeps a heading its level', () => {
     const cleaned = cleanDocument(
       doc({

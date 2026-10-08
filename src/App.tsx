@@ -46,6 +46,14 @@ import {
 } from './script-marks'
 import { leftArrowInputRule, rightArrowInputRule } from './text-arrows'
 import {
+  centreIcon,
+  centringDecorations,
+  centringKeymap,
+  configureCentring,
+  isCentreActive,
+  toggleCentre,
+} from './centring-editor'
+import {
   insertSideBySide,
   keepSideBySidesInStems,
   sideBySidePanelSchema,
@@ -119,6 +127,7 @@ import { configurePictures, pictureKeys, PICTURE_MENU_EVENT, type PictureMenuReq
 import { storedPicture } from './resolved-pictures'
 import { pendingImagesOfQuestions, withStoredPictures, type PendingImageResolution, type StoredPicture } from './pending-images'
 import {
+  AlignCenter,
   AlignLeft,
   BookOpenText,
   Captions,
@@ -572,6 +581,17 @@ function CrepeQuestion({
                 active: (ctx: Ctx) => isScriptActive(ctx, 'superscript'),
                 onRun: (ctx: Ctx) => toggleScript(ctx, 'superscript'),
               })
+            // Centre sets the paragraphs, pictures and tables the selection
+            // touches in the middle of their column (see `centring.ts`).
+            builder
+              .getGroup('formatting')
+              .addItem('centre', {
+                icon: centreIcon,
+                label: 'Centre',
+                keymap: keymapRef<'ToggleCentre'>(centringKeymap.key, 'ToggleCentre'),
+                active: (ctx: Ctx) => isCentreActive(ctx),
+                onRun: (ctx: Ctx) => toggleCentre(ctx),
+              })
           },
         },
       },
@@ -624,6 +644,8 @@ function CrepeQuestion({
       .use(sideBySideView)
       .use(sideBySidePanelView)
       .use(keepSideBySidesInStems)
+      .use(centringDecorations)
+      .use(centringKeymap)
     // Make the whole multiple-choice block — or matching set — the drag target
     // instead of a single answer row: never offer a handle for a choice, prompt
     // or Word Bank answer itself, so Crepe's handle climbs to the block.
@@ -633,6 +655,8 @@ function CrepeQuestion({
       configurePastedImages(ctx)
       configurePendingImages(ctx)
       configurePictures(ctx)
+      // After the pictures', whose parsing it extends.
+      configureCentring(ctx)
       ctx.update(uploadConfig.key, (prev) => ({
         ...prev,
         enableHtmlFileUploader: true,
@@ -882,6 +906,13 @@ function QuestionDialog({
               label: pictureMenu.captioned ? 'Remove caption' : 'Add caption',
               icon: <Captions />,
               onSelect: pictureMenu.toggleCaption,
+            },
+            {
+              kind: 'action',
+              label: pictureMenu.centred ? 'Align left' : 'Centre',
+              icon: pictureMenu.centred ? <AlignLeft /> : <AlignCenter />,
+              disabled: !pictureMenu.centrable,
+              onSelect: pictureMenu.toggleCentre,
             },
           ]}
           onClose={() => setPictureMenu(null)}

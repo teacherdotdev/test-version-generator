@@ -717,6 +717,31 @@ describe('Question Bank exchange export seam', () => {
     expect(urls.filter((url) => url === 'https://teacher.dev/')).toHaveLength(2)
   })
 
+  test('previews a Centred caption in the middle of the page’s column, and a left paragraph at its left', async () => {
+    const centred: Question = {
+      id: 'centred-sa',
+      type: 'open',
+      columns: 4,
+      doc: {
+        type: 'doc',
+        content: [
+          paragraph(text('Describe the leaf in Fig. 1.1.')),
+          { ...paragraph(text('Fig. 1.1')), attrs: { align: 'center' } },
+        ],
+      },
+    }
+    const prepared = await prepareQuestionBankExport(bank([centred]))
+    expect(JSON.stringify(prepared.record.bank)).toContain('"align":"center"')
+    const bytes = await createQuestionBankPdf(prepared, fonts)
+    const reader = await getDocument({ data: bytes.slice(), disableWorker: true }).promise
+    const items = (await (await reader.getPage(2)).getTextContent()).items as { str: string; transform: number[]; width: number }[]
+    const caption = items.find((item) => item.str.trim() === 'Fig. 1.1')!
+    const left = items.find((item) => item.str.includes('Describe the leaf'))!
+    // Letter paper, 54pt margins: the column's middle is 306pt across.
+    expect(Math.abs(caption.transform[4]! + caption.width / 2 - 306)).toBeLessThan(1)
+    expect(left.transform[4]).toBeCloseTo(54, 0)
+  })
+
   test('opens with an outline of its Question Types and their Topics, every entry a link into the preview', async () => {
     const tagged = (question: Question, topics: string[], id: string): Question => ({ ...structuredClone(question), id, topics })
     const prepared = await prepareQuestionBankExport(bank([
