@@ -28,7 +28,7 @@ import {
 } from './export-fingerprint'
 import type { LayoutPlan, PlannedPage } from './export-plan'
 import { arrangementRange } from './export-preparation'
-import { PageHeaderContent, PageItemMeasureView } from './page-item-view'
+import { PageFooterContent, PageHeaderContent, PageItemMeasureView } from './page-item-view'
 import { parseXml, type XmlNode } from './xml'
 
 // The tags print uses for each inline mark, which is how the intent is read
@@ -149,6 +149,8 @@ function isBlankParagraph(node: XmlNode): boolean {
 
 const HEADING_CLASSES: Record<string, string> = {
   'exam-title': 'heading:title',
+  'cover-title': 'heading:title',
+  'cover-heading': 'heading:2',
   'section-title': 'heading:1',
   'answer-key-heading': 'heading:1',
   'answer-key-section': 'heading:2',
@@ -168,7 +170,12 @@ function blockLines(
   // A work space is drawn, not written: the rules are what it says.
   if (has(node, 'work-space')) {
     const rules = node.children.filter((child) => has(child, 'work-space-line')).length
-    return [workSpaceLine(node.attrs['data-style'] ?? 'blank', rules)]
+    return [workSpaceLine(node.attrs['data-style'] ?? 'blank', rules, node.attrs['data-ruling'])]
+  }
+  // A Cover Page's candidate field is its label and the box beside it.
+  if (has(node, 'cover-field')) {
+    const label = find(node, 'cover-field-label')
+    return [`field:${label ? normalizeSpace(textOf(label)).trim() : ''}`]
   }
   const headingClass = classes(node).find((name) => HEADING_CLASSES[name])
   if (headingClass) {
@@ -509,6 +516,7 @@ function questionLines(node: XmlNode, reader: Reader): ContentLine[] {
   const number = find(node, 'question-number')
   const body = find(node, 'question-body')
   const set = find(node, 'matching-set')
+  const closing = find(node, 'question-closing')
   const opener: Segment[] = []
   if (number) {
     const marks = find(number, 'question-marks')
@@ -524,7 +532,16 @@ function questionLines(node: XmlNode, reader: Reader): ContentLine[] {
   return [
     ...(body ? childBlocks(body, reader, opener) : []),
     ...(set ? childBlocks(set, reader) : []),
+    ...(closing ? childBlocks(closing, reader) : []),
   ]
+}
+
+/** A page's foot as one line: what each of its parts says, in order. */
+function footLine(footer: XmlNode): ContentLine {
+  const parts = footer.children.length > 0
+    ? footer.children.map((child) => normalizeSpace(textOf(child)).trim())
+    : [normalizeSpace(footer.text).trim()]
+  return line('para', parts.filter(Boolean).join(' '))
 }
 
 function elementLines(element: XmlNode, reader: Reader): ContentLine[] {
@@ -575,7 +592,12 @@ function pageFingerprint(
       ),
       reader,
     ),
-    footer: [`para ${page.furniture.pageNumber}`],
+    footer: (() => {
+      const root = parseXml(
+        renderToStaticMarkup(createElement(PageFooterContent, { furniture: page.furniture })),
+      ).children.find((child) => !isHoisted(child))
+      return root ? [footLine(root)] : []
+    })(),
     content: page.items.flatMap((item) =>
       itemLines(
         renderToStaticMarkup(
@@ -651,9 +673,7 @@ export function printDocumentFingerprint(
       height: document.height,
       margins: document.margins,
       header: header ? furnitureLines(header, reader) : [],
-      footer: footer
-        ? [line('para', normalizeSpace(textOf(footer)).trim())]
-        : [],
+      footer: footer ? [footLine(footer)] : [],
       content: content
         ? content.children
             .filter((item) => !isHoisted(item))

@@ -563,6 +563,35 @@ describe('a Multipart question in an Exam package', () => {
     expect(imported.margins).toEqual(worded.margins)
   })
 
+  test('carries an Exam Board Exam’s Paper Details, and imports them again', async () => {
+    const detailed: Exam = {
+      ...exam,
+      paperStyle: 'exam-board',
+      paperDetails: {
+        subject: 'Physics: Paper 3',
+        duration: '1 hour 15 minutes',
+        paperCode: 'PHY-3',
+        instructions: ['Answer every question.', 'Show your working.'],
+        candidateFields: ['name', 'centre-number'],
+      },
+    }
+    const carried = (await examPackage({ exam: detailed, arrangement, ownerOf, loadMedia: noImages })).package
+    expect(carried.exams[0]).toMatchObject({
+      formatVersion: '0.4.0',
+      paperStyle: 'exam-board',
+      paperDetails: detailed.paperDetails,
+    })
+    const proposal = await inspectImportRecord(new TextEncoder().encode(JSON.stringify(carried)))
+    let next = 0
+    const plan = planImport(proposal, initialSelection(proposal), () => `local-${next++}`)
+    const { exam: imported } = selectedExam(plan.exams[0]!.saved.questionBank, plan.exams[0]!.saved.workingCopy)
+    expect(imported.paperStyle).toBe('exam-board')
+    expect(imported.paperDetails).toEqual(detailed.paperDetails)
+    // An Exam with none writes none.
+    const plain = (await examPackage({ exam, arrangement, ownerOf, loadMedia: noImages })).package
+    expect(plain.exams[0]).not.toHaveProperty('paperDetails')
+  })
+
   test('an Exam that keeps the default headings writes their wording out in full, and no sizes', async () => {
     const carried = (await examPackage({ exam, arrangement, ownerOf, loadMedia: noImages })).package
     expect(carried.exams[0]!.sections).toEqual([

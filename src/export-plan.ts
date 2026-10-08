@@ -73,10 +73,21 @@ import { TITLE_LINE_HEIGHT, TITLE_PX } from './export-typography'
 import {
   ANSWER_BLANK,
   DEFAULT_PAPER_STYLE,
+  PERIOD_LABELS,
+  labelled,
   paperStyleRules,
+  type LabelTemplate,
+  type PaperSize,
   type PaperStyle,
   type PaperStyleRules,
 } from './paper-style'
+import {
+  CANDIDATE_FIELD_LABELS,
+  candidateFieldsOf,
+  instructionsOf,
+  normalizedPaperDetails,
+  type PaperDetails,
+} from './paper-details'
 
 // How many columns a choice grid is drawn in — the same set a question's
 // `columns` setting comes from, named here because the plan is what the
@@ -135,6 +146,25 @@ export type PlannedChoice = {
    *  Only the Working Copy's sheet shows it; nothing prints it. */
   locked?: true
   node: ProseMirrorJSON
+  /** How its letter prints on the test, when the Paper Style labels answers
+   *  otherwise than `A.` — `A` under Exam Board. Absent prints `letter` and a
+   *  full stop (`printedLabel`). Only a grid's cells carry it. */
+  printed?: string
+}
+
+/** How a label prints: as the plan resolved it for its Paper Style, or — on
+ *  every style that labels with a full stop, and every plan recorded before a
+ *  style could say otherwise — the number or letter and a full stop. Every
+ *  adapter labels questions, Parts, Subparts and answers through this. */
+export function printedLabel(label: string | number, printed: string | undefined): string {
+  return printed ?? `${label}.`
+}
+
+/** A label resolved through a style's template, or nothing where the
+ *  template is the sheet's own `{n}.`, so a plan under any style that
+ *  labels so is exactly what it always was. */
+function printedBy(template: LabelTemplate, value: string | number): { printed: string } | Record<string, never> {
+  return template === PERIOD_LABELS.question ? {} : { printed: labelled(template, value) }
 }
 
 // The choice grid, row by row. `cells[row][column]` is `null` where the last
@@ -156,6 +186,8 @@ export type PlannedPrompt = {
   number: number
   letter: string | null
   node: ProseMirrorJSON
+  /** How its number prints, when the style numbers otherwise than `1.`. */
+  printed?: string
 }
 
 // A Word Bank answer as it prints: its letter is its position in this
@@ -166,6 +198,8 @@ export type PlannedBankAnswer = {
   id: string
   letter: string
   node: ProseMirrorJSON
+  /** How its letter prints, when the style letters otherwise than `A.`. */
+  printed?: string
 }
 
 // A long Word Bank laid out in columns above the items, column-major like a
@@ -228,6 +262,9 @@ export type PlannedWorkSpace = {
    *  stated reads as 32 and 32 (`rowsOfPlanned`), as it printed. */
   pitch?: number
   firstRow?: number
+  /** Set when its lines are dotted rather than solid, as the Paper Style
+   *  rules them (ADR-0045). Absent is a solid rule. */
+  ruling?: 'dotted'
 }
 
 /** The rows a planned work space is drawn in. Every adapter draws by this. */
@@ -241,7 +278,7 @@ const WORK_SPACE_FILL_SLACK = 1
 
 /** A stored work space as the page lays it out in `rows`: as many rows as it
  *  stores, at the style's pitch. */
-function plannedWorkSpace(space: WorkSpace, rows: WorkSpaceRows): PlannedWorkSpace {
+function plannedWorkSpace(space: WorkSpace, rows: WorkSpaceRows, rules: PaperStyleRules): PlannedWorkSpace {
   const height = laidWorkSpaceHeight(space.height, rows)
   return {
     height,
@@ -250,6 +287,7 @@ function plannedWorkSpace(space: WorkSpace, rows: WorkSpaceRows): PlannedWorkSpa
     fill: space.fill,
     pitch: rows.pitch,
     firstRow: rows.first,
+    ...(rules.ruling === 'dotted' ? { ruling: 'dotted' as const } : {}),
   }
 }
 
@@ -281,6 +319,13 @@ export type PlannedSubpart = {
    *  where the test does is the style's to decide. A Part that holds
    *  Subparts never has any of its own. */
   marks?: number
+  /** How its label prints, when the Paper Style labels it otherwise than
+   *  `i.` — `(i)` under Exam Board; a Part's letter, `(a)`. */
+  printed?: string
+  /** Its Marks as the Paper Style prints them after its answer, against the
+   *  right margin — `[2]` under Exam Board. Absent on an unmarked one and
+   *  under every style that prints no Marks on the test. */
+  marksAfter?: string
 }
 
 // One Part of a Multipart question as it prints: lettered `a`, `b`, … in authored order
@@ -400,6 +445,20 @@ export type PlannedQuestion = {
    *  Answer Key counts its total from it. Absent on a plan recorded before
    *  Marks existed, which therefore reprints as it always did. */
   totalMarks?: number
+  /** How its number prints, when the Paper Style numbers otherwise than
+   *  `1.` — a bold `1` under Exam Board. */
+  printedNumber?: string
+  /** The lines its Paper Style prints after the whole question, against the
+   *  right margin, in order (ADR-0045): its Marks after its answer — `[2]` —
+   *  or a Multipart question's total — `[Total: 9]` — and, after a Section's
+   *  last question, that Section's total. Absent when the style prints none,
+   *  or nothing in it is marked. Only the question's last piece prints them. */
+  closingMarks?: string[]
+}
+
+/** How a question's number prints in its number column. */
+export function printedNumberOf(question: Pick<PlannedQuestion, 'number' | 'printedNumber'>): string {
+  return printedLabel(question.number, question.printedNumber)
 }
 
 /** How many numbers a question takes on the test: one, or one per prompt for
@@ -467,6 +526,9 @@ export type QuestionItem = {
    *  Part's Subparts, or — when the stem and its first Part cannot share a
    *  page — between its stem's blocks. */
   parts: PlannedPart[] | null
+  /** The question's closing Marks lines (`PlannedQuestion.closingMarks`), on
+   *  the piece that ends it; absent on every other piece. */
+  closingMarks?: string[]
 }
 
 /** Whether this piece prints the question's number line: the first piece of
@@ -540,8 +602,33 @@ export function answerKeyTotalText(marks: number): string {
   return `Total: ${marks} ${marks === 1 ? 'mark' : 'marks'}`
 }
 
+/** The heading a Cover Page's instructions print under. */
+export const COVER_INSTRUCTIONS_HEADING = 'Instructions'
+
+// A Cover Page (ADR-0045): the test's own first page under a Paper Style
+// that prints one, alone on its page and never part of the Answer Key. It
+// arranges the Exam's title and its Paper Details — each one the teacher left
+// blank printing nothing — the candidate fields as boxes, the instructions,
+// and the paper's total when anything is marked. Its instructions are planned
+// as a bulleted list, so every adapter draws them as it draws any list.
+export type CoverPageItem = {
+  kind: 'cover'
+  title: string
+  /** The Exam's heading size, when it is not normal. */
+  titleSize?: HeadingSize
+  subject?: string
+  duration?: string
+  /** The candidate fields' labels, in printed order, each with a box. */
+  candidateFields: string[]
+  /** The instructions, as a bulleted list; `null` when there are none. */
+  instructions: ProseMirrorJSON | null
+  /** The paper's total, worded by the style; absent when nothing is marked. */
+  total?: string
+}
+
 // One thing that occupies vertical space on a page, in print order.
 export type PageItem =
+  | CoverPageItem
   | SectionHeadingItem
   | QuestionItem
   | AnswerKeyHeadingItem
@@ -552,7 +639,11 @@ export type PageItem =
 // line and the title; later pages take a Name blank alone; the answer key —
 // begun fresh after the last test page, footer restarted at 1 — takes the
 // arrangement ID alone plus the repeated title, and carries no Name line at all.
-export type PageHeader = 'first' | 'later' | 'answer-key' | 'answer-key-later'
+//
+// A test under a Paper Style that prints a Cover Page starts on a `'cover'`
+// page instead, and every test page after it is `'later'`: the title is on
+// the cover, and so are the candidate fields.
+export type PageHeader = 'cover' | 'first' | 'later' | 'answer-key' | 'answer-key-later'
 
 export function isAnswerKeyHeader(header: PageHeader): boolean {
   return header === 'answer-key' || header === 'answer-key-later'
@@ -607,9 +698,39 @@ export type PageFurniture = {
   /** What the footer prints. The same number as the page, named separately
    *  because a footer is furniture rather than an item that packs. */
   pageNumber: number
+  /** Where the page number prints, when not centred at the foot: centred at
+   *  the top under a Paper Style that puts it there, or nowhere — a Cover
+   *  Page's. Absent on every page of every other style. */
+  pageNumberAt?: 'top' | 'none'
+  /** What the foot prints at the left margin — the paper code, under a style
+   *  that prints it — and against the right margin — "Turn over" on a test
+   *  page another test page follows. Absent prints nothing there. */
+  footLeft?: string
+  footRight?: string
+}
+
+/** What a page's header line prints, in order, past its identity line: its
+ *  page number when it prints at the top, then its Version label. Every
+ *  adapter and fingerprint reads a running header through this. */
+export function runningHeadOf(furniture: PageFurniture): string[] {
+  return [
+    ...(furniture.pageNumberAt === 'top' ? [String(furniture.pageNumber)] : []),
+    furniture.arrangementLabel,
+  ].filter(Boolean)
+}
+
+/** What a page's foot prints, in order: its page number, where it prints
+ *  there, then the paper code and "Turn over". */
+export function runningFootOf(furniture: PageFurniture): string[] {
+  return [
+    ...(furniture.pageNumberAt === undefined ? [String(furniture.pageNumber)] : []),
+    furniture.footLeft ?? '',
+    furniture.footRight ?? '',
+  ].filter(Boolean)
 }
 
 const IDENTITY_FIELDS: Record<PageHeader, readonly IdentityField[]> = {
+  cover: [],
   first: ['Name', 'Class', 'Date'],
   later: ['Name'],
   // The key is the teacher's copy: it carries the arrangement it belongs to and
@@ -621,6 +742,8 @@ const IDENTITY_FIELDS: Record<PageHeader, readonly IdentityField[]> = {
 // Which variants repeat the exam title. The key repeats it on its first page
 // the way the test does, and drops it on continuation pages.
 const REPEATS_TITLE: Record<PageHeader, boolean> = {
+  // The Cover Page prints the title itself, as content.
+  cover: false,
   first: true,
   later: false,
   'answer-key': true,
@@ -629,10 +752,20 @@ const REPEATS_TITLE: Record<PageHeader, boolean> = {
 
 // Which of an Exam's header lines a test page prints. The key has none.
 const HEADER_LINE: Record<PageHeader, HeaderLine | null> = {
+  cover: null,
   first: 'first',
   later: 'later',
   'answer-key': null,
   'answer-key-later': null,
+}
+
+/** What a test page's running furniture needs beyond its header variant:
+ *  its Paper Style's rules, the Exam's paper code, and whether another test
+ *  page follows it. */
+type RunningContext = {
+  rules: PaperStyleRules
+  paperCode: string | undefined
+  continues: boolean
 }
 
 function furnitureOf(
@@ -642,9 +775,15 @@ function furnitureOf(
   header: ExamHeader | undefined,
   titleSize: HeadingSize | undefined,
   titleLines: number,
+  running?: RunningContext,
 ): PageFurniture {
   const line = HEADER_LINE[page.header]
-  const identityLine = line ? headerLineOf(header, line) : undefined
+  // A style with a Cover Page asks for the candidate's details there, so its
+  // later pages carry no Name line: only the running head and the ID.
+  const identityLine = !line ? undefined : running?.rules.coverPage ? '' : headerLineOf(header, line)
+  const top = running?.rules.running.pageNumber === 'top'
+  const code = running?.rules.running.paperCode ? running.paperCode : undefined
+  const continues = running?.continues ? running.rules.running.continues : undefined
   return {
     identityFields: IDENTITY_FIELDS[page.header],
     ...(identityLine !== undefined ? { identityLine } : {}),
@@ -653,6 +792,9 @@ function furnitureOf(
     ...(REPEATS_TITLE[page.header] && titleLines > 1 ? { titleLines } : {}),
     arrangementLabel: version ?? '',
     pageNumber: page.number,
+    ...(page.header === 'cover' ? { pageNumberAt: 'none' as const } : top ? { pageNumberAt: 'top' as const } : {}),
+    ...(code ? { footLeft: code } : {}),
+    ...(continues ? { footRight: continues } : {}),
   }
 }
 
@@ -673,6 +815,14 @@ function furnitureOf(
 // mismatch here is what makes content creep onto an extra sheet on paper.
 export const PAGE_WIDTH = 816
 export const PAGE_HEIGHT = 1056
+
+/** A4 at 96dpi, 210×297mm, in the whole CSS pixels the plan packs in:
+ *  793.7×1122.5px, rounded. Every adapter cuts the sheet itself to A4 exactly
+ *  — 595.28×841.89pt in the PDF, 11906×16838 twips in DOCX, `A4` in print's
+ *  `@page` — so the plan's half-pixel never reaches paper. The Exam Board
+ *  Paper Style prints on it (ADR-0045). */
+export const A4_WIDTH = 794
+export const A4_HEIGHT = 1123
 /** The margin of an Exam that never set its own, on every side. */
 export const PAGE_MARGIN = marginPx(DEFAULT_MARGIN)
 
@@ -689,6 +839,8 @@ export const US_LETTER: PageSize = pageSizeOf(undefined)
 // The first answer-key page repeats the title; continuation pages carry only
 // the ID and therefore use the shorter header height.
 export const HEADER_HEIGHT: Record<PageHeader, number> = {
+  // A Cover Page's header holds the ID alone, in a later page's band.
+  cover: 42,
   first: 84,
   later: 42,
   'answer-key': 84,
@@ -942,9 +1094,24 @@ function layOutGrid(
  *  that letters "a.", and otherwise the very same choices. Copies, so the
  *  question's own choices keep the capitals its Answer Key records. */
 function printedChoices(choices: PlannedChoice[], rules: PaperStyleRules): PlannedChoice[] {
-  return rules.lettering === 'lower'
+  const lettered = rules.lettering === 'lower'
     ? choices.map((choice) => ({ ...choice, letter: choice.letter.toLowerCase() }))
     : choices
+  return labelledChoices(lettered, rules)
+}
+
+/** Answers as the style labels them on the test — `A` rather than `A.` under
+ *  Exam Board — copied; the very same answers under every style that labels
+ *  with a full stop. */
+function labelledChoices(choices: PlannedChoice[], rules: PaperStyleRules): PlannedChoice[] {
+  if (rules.labels.answer === PERIOD_LABELS.answer) return choices
+  return choices.map((choice) => ({ ...choice, ...printedBy(rules.labels.answer, choice.letter) }))
+}
+
+/** What a marked answer prints after itself under this style, if anything. */
+function marksAfterOf(rules: PaperStyleRules, marks: number | undefined): { marksAfter: string } | Record<string, never> {
+  const template = rules.marks.marksAfterAnswer
+  return template && marks !== undefined ? { marksAfter: labelled(template, marks) } : {}
 }
 
 // A matching set under this arrangement: the Word Bank in the arrangement's
@@ -966,11 +1133,10 @@ function deriveMatching(
 ): MatchingSet {
   const ordered = orderedChoices(question, arrangement)
   const letters = new Map(ordered.map((answer, index) => [answer.id, letterAt(index)]))
-  const bank: PlannedBankAnswer[] = ordered.map((answer, index) => ({
-    id: answer.id,
-    letter: rules.lettering === 'lower' ? letterAt(index).toLowerCase() : letterAt(index),
-    node: answer.node,
-  }))
+  const bank: PlannedBankAnswer[] = ordered.map((answer, index) => {
+    const letter = rules.lettering === 'lower' ? letterAt(index).toLowerCase() : letterAt(index)
+    return { id: answer.id, letter, node: answer.node, ...printedBy(rules.labels.answer, letter) }
+  })
   const above = layout === 'above'
   return {
     prompts: promptsOf(question).map((prompt, index) => ({
@@ -978,6 +1144,7 @@ function deriveMatching(
       number: number + index,
       letter: letters.get(prompt.answerId) ?? null,
       node: prompt.node,
+      ...printedBy(rules.labels.question, number + index),
     })),
     bank,
     bankGrid: above && bank.length > 0
@@ -1012,6 +1179,7 @@ function deriveAnswering(
   part: Subpart,
   arrangement: Arrangement,
 ): Omit<PlannedSubpart, 'label'> {
+  const rules = paperStyleRules(exam.paperStyle)
   const choices: PlannedChoice[] = orderedPartChoices(part, arrangement).map(
     (choice, choiceIndex) => ({
       id: choice.id,
@@ -1029,12 +1197,15 @@ function deriveAnswering(
     type: part.type,
     stem: part.stem,
     choices,
-    grid: multipleChoice ? layOutGrid(choices, part.columns) : null,
-    workSpace: multipleChoice ? null : plannedWorkSpace(workSpaceOf(exam, part.id), workSpaceRowsOf(exam.paperStyle)),
+    grid: multipleChoice ? layOutGrid(labelledChoices(choices, rules), part.columns) : null,
+    workSpace: multipleChoice
+      ? null
+      : plannedWorkSpace(workSpaceOf(exam, part.id), workSpaceRowsOf(exam.paperStyle), rules),
     ...(!multipleChoice && suggestedBlocks.length > 0 && !blankBlocks(suggestedBlocks)
       ? { suggestedAnswer: structuredClone(suggestedBlocks) }
       : {}),
     ...(part.marks !== undefined ? { marks: part.marks } : {}),
+    ...marksAfterOf(rules, part.marks),
   }
 }
 
@@ -1045,14 +1216,22 @@ function deriveParts(
   question: Question,
   arrangement: Arrangement,
 ): PlannedPart[] {
+  const { labels } = paperStyleRules(exam.paperStyle)
   return partsOf(question).map((part, index): PlannedPart => {
     const letter = partLetterAt(index)
+    const printed = printedBy(labels.part, letter)
     if (part.type !== 'subparts') {
-      return { ...deriveAnswering(exam, { ...part, type: part.type }, arrangement), letter, subparts: [] }
+      return {
+        ...deriveAnswering(exam, { ...part, type: part.type }, arrangement),
+        letter,
+        ...printed,
+        subparts: [],
+      }
     }
     return {
       id: part.id,
       letter,
+      ...printed,
       type: 'subparts',
       stem: part.stem,
       choices: [],
@@ -1061,6 +1240,7 @@ function deriveParts(
       subparts: part.subparts.map((subpart, subpartIndex) => ({
         ...deriveAnswering(exam, subpart, arrangement),
         label: subpartLabelAt(subpartIndex),
+        ...printedBy(labels.subpart, subpartLabelAt(subpartIndex)),
       })),
     }
   })
@@ -1115,7 +1295,7 @@ function deriveQuestion(
       : null,
     ...(matching ? { wordBankLayout: wordBankLayoutOf(exam, question) } : {}),
     workSpace: takesWorkSpace(question.type)
-      ? plannedWorkSpace(workSpaceOf(exam, question.id), workSpaceRowsOf(exam.paperStyle))
+      ? plannedWorkSpace(workSpaceOf(exam, question.id), workSpaceRowsOf(exam.paperStyle), rules)
       : null,
     ...(question.difficulty ? { difficulty: question.difficulty } : {}),
     ...(topicsOf(question).length > 0 ? { topics: [...topicsOf(question)] } : {}),
@@ -1125,7 +1305,26 @@ function deriveQuestion(
       : {}),
     parts: multipart ? deriveParts(exam, question, arrangement) : null,
     ...(totalMarks !== undefined ? { totalMarks } : {}),
+    // A matching set's numbers print on its Items.
+    ...(matching ? {} : printedNumberBy(rules, number)),
+    ...closingMarksOf(rules, multipart, totalMarks),
   }
+}
+
+function printedNumberBy(rules: PaperStyleRules, number: number): { printedNumber: string } | Record<string, never> {
+  const printed = printedBy(rules.labels.question, number)
+  return 'printed' in printed ? { printedNumber: printed.printed } : {}
+}
+
+/** What a question prints after itself under this style: a Multipart
+ *  question's total, or any other question's Marks after its answer. */
+function closingMarksOf(
+  rules: PaperStyleRules,
+  multipart: boolean,
+  totalMarks: number | undefined,
+): { closingMarks: string[] } | Record<string, never> {
+  const template = multipart ? rules.marks.questionTotal : rules.marks.marksAfterAnswer
+  return template && totalMarks !== undefined ? { closingMarks: [labelled(template, totalMarks)] } : {}
 }
 
 // The Exam's Sections in their own order. A Section with no questions still
@@ -1133,6 +1332,7 @@ function deriveQuestion(
 // every question lands on the same page in both — a Section that showed on the
 // sheet but vanished from the export would move questions between pages.
 function deriveItems(exam: Exam, arrangement: Arrangement): PageItem[] {
+  const rules = paperStyleRules(exam.paperStyle)
   const items: PageItem[] = []
   let number = 1
   for (const section of sectionsOf(exam)) {
@@ -1151,11 +1351,23 @@ function deriveItems(exam: Exam, arrangement: Arrangement): PageItem[] {
         ? { size: exam.headingSize }
         : {}),
     })
-    for (const question of questions) {
-      const planned = deriveQuestion(exam, question, arrangement, number)
-      items.push(wholeQuestion(planned))
-      number += numbersTakenBy(planned)
+    const planned = questions.map((question) => {
+      const derived = deriveQuestion(exam, question, arrangement, number)
+      number += numbersTakenBy(derived)
+      return derived
+    })
+    // A Section's total prints after its last question, under a style that
+    // prints one, when anything in the Section is marked.
+    const sectionTotal = rules.marks.sectionTotal
+    const sectionMarks = sumOfMarks(planned.map((question) => question.totalMarks))
+    const last = planned.at(-1)
+    if (sectionTotal && sectionMarks !== undefined && last) {
+      planned[planned.length - 1] = {
+        ...last,
+        closingMarks: [...(last.closingMarks ?? []), labelled(sectionTotal, sectionMarks)],
+      }
     }
+    items.push(...planned.map(wholeQuestion))
   }
   return items
 }
@@ -1171,6 +1383,7 @@ function wholeQuestion(question: PlannedQuestion): QuestionItem {
     matching: question.matching,
     workSpace: question.workSpace,
     parts: question.parts,
+    ...(question.closingMarks ? { closingMarks: question.closingMarks } : {}),
   }
 }
 
@@ -1190,12 +1403,22 @@ type Segment = {
   /** A Multipart question's Parts carried by this segment: a Part that answers
    *  whole, and a Part that holds Subparts one Subpart at a time. */
   parts: PlannedPart[]
+  /** Set on the question's last segment: the piece that carries it prints the
+   *  question's closing Marks. */
+  closes?: true
 }
 
 // A work space is glued to the last segment rather than being one of its own:
 // room for an answer at the top of a page, with its question at the foot of
 // the one before, is room nobody would think to use.
 function segmentsOf(question: PlannedQuestion, measure: Measure, fullPage: number): Segment[] {
+  const segments = segmentsWithin(question, measure, fullPage)
+  const last = segments.at(-1)
+  if (last) segments[segments.length - 1] = { ...last, closes: true }
+  return segments
+}
+
+function segmentsWithin(question: PlannedQuestion, measure: Measure, fullPage: number): Segment[] {
   const workSpace = question.workSpace
   if (question.matching) return matchingSegmentsOf(question, question.matching, workSpace)
   if (question.parts) return multipartSegmentsOf(question, question.parts, measure, fullPage)
@@ -1346,6 +1569,9 @@ function pieceOf(
       sets.length === 0 ? null : { ...sets[0]!, prompts: sets.flatMap((set) => set.prompts) },
     workSpace: segments.find((segment) => segment.workSpace !== null)?.workSpace ?? null,
     parts: question.parts ? joinedParts(segments.flatMap((segment) => segment.parts)) : null,
+    ...(question.closingMarks && segments.some((segment) => segment.closes)
+      ? { closingMarks: question.closingMarks }
+      : {}),
   }
 }
 
@@ -1492,6 +1718,13 @@ function paginate(
   for (const [index, item] of items.entries()) {
     if (full) flush()
     const height = measure.itemHeight(item)
+    // A Cover Page is a page of its own: nothing shares it.
+    if (item.kind === 'cover') {
+      if (current.length > 0) flush()
+      place(item, height)
+      full = true
+      continue
+    }
     // A section heading must share a page with at least the first indivisible
     // piece of its first question — the whole question, when it is one piece.
     // Reserve that space before committing the heading; otherwise a heading
@@ -1573,11 +1806,7 @@ function deriveAnswerKey(testItems: readonly PageItem[]): PageItem[] {
   // group.
   // The paper's total is counted from the very questions the key lists, so
   // it is the sum of the Marks printed beneath it.
-  const totalMarks = sumOfMarks(
-    [...new Map(
-      testItems.flatMap((item) => (item.kind === 'question' ? [[item.question.id, item.question.totalMarks] as const] : [])),
-    ).values()],
-  )
+  const totalMarks = totalMarksIn(testItems)
   const items: PageItem[] = [
     { kind: 'answer-key-heading', ...(totalMarks !== undefined ? { totalMarks } : {}) },
   ]
@@ -1686,8 +1915,13 @@ export type ExportDocument = {
   margins?: PageMargins
   /** The Exam's Paper Style, where not Standard. Its rules are already in
    *  the items; layout reads it for what packing alone decides — how far apart
-   *  questions stand, and whether answers fit across the line. */
+   *  questions stand, and whether answers fit across the line — and for the
+   *  sheet and the running furniture its pages carry. */
   paperStyle?: PaperStyle
+  /** The Exam's Paper Details, where it has written any (ADR-0045). A Cover
+   *  Page already carries what it prints; layout reads the paper code for the
+   *  running foot. */
+  paperDetails?: PaperDetails
 }
 
 /** Semantic derivation, on its own. Exposed so tests and fingerprints can read
@@ -1698,7 +1932,12 @@ export function buildExportDocument(
   selection: ExportContentSelection,
   version?: string,
 ): ExportDocument {
-  const test = deriveItems(exam, arrangement)
+  const questions = deriveItems(exam, arrangement)
+  const rules = paperStyleRules(exam.paperStyle)
+  const paperDetails = normalizedPaperDetails(exam.paperDetails)
+  const test = rules.coverPage
+    ? [coverPageOf(exam, paperDetails, rules, questions), ...questions]
+    : questions
   return {
     title: exam.title,
     arrangement: {
@@ -1718,6 +1957,50 @@ export function buildExportDocument(
     ...(exam.paperStyle && exam.paperStyle !== DEFAULT_PAPER_STYLE
       ? { paperStyle: exam.paperStyle }
       : {}),
+    ...(paperDetails ? { paperDetails } : {}),
+  }
+}
+
+/** The paper's total Marks, counted once per question from the very questions
+ *  the test prints; `undefined` when none is marked. */
+function totalMarksIn(items: readonly PageItem[]): number | undefined {
+  return sumOfMarks(
+    [...new Map(
+      items.flatMap((item) => (item.kind === 'question' ? [[item.question.id, item.question.totalMarks] as const] : [])),
+    ).values()],
+  )
+}
+
+/** The Cover Page a style that prints one opens the test with: the Exam's
+ *  title and Paper Details, each detail the teacher left blank printing
+ *  nothing; its candidate fields and instructions, the teacher's or the
+ *  style's own; and the paper's total, when anything is marked. */
+function coverPageOf(
+  exam: Exam,
+  details: PaperDetails | undefined,
+  rules: PaperStyleRules,
+  questions: readonly PageItem[],
+): CoverPageItem {
+  const total = totalMarksIn(questions)
+  const template = rules.marks.paperTotalOnCover
+  const instructions = instructionsOf(details)
+  return {
+    kind: 'cover',
+    title: exam.title,
+    ...(exam.headingSize && exam.headingSize !== DEFAULT_HEADING_SIZE ? { titleSize: exam.headingSize } : {}),
+    ...(details?.subject ? { subject: details.subject } : {}),
+    ...(details?.duration ? { duration: details.duration } : {}),
+    candidateFields: candidateFieldsOf(details).map((field) => CANDIDATE_FIELD_LABELS[field]),
+    instructions: instructions.length > 0
+      ? {
+          type: 'bullet_list',
+          content: instructions.map((line) => ({
+            type: 'list_item',
+            content: [{ type: 'paragraph', content: [{ type: 'text', text: line }] }],
+          })),
+        }
+      : null,
+    ...(template && total !== undefined ? { total: labelled(template, total) } : {}),
   }
 }
 
@@ -1728,9 +2011,14 @@ export function buildExportDocument(
 // adapter that has a plan needs neither the exam, the arrangement, nor a `Measure`.
 
 export type PageSize = {
-  /** CSS pixels at 96dpi — US Letter, the geometry both outputs are cut to. */
+  /** CSS pixels at 96dpi — US Letter, or A4 under a Paper Style that prints
+   *  on it — the geometry every output is cut to. */
   width: number
   height: number
+  /** Set on an A4 sheet, so an adapter cuts it to A4 exactly rather than to
+   *  the whole pixels it was packed in. Absent is US Letter, as every plan
+   *  recorded before a style could choose. */
+  paper?: 'a4'
   /** How far in from each edge the page prints: the Exam's Page Margins. */
   margins: Record<MarginSide, number>
   /** The width left between the left and right margins — what every item on
@@ -1738,8 +2026,9 @@ export type PageSize = {
   contentWidth: number
 }
 
-/** US Letter with an Exam's Page Margins, in the pixels the plan packs in. */
-export function pageSizeOf(margins: PageMargins | undefined): PageSize {
+/** The sheet a Paper Style names — US Letter unless it says A4 — with an
+ *  Exam's Page Margins, in the pixels the plan packs in. */
+export function pageSizeOf(margins: PageMargins | undefined, paper: PaperSize = 'letter'): PageSize {
   const inches = marginsOf(margins)
   const px = {
     top: marginPx(inches.top),
@@ -1747,11 +2036,14 @@ export function pageSizeOf(margins: PageMargins | undefined): PageSize {
     bottom: marginPx(inches.bottom),
     left: marginPx(inches.left),
   }
+  const a4 = paper === 'a4'
+  const width = a4 ? A4_WIDTH : PAGE_WIDTH
   return {
-    width: PAGE_WIDTH,
-    height: PAGE_HEIGHT,
+    width,
+    height: a4 ? A4_HEIGHT : PAGE_HEIGHT,
+    ...(a4 ? { paper: 'a4' as const } : {}),
     margins: px,
-    contentWidth: Math.round((PAGE_WIDTH - px.left - px.right) * 100) / 100,
+    contentWidth: Math.round((width - px.left - px.right) * 100) / 100,
   }
 }
 
@@ -1978,7 +2270,7 @@ export function wordBankLayoutFor(
     letter: rules.lettering === 'lower' ? letterAt(index).toLowerCase() : letterAt(index),
     node: answer.node,
   }))
-  const widest = pageSizeOf(settings.margins).contentWidth
+  const widest = pageSizeOf(settings.margins, rules.pageSize).contentWidth
     - MATCHING_INDENT
     - promptsMinWidthOf(settings.paperStyle)
   return bankNeeds(bank, widthOf, settings.textSize) <= widest ? 'beside' : 'above'
@@ -2002,7 +2294,8 @@ function resolveLayout(
   measure: Measure,
 ): LayoutPlan {
   const { textSize, paperStyle } = document
-  const pageSize = pageSizeOf(document.margins)
+  const rules = paperStyleRules(paperStyle)
+  const pageSize = pageSizeOf(document.margins, rules.pageSize)
   // Every item is measured at the Exam's text size, at the width its margins
   // leave and in its Paper Style; an Exam with none of them asks exactly as
   // it always did.
@@ -2024,7 +2317,6 @@ function resolveLayout(
   const titleExtra = titleGrowth(titleLines, document.headingSize)
   const pages: PackedPage[] = []
   if (document.selection.test) {
-    const rules = paperStyleRules(paperStyle)
     const across = rules.answersAcross
       ? fitAnswersAcross(document.test, measure, textSize, pageSize.contentWidth)
       : document.test
@@ -2035,7 +2327,8 @@ function resolveLayout(
       pageSize.contentWidth,
       promptsMinWidthOf(paperStyle),
     )
-    pages.push(...paginate(test, sized, pageSize, 'test', 'first', 'later', titleExtra))
+    const first: PageHeader = test[0]?.kind === 'cover' ? 'cover' : 'first'
+    pages.push(...paginate(test, sized, pageSize, 'test', first, 'later', titleExtra))
   }
   if (document.selection.answerKey) {
     pages.push(
@@ -2069,6 +2362,15 @@ function resolveLayout(
         document.header,
         document.headingSize,
         titleLines,
+        // The test's running furniture is its Paper Style's; the Answer Key
+        // keeps the sheet's own under every style.
+        page.stream === 'test'
+          ? {
+              rules,
+              paperCode: document.paperDetails?.paperCode,
+              continues: pages[index + 1]?.stream === 'test',
+            }
+          : undefined,
       ),
       breakBefore: index > 0,
     })),

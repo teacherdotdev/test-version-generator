@@ -179,8 +179,8 @@ const EVERY_TYPE = [
 ]
 
 describe('Paper Styles', () => {
-  test('are three, read by one guard, with Standard the default', () => {
-    expect(PAPER_STYLES).toEqual(['standard', 'classic', 'condensed'])
+  test('are four, read by one guard, with Standard the default', () => {
+    expect(PAPER_STYLES).toEqual(['standard', 'classic', 'condensed', 'exam-board'])
     for (const style of PAPER_STYLES) expect(isPaperStyle(style)).toBe(true)
     expect(isPaperStyle('fancy')).toBe(false)
     expect(isPaperStyle(undefined)).toBe(false)
@@ -422,5 +422,243 @@ describe('Hidden Answers under a Paper Style', () => {
     const [mc] = items(examOf([question], 'condensed'), hiding, measure)
     expect(mc!.grid!.columns).toBe(4)
     expect(gridLetters(mc!).filter((letter) => letter !== '-')).toEqual(['A', 'B', 'C', 'D'])
+  })
+})
+
+describe('Exam Board', () => {
+  /** A marked Multipart question: Part (a) answers, worth 2; Part (b) holds
+   *  Subparts (i), worth 3, and (ii), unmarked. */
+  function markedMultipart(id: string): Question {
+    const subpart = (subpartId: string, marks?: number) => ({
+      type: 'multipartSubpart',
+      attrs: { id: subpartId, columns: 1, ...(marks !== undefined ? { marks } : {}) },
+      content: [
+        { type: 'multipartPartStem', content: [paragraph(`subpart ${subpartId}`)] },
+        { type: 'suggestedAnswer', content: [paragraph('')] },
+      ],
+    })
+    return {
+      id,
+      type: 'multipart',
+      columns: DEFAULT_COLUMNS,
+      doc: {
+        type: 'doc',
+        content: [
+          paragraph(`passage ${id}`),
+          {
+            type: 'multipartParts',
+            content: [
+              {
+                type: 'multipartPart',
+                attrs: { id: `${id}-a`, columns: 1, marks: 2 },
+                content: [
+                  { type: 'multipartPartStem', content: [paragraph('part a')] },
+                  { type: 'suggestedAnswer', content: [paragraph('')] },
+                ],
+              },
+              {
+                type: 'multipartPart',
+                attrs: { id: `${id}-b`, columns: 1 },
+                content: [
+                  { type: 'multipartPartStem', content: [paragraph('part b')] },
+                  { type: 'multipartSubparts', content: [subpart(`${id}-b-i`, 3), subpart(`${id}-b-ii`)] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    }
+  }
+  const marked = (question: Question, marks: number): Question => ({ ...question, marks })
+  const MARKED = [
+    marked(multipleChoice('mc', ['a', 'b', 'c', 'd'], 'b'), 1),
+    trueFalse('tf'),
+    marked(matching('mx', ['w2', 'w1'], ['w1', 'w2', 'w3']), 2),
+    marked(open('sa'), 4),
+    markedMultipart('mp'),
+  ]
+  const testPages = (exam: Exam, measure?: Measure) =>
+    plan(exam, measure).pages.filter((page) => page.stream === 'test')
+
+  test('prints on A4, the test and its Answer Key alike', () => {
+    const planned = plan(examOf(EVERY_TYPE, 'exam-board'))
+    expect(planned.pageSize).toMatchObject({ width: 794, height: 1123, paper: 'a4' })
+    expect(planned.pageSize.contentWidth).toBe(794 - 2 * 72)
+    // Every other style keeps US Letter, and says nothing of paper.
+    for (const style of ['standard', 'classic', 'condensed'] as const) {
+      expect(plan(examOf(EVERY_TYPE, style)).pageSize).toEqual(pageSizeOf(undefined))
+    }
+  })
+
+  test('labels questions 1, Parts (a), Subparts (i) and answers A, while the key keeps its own', () => {
+    const [mc, tf, mx, , mp] = testItems(examOf(MARKED, 'exam-board'))
+    expect(mc!.question.printedNumber).toBe('1')
+    expect(tf!.question.printedNumber).toBe('2')
+    expect(mc!.grid!.cells.flat().map((cell) => cell?.printed)).toEqual(['A', 'B', 'C', 'D'])
+    // A matching set's numbers print on its Items, its bank lettered as answers are.
+    expect(mx!.question.printedNumber).toBeUndefined()
+    expect(mx!.matching!.prompts.map((prompt) => prompt.printed)).toEqual(['3', '4'])
+    expect(mx!.matching!.bank.map((answer) => answer.printed)).toEqual(['A', 'B', 'C'])
+    expect(mp!.parts!.map((part) => part.printed)).toEqual(['(a)', '(b)'])
+    expect(mp!.parts![1]!.subparts.map((subpart) => subpart.printed)).toEqual(['(i)', '(ii)'])
+    expect(keyItems(examOf(MARKED, 'exam-board'))).toEqual(keyItems(examOf(MARKED)))
+    // Every other style prints `1.`, `a.`, `i.` and `A.` as it always did.
+    for (const style of ['standard', 'classic', 'condensed'] as const) {
+      const [standardMc, , , , standardMp] = testItems(examOf(MARKED, style))
+      expect(standardMc!.question.printedNumber).toBeUndefined()
+      expect(standardMc!.grid!.cells.flat().every((cell) => cell?.printed === undefined)).toBe(true)
+      expect(standardMp!.parts!.every((part) => part.printed === undefined)).toBe(true)
+    }
+  })
+
+  test('rules three dotted lines where the teacher left a Short Answer alone, and dots theirs', () => {
+    const exam = examOf([open('sa'), open('mine')], 'exam-board', {
+      workSpace: { mine: { height: 64, style: 'lines', fill: false } },
+    })
+    const [sa, mine] = testItems(exam)
+    expect(sa!.workSpace).toMatchObject({ style: 'lines', lines: 3, ruling: 'dotted' })
+    expect(mine!.workSpace).toMatchObject({ style: 'lines', lines: 2, ruling: 'dotted' })
+    expect(testItems(examOf([open('sa')], 'classic'))[0]!.workSpace).not.toHaveProperty('ruling')
+  })
+
+  test('prints each marked answer’s [n] after it, and a Multipart question’s total after the question', () => {
+    const [mc, tf, mx, sa, mp] = testItems(examOf(MARKED, 'exam-board'))
+    expect(mc!.closingMarks).toEqual(['[1]'])
+    // Unmarked prints nothing.
+    expect(tf!.closingMarks).toBeUndefined()
+    // A Matching set is marked as a whole.
+    expect(mx!.closingMarks).toEqual(['[2]'])
+    expect(sa!.closingMarks).toEqual(['[4]'])
+    expect(mp!.closingMarks).toEqual(['[Total: 5]'])
+    expect(mp!.parts![0]!.marksAfter).toBe('[2]')
+    // A Part that holds Subparts has no Marks of its own; its Subparts do.
+    expect(mp!.parts![1]!.marksAfter).toBeUndefined()
+    expect(mp!.parts![1]!.subparts.map((subpart) => subpart.marksAfter)).toEqual(['[3]', undefined])
+    // No other style prints Marks on the test.
+    for (const style of ['standard', 'classic', 'condensed'] as const) {
+      const items = testItems(examOf(MARKED, style))
+      expect(items.every((item) => item.closingMarks === undefined)).toBe(true)
+      expect(items[4]!.parts!.every((part) => part.marksAfter === undefined)).toBe(true)
+    }
+  })
+
+  test('prints a question’s closing Marks only on the piece that ends it', () => {
+    const long: Question = {
+      id: 'long',
+      type: 'open',
+      columns: DEFAULT_COLUMNS,
+      marks: 5,
+      doc: { type: 'doc', content: [paragraph('one'), paragraph('two'), paragraph('three')] },
+    }
+    // Each stem block is a page of its own.
+    const measure: Measure = {
+      itemHeight: (item) => (item.kind === 'question' ? item.stem.length * 800 : 0),
+    }
+    const pieces = testItems(examOf([long], 'exam-board'), measure)
+    expect(pieces.length).toBeGreaterThan(1)
+    expect(pieces.slice(0, -1).every((piece) => piece.closingMarks === undefined)).toBe(true)
+    expect(pieces.at(-1)!.closingMarks).toEqual(['[5]'])
+  })
+
+  test('measures the Marks it prints, so they move a question that no longer fits', () => {
+    // Two questions that fill an A4 page exactly, until each prints its [n].
+    const box = 1123 - 2 * 72 - 42 - 36
+    const measure = (withMarks: boolean): Measure => ({
+      itemHeight: (item) =>
+        item.kind === 'question' ? box / 2 + (withMarks ? (item.closingMarks?.length ?? 0) * 20 : 0) : 0,
+    })
+    const exam = examOf([marked(open('one'), 1), marked(open('two'), 1)], 'exam-board', {
+      workSpace: { one: { height: 0, style: 'blank', fill: false }, two: { height: 0, style: 'blank', fill: false } },
+    })
+    const where = (withMarks: boolean) =>
+      testPages(exam, measure(withMarks)).map((page) =>
+        page.items.flatMap((item) => (item.kind === 'question' ? [item.question.id] : [])))
+    expect(where(false)).toEqual([[], ['one', 'two']])
+    expect(where(true)).toEqual([[], ['one'], ['two']])
+  })
+
+  test('opens the test with a Cover Page of its own, from the Paper Details, and never the key', () => {
+    const exam = examOf(MARKED, 'exam-board', {
+      title: 'Forces',
+      paperDetails: { subject: 'Physics', duration: '50 minutes', paperCode: 'PHY-3' },
+    })
+    const [cover, ...rest] = testPages(exam)
+    expect(cover!.header).toBe('cover')
+    expect(cover!.items).toEqual([
+      expect.objectContaining({
+        kind: 'cover',
+        title: 'Forces',
+        subject: 'Physics',
+        duration: '50 minutes',
+        candidateFields: ['Name', 'Class', 'Candidate number'],
+        total: 'The total mark for this paper is 12.',
+      }),
+    ])
+    // The candidate fields are on the cover, so later pages carry no Name line.
+    expect(rest.every((page) => page.header === 'later' && page.furniture.identityLine === '')).toBe(true)
+    expect(rest.every((page) => page.furniture.title === null)).toBe(true)
+    expect(plan(exam).pages.filter((page) => page.stream === 'answer-key')
+      .every((page) => page.items.every((item) => item.kind !== 'cover'))).toBe(true)
+  })
+
+  test('prints nothing for a Paper Detail the teacher left blank, and none where they asked for none', () => {
+    const cover = (exam: Exam) => plan(exam).pages[0]!.items[0]
+    const blank = cover(examOf(EVERY_TYPE, 'exam-board'))
+    expect(blank).not.toHaveProperty('subject')
+    expect(blank).not.toHaveProperty('duration')
+    // Nothing is marked, so no total.
+    expect(blank).not.toHaveProperty('total')
+    expect(blank).toMatchObject({ candidateFields: ['Name', 'Class', 'Candidate number'] })
+    const none = cover(examOf(EVERY_TYPE, 'exam-board', { paperDetails: { instructions: [], candidateFields: [] } }))
+    expect(none).toMatchObject({ candidateFields: [], instructions: null })
+    const own = cover(examOf(EVERY_TYPE, 'exam-board', {
+      paperDetails: { instructions: ['Use black ink.'], candidateFields: ['centre-number', 'name'] },
+    }))
+    expect(own).toMatchObject({
+      candidateFields: ['Name', 'Centre number'],
+      instructions: { type: 'bullet_list', content: [expect.objectContaining({ type: 'list_item' })] },
+    })
+  })
+
+  test('numbers pages at the top, prints the paper code at the foot, and “Turn over” wherever the test goes on', () => {
+    const exam = examOf(MARKED, 'exam-board', { paperDetails: { paperCode: 'PHY-3' } })
+    const measure: Measure = { itemHeight: (item) => (item.kind === 'question' ? 700 : 0) }
+    const pages = testPages(exam, measure)
+    expect(pages.length).toBe(6)
+    expect(pages.map((page) => page.furniture.pageNumberAt)).toEqual(['none', 'top', 'top', 'top', 'top', 'top'])
+    expect(pages.every((page) => page.furniture.footLeft === 'PHY-3')).toBe(true)
+    expect(pages.map((page) => page.furniture.footRight)).toEqual([
+      'Turn over', 'Turn over', 'Turn over', 'Turn over', 'Turn over', undefined,
+    ])
+    // The key keeps the sheet's own furniture.
+    const key = plan(exam, measure).pages.filter((page) => page.stream === 'answer-key')
+    expect(key.every((page) => page.furniture.pageNumberAt === undefined && page.furniture.footRight === undefined))
+      .toBe(true)
+    // No other style prints running furniture.
+    expect(plan(examOf(MARKED, 'classic'), measure).pages.every((page) =>
+      page.furniture.pageNumberAt === undefined && page.furniture.footLeft === undefined)).toBe(true)
+  })
+
+  test('a Section total is a placement any style may take, printed after the Section’s last question', () => {
+    const rules = PAPER_STYLE_RULES['exam-board']
+    const before = rules.marks
+    rules.marks = { ...before, sectionTotal: 'Section total: {n}' }
+    try {
+      const exam = examOf([marked(open('one'), 2), marked(open('two'), 3), open('three')], 'exam-board', {
+        sections: [
+          { id: 's1', title: 'First', instructions: '' },
+          { id: 's2', title: 'Second', instructions: '' },
+        ],
+        sectionOf: { one: 's1', two: 's1', three: 's2' },
+      })
+      const [one, two, three] = testItems(exam)
+      expect(one!.closingMarks).toEqual(['[2]'])
+      expect(two!.closingMarks).toEqual(['[3]', 'Section total: 5'])
+      // A Section with nothing marked prints no total.
+      expect(three!.closingMarks).toBeUndefined()
+    } finally {
+      rules.marks = before
+    }
   })
 })

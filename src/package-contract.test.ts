@@ -175,10 +175,11 @@ describe('public Exam Record 0.4.0 contract', () => {
     ).toEqual(publicExamSchema040)
   })
 
-  test('adds only optional margins, paperStyle and a position’s hiddenAnswers, wordBankLayout and wordBankLayoutSet to 0.3.0', () => {
-    const { margins, paperStyle, ...rest } = publicExamSchema040.properties
+  test('adds only optional margins, paperStyle, paperDetails and a position’s hiddenAnswers, wordBankLayout and wordBankLayoutSet to 0.3.0', () => {
+    const { margins, paperStyle, paperDetails, ...rest } = publicExamSchema040.properties
     expect(margins).toBeDefined()
     expect(paperStyle).toBeDefined()
+    expect(paperDetails).toBeDefined()
     expect({ ...rest, formatVersion: undefined }).toEqual({ ...publicExamSchema030.properties, formatVersion: undefined })
     expect(publicExamSchema040.required).toEqual(publicExamSchema030.required)
     const { hiddenAnswers, wordBankLayout, wordBankLayoutSet, ...position } = publicExamSchema040.$defs.position.properties
@@ -192,7 +193,7 @@ describe('public Exam Record 0.4.0 contract', () => {
   test('canonical examples validate independently against the published schema', async () => {
     const validate = strict().compile(publicExamSchema040)
     const names = await filesIn(join(currentExamRoot, 'examples'))
-    expect(names).toEqual(['hidden-answers.json', 'margins.json', 'minimal.json', 'paper-style.json', 'sections.json'])
+    expect(names).toEqual(['hidden-answers.json', 'margins.json', 'minimal.json', 'paper-details.json', 'paper-style.json', 'sections.json'])
     for (const name of names) {
       expect(validate(await read(join(currentExamRoot, 'examples'), name)), `${name}: ${JSON.stringify(validate.errors)}`).toBe(true)
     }
@@ -231,12 +232,12 @@ describe('public Exam Record 0.4.0 contract', () => {
     expect(without.exams[0]!.positions.every((position) => position.hiddenAnswers === undefined)).toBe(true)
   })
 
-  test('a Paper Style is one of three, for the whole Exam', () => {
+  test('a Paper Style is one of four, for the whole Exam', () => {
     const validate = strict().compile(publicExamSchema040)
     const exam = (paperStyle: unknown) => ({
       format: 'test-parrot/exam', formatVersion: '0.4.0', name: 'Quiz', sections: [], positions: [], paperStyle,
     })
-    for (const style of ['standard', 'classic', 'condensed']) {
+    for (const style of ['standard', 'classic', 'condensed', 'exam-board']) {
       expect(validate(exam(style)), style).toBe(true)
     }
     expect(validate(exam('Classic'))).toBe(false)
@@ -257,6 +258,43 @@ describe('public Exam Record 0.4.0 contract', () => {
     expect(proposal.exams[0]!.paperStyle).toBe('classic')
     expect(proposal.exams[0]!.formatVersion).toBe('0.4.0')
     expect(proposal.exams[0]!.positions.at(-1)!.workSpace).toEqual({ height: 0, style: 'blank', fill: false })
+  })
+
+  test('Paper Details are text, a list of instructions and known candidate fields, each once', () => {
+    const validate = strict().compile(publicExamSchema040)
+    const exam = (paperDetails: unknown) => ({
+      format: 'test-parrot/exam', formatVersion: '0.4.0', name: 'Quiz', sections: [], positions: [], paperDetails,
+    })
+    expect(validate(exam({}))).toBe(true)
+    expect(validate(exam({ subject: 'Physics', duration: '1 hour', paperCode: 'P1' }))).toBe(true)
+    expect(validate(exam({ instructions: [], candidateFields: [] }))).toBe(true)
+    expect(validate(exam({ candidateFields: ['name', 'candidate-number', 'centre-number'] }))).toBe(true)
+    expect(validate(exam({ candidateFields: ['name', 'name'] }))).toBe(false)
+    expect(validate(exam({ candidateFields: ['seat'] }))).toBe(false)
+    expect(validate(exam({ instructions: 'Answer all.' }))).toBe(false)
+    // The paper's total is counted from the Marks, never written.
+    expect(validate(exam({ total: 40 }))).toBe(false)
+  })
+
+  test('the example with Paper Details imports with them, and a record without has none', async () => {
+    const testParrotPackage = await read(join(packageRoot, 'examples'), 'bank-and-exam.json')
+    const proposalOf = async (name: string) => {
+      const example = await read(join(currentExamRoot, 'examples'), name)
+      const exam = JSON.parse(JSON.stringify(example).replaceAll('"bank":"bank"', '"bank":"cells"'))
+      return inspectImportRecord(
+        new TextEncoder().encode(JSON.stringify({ ...testParrotPackage, exams: [exam] })),
+      )
+    }
+    const withDetails = await proposalOf('paper-details.json')
+    expect(withDetails.exams[0]!.paperStyle).toBe('exam-board')
+    expect(withDetails.exams[0]!.paperDetails).toEqual({
+      subject: 'Biology: Paper 2',
+      duration: '45 minutes',
+      paperCode: 'BIO-2-NOV',
+      instructions: ['Answer every question.', 'Use a pencil only for diagrams.'],
+      candidateFields: ['name', 'class', 'date'],
+    })
+    expect((await proposalOf('minimal.json')).exams[0]!).not.toHaveProperty('paperDetails')
   })
 
   test('a position hides some of its answers, each once', () => {

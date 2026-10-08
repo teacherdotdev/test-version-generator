@@ -38,6 +38,7 @@ import {
 } from './section-headings'
 import type { ExamHeader } from './page-header'
 import type { PageMargins } from './page-margins'
+import type { PaperDetails } from './paper-details'
 import { paperStyleRules, type PaperStyle } from './paper-style'
 import { newMatchingNode } from './matching'
 import { newMultipartPartsNode } from './multipart'
@@ -172,6 +173,10 @@ export type Exam = {
   /** How far in from each edge its pages print, in inches, where it departs
    *  from the default. See `page-margins.ts`. */
   margins?: PageMargins
+  /** Facts about this paper its Paper Style may print — a subject line, a
+   *  duration, a paper code, instructions and which candidate fields to ask
+   *  for. See `paper-details.ts`. Absent means none written. */
+  paperDetails?: PaperDetails
 }
 
 /** What a work space prints as: an empty area, or ruled writing lines. */

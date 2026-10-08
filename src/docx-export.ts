@@ -81,6 +81,10 @@ import {
   answerKeyMarksText,
   answerKeyTotalText,
   CHOICE_INDENT,
+  COVER_INSTRUCTIONS_HEADING,
+  printedLabel,
+  printedNumberOf,
+  type CoverPageItem,
   choiceAreaWidth,
   matchingAreaWidth,
   MATCHING_INDENT,
@@ -853,7 +857,7 @@ function choiceGridTable(
                   childrenOf(choice.node),
                   {
                     indent: 288,
-                    prefix: [new TextRun({ text: `${choice.letter}.\t` })],
+                    prefix: [new TextRun({ text: `${printedLabel(choice.letter, choice.printed)}\t` })],
                     hanging: 288,
                     tight: true,
                   },
@@ -895,7 +899,7 @@ function matchingContent(
         {
           indent: twips(MATCHING_INDENT),
           hanging: twips(MATCHING_INDENT),
-          prefix: [new TextRun({ text: `_______  ${prompt.number}.\t` })],
+          prefix: [new TextRun({ text: `_______  ${printedLabel(prompt.number, prompt.printed)}\t` })],
           tight: true,
         },
         { ...build, contentWidth },
@@ -904,7 +908,7 @@ function matchingContent(
   const answer = (item: PlannedBankAnswer, contentWidth: number) =>
     blocks(
       childrenOf(item.node),
-      { indent: 288, prefix: [new TextRun({ text: `${item.letter}.\t` })], hanging: 288, tight: true },
+      { indent: 288, prefix: [new TextRun({ text: `${printedLabel(item.letter, item.printed)}\t` })], hanging: 288, tight: true },
       { ...build, contentWidth },
     )
 
@@ -991,7 +995,10 @@ function workSpaceParagraphs(space: PlannedWorkSpace, indentTwips: number): Para
       indent,
       spacing: exactly(twips(index === 0 ? rows.first : rows.pitch) - WORK_SPACE_RULE_TWIPS),
       border: {
-        bottom: { style: BorderStyle.SINGLE, size: 4, color: '8F847A', space: 0 },
+        // Dotted under a Paper Style that rules dotted lines (ADR-0045).
+        bottom: space.ruling === 'dotted'
+          ? { style: BorderStyle.DOTTED, size: 8, color: '4A4038', space: 0 }
+          : { style: BorderStyle.SINGLE, size: 4, color: '8F847A', space: 0 },
       },
     }),
   )
@@ -1015,7 +1022,7 @@ function questionContent(
   const prefix: ParagraphChild[] = numbered
     ? [
         new TextRun({
-          text: `${[...item.question.marks, `${item.question.number}.`].join('  ')}\t`,
+          text: `${[...item.question.marks, printedNumberOf(item.question)].join('  ')}\t`,
         }),
       ]
     : []
@@ -1050,7 +1057,19 @@ function questionContent(
     ...(item.parts ?? []).flatMap((part) =>
       partContent(part, indentPx, build),
     ),
+    ...(item.closingMarks ?? []).map(marksAfterParagraph),
   ]
+}
+
+/** Marks a Paper Style prints after an answer or a question: a paragraph of
+ *  their own against the right margin, as print sets them. */
+function marksAfterParagraph(text: string): Paragraph {
+  return new Paragraph({
+    alignment: AlignmentType.RIGHT,
+    keepLines: true,
+    spacing: { before: 60, after: 0 },
+    children: [new TextRun({ text })],
+  })
 }
 
 // A Multipart question's Part, one level in: its letter hanging off its own letter column inside the Multipart question's body,
@@ -1063,16 +1082,18 @@ function partContent(
   build: BuildContext,
 ): (Paragraph | Table)[] {
   return [
-    ...(part.continued ? [] : answeringContent(`${part.letter}.`, part, multipartIndentPx, build)),
+    ...(part.continued
+      ? []
+      : answeringContent(printedLabel(part.letter, part.printed), part, multipartIndentPx, build)),
     ...part.subparts.flatMap((subpart) =>
-      answeringContent(`${subpart.label}.`, subpart, multipartIndentPx + PART_INDENT, build),
+      answeringContent(printedLabel(subpart.label, subpart.printed), subpart, multipartIndentPx + PART_INDENT, build),
     ),
   ]
 }
 
 function answeringContent(
   label: string,
-  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace'>,
+  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'marksAfter'>,
   outerIndentPx: number,
   build: BuildContext,
 ): (Paragraph | Table)[] {
@@ -1092,6 +1113,93 @@ function answeringContent(
       ? [choiceGridTable(part.grid, build, build.pageWidth - indentPx - CHOICE_INDENT, indentPx + CHOICE_INDENT)]
       : []),
     ...(part.workSpace ? workSpaceParagraphs(part.workSpace, indent) : []),
+    ...(part.marksAfter ? [marksAfterParagraph(part.marksAfter)] : []),
+  ]
+}
+
+/** The table style that marks a Cover Page's candidate field, so the package
+ *  reads back as a labelled box rather than as a table. */
+export const CANDIDATE_FIELD_TABLE_STYLE = 'CandidateField'
+
+const FIELD_BOX_BORDER = { style: BorderStyle.SINGLE, size: 6, color: '332A24' }
+/** `.cover-field`'s label column and gap in print. */
+const FIELD_LABEL_WIDTH = 160 + 12
+const FIELD_BOX_HEIGHT = 32
+/** `.cover-fields`' gap between two boxes in print. */
+const FIELD_GAP = 14
+
+// A Cover Page (ADR-0045), in print's order: the title in the Title style,
+// each Paper Detail it prints, the candidate fields as one table whose rows
+// are each a label and a bordered box — with a short borderless row between
+// two, so the boxes stand apart — the instructions under their heading as a
+// bulleted list, and the paper's total.
+function coverContent(item: CoverPageItem, build: BuildContext): (Paragraph | Table)[] {
+  const boxWidth = build.contentWidth - FIELD_LABEL_WIDTH
+  const fieldRow = (label: string) =>
+    new TableRow({
+      cantSplit: true,
+      height: { value: twips(FIELD_BOX_HEIGHT), rule: 'atLeast' },
+      children: [
+        new TableCell({
+          width: { size: twips(FIELD_LABEL_WIDTH), type: WidthType.DXA },
+          verticalAlign: VerticalAlignTable.CENTER,
+          borders: NO_BORDERS,
+          children: [new Paragraph({ children: [new TextRun({ text: label })] })],
+        }),
+        new TableCell({
+          width: { size: twips(boxWidth), type: WidthType.DXA },
+          borders: { top: FIELD_BOX_BORDER, bottom: FIELD_BOX_BORDER, left: FIELD_BOX_BORDER, right: FIELD_BOX_BORDER },
+          children: [new Paragraph({})],
+        }),
+      ],
+    })
+  const gapRow = () =>
+    new TableRow({
+      height: { value: twips(FIELD_GAP), rule: 'exact' },
+      children: [FIELD_LABEL_WIDTH, boxWidth].map((width) =>
+        new TableCell({
+          width: { size: twips(width), type: WidthType.DXA },
+          borders: NO_BORDERS,
+          children: [new Paragraph({})],
+        })),
+    })
+  const fields = item.candidateFields.length > 0
+    ? [new Table({
+        style: CANDIDATE_FIELD_TABLE_STYLE,
+        width: { size: twips(build.contentWidth), type: WidthType.DXA },
+        columnWidths: gridOf([FIELD_LABEL_WIDTH, boxWidth]),
+        borders: NO_BORDERS,
+        rows: item.candidateFields.flatMap((label, index) => [...(index > 0 ? [gapRow()] : []), fieldRow(label)]),
+      })]
+    : []
+  return [
+    ...(item.title
+      ? [new Paragraph({
+          ...(item.titleSize
+            ? { children: [new TextRun({ text: item.title, size: titleHalfPoints(item.titleSize) })] }
+            : { text: item.title }),
+          heading: HeadingLevel.TITLE,
+          spacing: { before: 360, after: 240, ...headingLine(titleHalfPoints(item.titleSize), TITLE_LINE_HEIGHT) },
+        })]
+      : []),
+    ...(item.subject
+      ? [new Paragraph({ children: [new TextRun({ text: item.subject, style: FURNITURE_BOLD_STYLE, size: 27 })], spacing: { after: 120 } })]
+      : []),
+    ...(item.duration ? [new Paragraph({ children: [new TextRun({ text: item.duration })], spacing: { after: 120 } })] : []),
+    ...fields,
+    ...(item.instructions
+      ? [
+          new Paragraph({
+            text: COVER_INSTRUCTIONS_HEADING,
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 480, after: 120, ...headingLine(halfPointsOf('sectionTitle'), HEADING_LINE_HEIGHT) },
+          }),
+          ...blocks([item.instructions], { indent: 0 }, build),
+        ]
+      : []),
+    ...(item.total
+      ? [new Paragraph({ children: [new TextRun({ text: item.total, style: FURNITURE_BOLD_STYLE })], spacing: { before: 360 } })]
+      : []),
   ]
 }
 
@@ -1161,6 +1269,8 @@ function itemContent(
   build: BuildContext,
 ): (Paragraph | Table)[] {
   switch (item.kind) {
+    case 'cover':
+      return coverContent(item, build)
     case 'section-heading': {
       // Heading 1 already is `'normal'`; any other size is stated on the runs,
       // from the same table print reads. The directions always state theirs:
@@ -1252,6 +1362,10 @@ function itemContent(
 // and a right stop at the content width holds the ID.
 const IDENTITY_GAP = 20
 const OUTPUT_ID_STYLE = 'OutputId'
+/** Bold by style, as print sets these by class: a Paper Style's running page
+ *  number and "Turn over", and a Cover Page's subject line and total — page
+ *  furniture, not an authored strong mark. */
+const FURNITURE_BOLD_STYLE = 'FurnitureBold'
 /** Room kept for the bold output ID and the gap before it. */
 const IDENTITY_ID_RESERVE = 64
 
@@ -1264,14 +1378,25 @@ function identityLine(furniture: PageFurniture, contentWidth: number): Paragraph
     size: halfPointsOf('body'),
   })
   if (furniture.identityLine !== undefined) {
-    // An Exam's own line: its text, then the ID against a right stop.
+    // An Exam's own line: its text, then — under a style that prints it there
+    // — the page number on a centre stop, then the ID against a right stop.
+    const top = furniture.pageNumberAt === 'top'
     return new Paragraph({
       children: [
         new TextRun({ text: furniture.identityLine, size: halfPointsOf('body') }),
+        ...(top
+          ? [
+              new TextRun({ children: [new Tab()] }),
+              new TextRun({ text: String(furniture.pageNumber), style: FURNITURE_BOLD_STYLE, size: halfPointsOf('body') }),
+            ]
+          : []),
         new TextRun({ children: [new Tab()] }),
         id,
       ],
-      tabStops: [{ type: TabStopType.RIGHT, position: twips(contentWidth) }],
+      tabStops: [
+        ...(top ? [{ type: TabStopType.CENTER, position: twips(contentWidth / 2) }] : []),
+        { type: TabStopType.RIGHT, position: twips(contentWidth) },
+      ],
       spacing: { after: 60 },
     })
   }
@@ -1328,12 +1453,36 @@ function headerParagraphs(furniture: PageFurniture, contentWidth: number): Parag
 // The plan already numbered the page — including restarting at 1 for the answer
 // key — so the footer prints that number rather than asking Word for a field
 // whose count would be the whole document's.
-function footerParagraph(furniture: PageFurniture): Paragraph {
+function footerParagraph(furniture: PageFurniture, contentWidth: number): Paragraph {
+  if (furniture.footLeft === undefined && furniture.footRight === undefined) {
+    return new Paragraph({
+      children: furniture.pageNumberAt === undefined
+        ? [new TextRun({ text: String(furniture.pageNumber), size: halfPointsOf('small') })]
+        : [],
+      alignment: AlignmentType.CENTER,
+    })
+  }
+  // A running foot (ADR-0045): the paper code at the left margin and "Turn
+  // over" against a right stop, in body type, as print sets them.
   return new Paragraph({
-    children: [new TextRun({ text: String(furniture.pageNumber), size: halfPointsOf('small') })],
-    alignment: AlignmentType.CENTER,
+    children: [
+      ...(furniture.pageNumberAt === undefined
+        ? [new TextRun({ text: `${furniture.pageNumber} `, size: halfPointsOf('body') })]
+        : []),
+      ...(furniture.footLeft ? [new TextRun({ text: furniture.footLeft, size: halfPointsOf('body') })] : []),
+      ...(furniture.footRight
+        ? [
+            new TextRun({ children: [new Tab()] }),
+            new TextRun({ text: furniture.footRight, style: FURNITURE_BOLD_STYLE, size: halfPointsOf('body') }),
+          ]
+        : []),
+    ],
+    tabStops: [{ type: TabStopType.RIGHT, position: twips(contentWidth) }],
   })
 }
+
+/** A4 exactly, in twips: 210×297mm. */
+const A4_TWIPS = { width: 11906, height: 16838 }
 
 // ---------------------------------------------------------------------------
 // The document
@@ -1349,10 +1498,10 @@ function sectionOf(
   return {
     properties: {
       page: {
-        size: {
-          width: twips(plan.pageSize.width),
-          height: twips(plan.pageSize.height),
-        },
+        // An A4 plan is cut to A4 exactly, not to the whole pixels it packed in.
+        size: plan.pageSize.paper === 'a4'
+          ? A4_TWIPS
+          : { width: twips(plan.pageSize.width), height: twips(plan.pageSize.height) },
         margin: {
           top: twips(plan.pageSize.margins.top),
           right: twips(plan.pageSize.margins.right),
@@ -1362,7 +1511,7 @@ function sectionOf(
       },
     },
     headers: { default: new Header({ children: headerParagraphs(page.furniture, plan.pageSize.contentWidth) }) },
-    footers: { default: new Footer({ children: [footerParagraph(page.furniture)] }) },
+    footers: { default: new Footer({ children: [footerParagraph(page.furniture, plan.pageSize.contentWidth)] }) },
     children: page.items.flatMap((item) => itemContent(item, build)),
   }
 }
@@ -1413,7 +1562,10 @@ export function createExamDocxDocument(
         heading1: { run: { font: EXAM_FONT, size: halfPointsOf('sectionTitle'), bold: true } },
         heading2: { run: { font: EXAM_FONT, size: halfPointsOf('sectionTitle'), bold: true } },
       },
-      characterStyles: [{ id: OUTPUT_ID_STYLE, name: 'Output ID', run: { bold: true } }],
+      characterStyles: [
+        { id: OUTPUT_ID_STYLE, name: 'Output ID', run: { bold: true } },
+        { id: FURNITURE_BOLD_STYLE, name: 'Furniture Bold', run: { bold: true } },
+      ],
       paragraphStyles: [
         { id: WORK_SPACE_STYLES.blank, name: 'Work Space', basedOn: 'Normal' },
         { id: WORK_SPACE_STYLES.lines, name: 'Work Space Lines', basedOn: 'Normal' },

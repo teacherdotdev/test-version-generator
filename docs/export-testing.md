@@ -95,6 +95,8 @@ panel:<index>
 /side
 space:blank
 space:lines:<n>
+space:lines:<n>:dotted
+field:<label>
 ```
 
 A Blockquote prints boxed, so its border is content: `box` … `/box` wraps its
@@ -113,12 +115,38 @@ Layout Plan resolves a space that fills its page to its final height, so print,
 DOCX and PDF draw the same room; DOCX marks its work-space paragraphs with the
 `WorkSpace` and `WorkSpaceLines` paragraph styles so they read back as one.
 
+A Paper Style that rules dotted lines (Exam Board, ADR-0045) records the
+ruling: `space:lines:3:dotted`. Print draws `.work-space[data-ruling='dotted']`,
+the PDF a dash pattern of round dots, and DOCX a dotted bottom border, which
+the DOCX fingerprint reads back as the ruling.
+
 An Answer Key line's Marks are text after its answer, ` [n]`, before any
 Question Metadata, and the paper's total shares the key heading's line, so it
 reads `heading:1 Answer Section Total: 9 marks`. Print, PDF and DOCX each set
 the total against the right margin; where it stands is geometry and is not
-compared. No current Paper Style prints Marks on the test, so a test line
-never carries them.
+compared.
+
+Marks a Paper Style prints on the test (Exam Board) are paragraphs of their
+own, set against the right margin by every adapter: `para [2]` after an
+answer's grid or Work Space, `para [Total: 9]` after a Multipart question,
+and a Section's total after its last question where a style prints one.
+Only the piece that ends a split question carries the question's closing
+lines. Packing measures them through the same `Measure`, since the print
+view the measure renders draws them.
+
+A Cover Page is the test's own first page, never the Answer Key's: its title
+as `heading:title`, each Paper Detail it prints as `para`, a `field:<label>`
+line per candidate box — one `CandidateField` table in DOCX, read back row by
+row — the instructions as `heading:2 Instructions` and a bulleted list, and
+the paper's total as `para`. A Paper Style's running furniture is in the page
+fingerprint too: the header line reads the page number when it prints at the
+top (`para 2`), and the footer reads its number when it prints there, then the
+paper code and "Turn over" (`para BIO-1 Turn over`).
+
+Every page records its dimensions in CSS px. An A4 plan packs on 794×1123px
+and says `paper: 'a4'`, so each adapter cuts the sheet to A4 exactly —
+595.28×841.89pt in the PDF, 11906×16838 twips in DOCX (read back as
+794×1123), and `@page a4 { size: 210mm 297mm }` in print.
 
 Inline content uses plain text, marked spans, links, math source, stable image
 ordinals, and authored-break markers. Fingerprints are adapter diagnostics only:
@@ -147,7 +175,10 @@ The implementations are:
 - `src/paper-style.test.ts` — each Paper Style's rules through the
   plan: what prints before a number, answer and Word Bank letters and layout,
   the Work Space a style supplies and what overrides it, the question gap
-  handed to `Measure`, and an Answer Key that never changes with the style.
+  handed to `Measure`, and an Answer Key that never changes with the style;
+  and Exam Board's A4, labels, dotted ruling, Marks placements (measured,
+  and only on a split question's last piece), Cover Page and running
+  furniture.
 - `src/word-bank-layout.test.ts` — where a matching set's Word Bank prints:
   the layout a position takes when it arrives or the style changes (beside
   its Items wherever its widest answer fits, at every text size, margin and
@@ -221,8 +252,9 @@ rendering.
 | Poppler             | `pdftotext`, `pdfinfo` | normalized PDF manifests      |
 | Playwright Chromium | —                      | Reference PDF capture         |
 
-`LANG`, `LC_ALL`, and `TZ` are pinned to `C`/`UTC`; the PDF uses US Letter with
-zero outer margin because the Layout Plan owns the page padding. An Exam's own
+`LANG`, `LC_ALL`, and `TZ` are pinned to `C`/`UTC`; the PDF uses US Letter — or
+A4 for an Exam Board plan — with zero outer margin because the Layout Plan
+owns the page padding. An Exam's own
 Page Margins (ADR-0039) are part of the plan's `pageSize`, and the parity
 fingerprints compare every side.
 

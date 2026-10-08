@@ -20,7 +20,7 @@ import {
   workSpaceLine,
 } from './export-fingerprint'
 import { child, descendants, parseXml, path, type XmlNode } from './xml'
-import { BLOCKQUOTE_TABLE_STYLE, SIDE_BY_SIDE_TABLE_STYLE } from './docx-export'
+import { BLOCKQUOTE_TABLE_STYLE, CANDIDATE_FIELD_TABLE_STYLE, SIDE_BY_SIDE_TABLE_STYLE } from './docx-export'
 
 // ---------------------------------------------------------------------------
 // Package reading
@@ -276,6 +276,18 @@ function cellsOf(table: XmlNode): XmlNode[] {
 
 function tableLines(table: XmlNode, reader: Reader): ContentLine[] {
   const style = tableStyleOf(table)
+  // A Cover Page's candidate fields: each row a label and its box, and the
+  // borderless rows between them, which say nothing, left out.
+  if (style === CANDIDATE_FIELD_TABLE_STYLE) {
+    return table.children
+      .filter((row) => row.name === 'w:tr')
+      .map((row) => {
+        const label = row.children.find((cell) => cell.name === 'w:tc')
+        return label ? descendants(label, 'w:t').map((text) => text.text).join('').replace(/\s+/g, ' ').trim() : ''
+      })
+      .filter(Boolean)
+      .map((label) => `field:${label}`)
+  }
   if (style === BLOCKQUOTE_TABLE_STYLE) {
     return ['box', ...cellsOf(table).flatMap((cell) => blockLines(cell, reader)), '/box']
   }
@@ -332,9 +344,9 @@ function paragraphStyleOf(paragraph: XmlNode): string | undefined {
 
 function blockLines(container: XmlNode, reader: Reader): ContentLine[] {
   const lines: ContentLine[] = []
-  const open: { space: { style: 'blank' | 'lines'; rules: number } | null } = { space: null }
+  const open: { space: { style: 'blank' | 'lines'; rules: number; ruling?: string } | null } = { space: null }
   const closeSpace = () => {
-    if (open.space) lines.push(workSpaceLine(open.space.style, open.space.rules))
+    if (open.space) lines.push(workSpaceLine(open.space.style, open.space.rules, open.space.ruling))
     open.space = null
   }
   for (const node of container.children) {
@@ -346,7 +358,9 @@ function blockLines(container: XmlNode, reader: Reader): ContentLine[] {
         closeSpace()
         open.space = { style: spaceStyle, rules: 0 }
       }
+      const rule = path(node, 'w:pPr', 'w:pBdr', 'w:bottom')
       if (path(node, 'w:pPr', 'w:pBdr')) open.space!.rules += 1
+      if (rule?.attrs['w:val'] === 'dotted') open.space!.ruling = 'dotted'
       continue
     }
     closeSpace()

@@ -68,6 +68,7 @@ import {
 } from './section-headings'
 import { isExamHeader, sameExamHeader, withHeaderLine, type HeaderLine } from './page-header'
 import { isPageMargins, sameMargins, withMargin, type MarginSide } from './page-margins'
+import { isPaperDetails, normalizedPaperDetails, samePaperDetails, type PaperDetails } from './paper-details'
 import { DEFAULT_PAPER_STYLE, isPaperStyle, type PaperStyle } from './paper-style'
 import {
   bankQuestionById,
@@ -246,7 +247,8 @@ function isWorkingCopy(value: unknown): value is ExamWorkingCopy {
     (draft.header === undefined || isExamHeader(draft.header)) &&
     (draft.textSize === undefined || isTextSize(draft.textSize)) &&
     (draft.margins === undefined || isPageMargins(draft.margins)) &&
-    (draft.paperStyle === undefined || isPaperStyle(draft.paperStyle))
+    (draft.paperStyle === undefined || isPaperStyle(draft.paperStyle)) &&
+    (draft.paperDetails === undefined || isPaperDetails(draft.paperDetails))
   )
 }
 
@@ -282,6 +284,7 @@ const WORKING_COPY_SETTINGS: Readonly<Record<string, (value: unknown) => boolean
   textSize: isTextSize,
   margins: isPageMargins,
   paperStyle: isPaperStyle,
+  paperDetails: isPaperDetails,
 }
 
 // A draft an earlier build stored, in the current shape. Its questions are
@@ -374,6 +377,9 @@ export type ExamStore = {
    *  inches. A change `continuing` a scrub of a margin field joins the undo
    *  step its first change made, so one drag is one step. */
   setMargins(sides: readonly MarginSide[], inches: number, options?: { continuing?: boolean }): void
+  /** Sets this Exam's Paper Details (ADR-0045), blank ones left out; one
+   *  undoable step. */
+  setPaperDetails(details: PaperDetails | undefined): void
   /** Refreshes the canonical Questions projected from open Question Banks.
    * Workspace browsing is not an Exam command and creates no Undo step. */
   syncCanonicalQuestions(questions: readonly Question[]): void
@@ -523,6 +529,7 @@ function sameExamWorkingCopy(left: ExamWorkingCopy, right: ExamWorkingCopy): boo
     && (left.textSize ?? DEFAULT_TEXT_SIZE) === (right.textSize ?? DEFAULT_TEXT_SIZE)
     && sameMargins(left.margins, right.margins)
     && (left.paperStyle ?? DEFAULT_PAPER_STYLE) === (right.paperStyle ?? DEFAULT_PAPER_STYLE)
+    && samePaperDetails(left.paperDetails, right.paperDetails)
 }
 
 /** The Part or Subpart that answers with this id, when it belongs to a Multipart question
@@ -922,6 +929,15 @@ export function createExamStore(options: {
         if (!margins) delete workingCopy.margins
         return { ...current, workingCopy }
       }, true, !options?.continuing),
+
+    setPaperDetails: (details) =>
+      change((current) => {
+        const paperDetails = normalizedPaperDetails(details)
+        if (samePaperDetails(paperDetails, current.workingCopy.paperDetails)) return current
+        const workingCopy: ExamWorkingCopy = { ...current.workingCopy, paperDetails }
+        if (!paperDetails) delete workingCopy.paperDetails
+        return { ...current, workingCopy }
+      }),
 
     syncCanonicalQuestions: (questions) => {
       let working = state

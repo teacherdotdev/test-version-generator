@@ -1314,6 +1314,30 @@ describe('the dirty flag and persistence', () => {
     expect(store.selectedExam().exam.margins).toEqual({ top: 1, right: 1, bottom: 1, left: 1.25 })
   })
 
+  test('Paper Details are saved Exam presentation, blank ones stored as nothing, and undone in one step', async () => {
+    const { store } = await withExamWorkingCopy(1)
+    await store.save()
+
+    store.setPaperDetails({ subject: '  Chemistry  ', duration: '', paperCode: 'CH-1', instructions: ['Answer all.', ' '] })
+    expect(store.getState().dirty).toBe(true)
+    expect(store.selectedExam().exam.paperDetails).toEqual({
+      subject: 'Chemistry',
+      paperCode: 'CH-1',
+      instructions: ['Answer all.'],
+    })
+
+    // Setting the same details again is no step at all.
+    store.setPaperDetails({ subject: 'Chemistry', paperCode: 'CH-1', instructions: ['Answer all.'] })
+    store.undo()
+    expect(store.selectedExam().exam.paperDetails).toBeUndefined()
+    expect(store.getState().dirty).toBe(false)
+
+    store.redo()
+    store.setPaperDetails({ subject: ' ' })
+    expect(store.getState().workingCopy.paperDetails).toBeUndefined()
+    expect(store.selectedExam().exam.paperDetails).toBeUndefined()
+  })
+
   test('one scrub of a margin field is one undo step', async () => {
     const { store } = await withExamWorkingCopy(1)
     await store.save()

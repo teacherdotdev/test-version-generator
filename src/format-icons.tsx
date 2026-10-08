@@ -114,6 +114,17 @@ const PREVIEWS: Record<PaperStyle, ReactNode> = {
       <path d="M8 18.5h23M8 22.5h23" strokeOpacity="0.55" />
     </>
   ),
+  // A bare bold number and a Part's (a), dotted lines to write on, and the
+  // answer's marks in brackets at the right margin.
+  'exam-board': (
+    <>
+      <Mark x={0.5} y={7} bold>1</Mark>
+      <Mark x={5} y={7} bold>(a)</Mark>
+      <path d="M16 4.5h15" />
+      <path d="M5 12.5h26M5 17.5h18" strokeDasharray="0.1 2" strokeOpacity="0.8" />
+      <Mark x={24} y={23}>[2]</Mark>
+    </>
+  ),
 }
 
 export function PaperStylePreview({ style }: { style: PaperStyle }) {

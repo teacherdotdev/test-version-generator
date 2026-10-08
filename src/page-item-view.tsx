@@ -27,7 +27,11 @@ import {
   answerKeyMarksText,
   answerKeyTotalText,
   type AnswerKeySectionItem,
+  COVER_INSTRUCTIONS_HEADING,
+  printedLabel,
+  printedNumberOf,
   type ChoiceGrid,
+  type CoverPageItem,
   type MatchingSet,
   type PageFurniture,
   type PlannedBankAnswer,
@@ -102,7 +106,7 @@ export function ChoiceGridView({
                           <Lock aria-hidden="true" />
                         </span>
                       )}
-                      {choice.letter}.
+                      {printedLabel(choice.letter, choice.printed)}
                     </span>
                     <DocView className="choice-body" content={blocksOf(choice.node)} />
                   </>
@@ -126,7 +130,7 @@ export function ChoiceGridView({
 export function BankAnswer({ answer }: { answer: PlannedBankAnswer }) {
   return (
     <div className="matching-answer">
-      <span className="matching-letter">{answer.letter}.</span>
+      <span className="matching-letter">{printedLabel(answer.letter, answer.printed)}</span>
       <DocView className="matching-body" content={blocksOf(answer.node)} />
     </div>
   )
@@ -152,7 +156,7 @@ export function MatchingSetView({
           aria-label="Answer blank"
           data-answer={showCorrectness && prompt.letter ? prompt.letter : undefined}
         />
-        <span className="matching-count">{prompt.number}.</span>
+        <span className="matching-count">{printedLabel(prompt.number, prompt.printed)}</span>
       </span>
       <DocView className="matching-body" content={blocksOf(prompt.node)} />
     </div>
@@ -211,6 +215,7 @@ export function WorkSpaceView({ space }: { space: PlannedWorkSpace }) {
       data-style={space.style}
       data-lines={space.style === 'lines' ? space.lines : undefined}
       data-fill={space.fill ? 'true' : undefined}
+      data-ruling={space.ruling}
       style={{ height: `${space.height}px` }}
     >
       {Array.from({ length: space.lines }, (_unused, index) => (
@@ -222,6 +227,13 @@ export function WorkSpaceView({ space }: { space: PlannedWorkSpace }) {
       ))}
     </div>
   )
+}
+
+// Marks a Paper Style prints after an answer or a question, against the
+// right margin on a line of their own: `[2]`, `[Total: 9]`. A paragraph, so it
+// measures, prints and reads back as one.
+export function MarksAfter({ text }: { text: string }) {
+  return <p className="marks-after">{text}</p>
 }
 
 // One Part of a Multipart question, drawn the way a question of its kind is, one level
@@ -252,7 +264,7 @@ export function PartContent({
       {...(part.continued ? { 'data-continued': 'true' } : {})}
     >
       <div className="part-letter">
-        {!part.continued && <span className="part-count">{part.letter}.</span>}
+        {!part.continued && <span className="part-count">{printedLabel(part.letter, part.printed)}</span>}
       </div>
       {renderMarks && !part.continued && part.type !== 'subparts' && renderMarks(part.id, part.marks)}
       <div className="part-body">
@@ -262,6 +274,7 @@ export function PartContent({
           && (renderWorkSpace
             ? renderWorkSpace(part.id, part.workSpace)
             : <WorkSpaceView space={part.workSpace} />)}
+        {!part.continued && part.marksAfter && <MarksAfter text={part.marksAfter} />}
         {part.subparts.length > 0 && (
           <div className="multipart-subparts-print">
             {part.subparts.map((subpart) => (
@@ -300,7 +313,7 @@ function SubpartContent({
       data-part-type={subpart.type}
     >
       <div className="part-letter">
-        <span className="part-count">{subpart.label}.</span>
+        <span className="part-count">{printedLabel(subpart.label, subpart.printed)}</span>
       </div>
       {renderMarks?.(subpart.id, subpart.marks)}
       <div className="part-body">
@@ -310,6 +323,7 @@ function SubpartContent({
           && (renderWorkSpace
             ? renderWorkSpace(subpart.id, subpart.workSpace)
             : <WorkSpaceView space={subpart.workSpace} />)}
+        {subpart.marksAfter && <MarksAfter text={subpart.marksAfter} />}
       </div>
     </div>
   )
@@ -357,7 +371,7 @@ export function QuestionContent({
             ))}
           </span>
         )}
-        {numbered && <span className="question-count">{item.question.number}.</span>}
+        {numbered && <span className="question-count">{printedNumberOf(item.question)}</span>}
       </div>
       <div className="question-body">
         <DocView className="question-stem" content={item.stem} />
@@ -382,7 +396,49 @@ export function QuestionContent({
       {item.matching && (
         <MatchingSetView set={item.matching} showCorrectness={showCorrectness} />
       )}
+      {item.closingMarks && (
+        <div className="question-closing">
+          {item.closingMarks.map((text, index) => <MarksAfter key={index} text={text} />)}
+        </div>
+      )}
     </>
+  )
+}
+
+// A Cover Page (ADR-0045), alone on the test's first page: the title, the
+// Paper Details the teacher wrote, a labelled box for each candidate field,
+// the instructions as a list, and the paper's total.
+export function CoverPageContent({ item }: { item: CoverPageItem }) {
+  return (
+    <section className="cover-page">
+      {item.title && (
+        <h1
+          className="cover-title"
+          style={item.titleSize ? { fontSize: TITLE_PX[item.titleSize] } : undefined}
+        >
+          {item.title}
+        </h1>
+      )}
+      {item.subject && <p className="cover-subject">{item.subject}</p>}
+      {item.duration && <p className="cover-duration">{item.duration}</p>}
+      {item.candidateFields.length > 0 && (
+        <div className="cover-fields">
+          {item.candidateFields.map((field) => (
+            <div className="cover-field" key={field}>
+              <span className="cover-field-label">{field}</span>
+              <span className="cover-field-box" />
+            </div>
+          ))}
+        </div>
+      )}
+      {item.instructions && (
+        <>
+          <h2 className="cover-heading">{COVER_INSTRUCTIONS_HEADING}</h2>
+          <DocView className="cover-instructions" content={[item.instructions]} />
+        </>
+      )}
+      {item.total && <p className="cover-total">{item.total}</p>}
+    </section>
   )
 }
 
@@ -591,6 +647,9 @@ export function PageHeaderContent({
         ) : (
           <IdentityText furniture={furniture} />
         )}
+        {furniture.pageNumberAt === 'top' && (
+          <span className="page-running-number">{furniture.pageNumber}</span>
+        )}
         <span className="page-id">{furniture.arrangementLabel}</span>
       </div>
       {furniture.title !== null && (
@@ -631,6 +690,23 @@ export function PageHeaderContent({
   )
 }
 
+// The foot of a sheet: its page number, centred, on every style that prints
+// it there; and the paper code at the left and "Turn over" against the right
+// under a style that prints them (ADR-0045).
+export function PageFooterContent({ furniture }: { furniture: PageFurniture }) {
+  return (
+    <footer
+      className={furniture.footLeft || furniture.footRight ? 'page-footer page-footer--running' : 'page-footer'}
+    >
+      {furniture.pageNumberAt === undefined && (
+        <span className="page-footer-number">{furniture.pageNumber}</span>
+      )}
+      {furniture.footLeft && <span className="page-foot-left">{furniture.footLeft}</span>}
+      {furniture.footRight && <span className="page-foot-right">{furniture.footRight}</span>}
+    </footer>
+  )
+}
+
 // One page item at its printed size, with no handlers and no gutter — what
 // `dom-measure.ts` renders off-screen to read a height back off.
 //
@@ -638,6 +714,8 @@ export function PageHeaderContent({
 // until it has been given a way to be drawn, and therefore measured.
 export function PageItemMeasureView({ item }: { item: PageItem }) {
   switch (item.kind) {
+    case 'cover':
+      return <CoverPageContent item={item} />
     case 'section-heading':
       return (
         <SectionHeadingContent item={item} />

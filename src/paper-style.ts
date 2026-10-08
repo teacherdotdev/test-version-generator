@@ -1,11 +1,15 @@
-// What an Exam's Paper Style says about how its questions print.
+// What an Exam's Paper Style says about how its paper prints.
 //
 // A Paper Style is one test-wide preset, chosen from the Format menu like
 // the heading and text sizes (ADR-0025), and never set per question or per
 // Question Type (ADR-0041). It decides what prints before a question's number,
 // how answers are lettered and laid out, how a matching set's Word Bank sits,
 // what room a Short Answer position leaves when the teacher has set none, and
-// how far apart questions stand. The Export Document reads these rules once,
+// how far apart questions stand — and, since the Exam Board style (ADR-0045),
+// the sheet's size, how questions, Parts, Subparts and answers are labelled,
+// how ruled lines look, where Marks print, whether there is a Cover Page and
+// what the head and foot of each page carry. The Export Document reads these
+// rules once,
 // so print, PDF, DOCX, the Export Preview and the exam sheet all draw the same
 // thing; nothing here is read by an adapter.
 //
@@ -14,12 +18,13 @@
 
 import type { WorkSpace } from './exam'
 
-export type PaperStyle = 'standard' | 'classic' | 'condensed'
+export type PaperStyle = 'standard' | 'classic' | 'condensed' | 'exam-board'
 
 export const PAPER_STYLES: readonly PaperStyle[] = [
   'standard',
   'classic',
   'condensed',
+  'exam-board',
 ]
 
 export const DEFAULT_PAPER_STYLE: PaperStyle = 'standard'
@@ -44,6 +49,10 @@ export const PAPER_STYLE_LABELS: Record<PaperStyle, { label: string; description
     label: 'Condensed',
     description: 'Saves paper: tighter spacing, answers across where they fit, closer-ruled lines.',
   },
+  'exam-board': {
+    label: 'Exam Board',
+    description: 'A4 with a cover page: 1 (a) (i) labels, dotted lines, marks in brackets at the right.',
+  },
 }
 
 /** The answer blank a student writes a letter, or T or F, on, printed before a
@@ -64,6 +73,72 @@ export type Lettering = 'upper' | 'lower'
  *  again only those the teacher did not move (`wordBankLayoutFor`, ADR-0044). */
 export type BankPlacement = 'fit' | 'above'
 
+/** The sheet a style prints on: US Letter, or A4 (ADR-0045). */
+export type PaperSize = 'letter' | 'a4'
+
+/** How a ruled Work Space's lines are drawn: a solid rule, or a row of dots. */
+export type Ruling = 'solid' | 'dotted'
+
+/** How something is labelled where it prints, as a small template: `{n}` is
+ *  its number or letter. `'{n}.'` prints `1.`, `a.`, `A.`; `'({n})'` prints
+ *  `(a)`. A template is data, so a style for another paper needs no code. */
+export type LabelTemplate = string
+
+/** The labels a style prints, by level. Each is a template (`LabelTemplate`). */
+export type PaperLabels = {
+  /** A question's number, and a matching set's Item numbers. */
+  question: LabelTemplate
+  /** A Part's letter. */
+  part: LabelTemplate
+  /** A Subpart's numeral. */
+  subpart: LabelTemplate
+  /** A Multiple Choice answer's letter, and a Word Bank answer's. */
+  answer: LabelTemplate
+}
+
+/** Every label the sheet always printed: a number or letter and a full stop. */
+export const PERIOD_LABELS: PaperLabels = {
+  question: '{n}.',
+  part: '{n}.',
+  subpart: '{n}.',
+  answer: '{n}.',
+}
+
+/** A label written through its template. */
+export function labelled(template: LabelTemplate, value: string | number): string {
+  return template.split('{n}').join(String(value))
+}
+
+/** Where a style prints Marks on the test (ADR-0045). Each placement is its
+ *  own rule, with its wording a template in which `{n}` is the Marks; one a
+ *  style leaves out is not printed, and nothing unmarked prints any. */
+export type MarkPlacements = {
+  /** After each marked answer, against the right margin: a Multiple Choice,
+   *  True/False or Matching question's after its answers, a Short Answer
+   *  question's, Part's or Subpart's after its Work Space. */
+  marksAfterAnswer?: string
+  /** After each marked Multipart question, against the right margin: the sum
+   *  of its Parts' and Subparts' Marks. */
+  questionTotal?: string
+  /** After a Section's last question, against the right margin: the sum of
+   *  its questions' Marks. */
+  sectionTotal?: string
+  /** On the Cover Page: the paper's total. */
+  paperTotalOnCover?: string
+}
+
+/** What a style prints at the head and foot of each test page, past the
+ *  Page Header line every style but one with a Cover Page prints. */
+export type RunningFurniture = {
+  /** Where the page number prints: centred at the foot, as the sheet always
+   *  printed it, or centred at the top. */
+  pageNumber: 'foot' | 'top'
+  /** Whether the Exam's paper code (a Paper Detail) prints at the foot, left. */
+  paperCode: boolean
+  /** What prints at the foot, right, of every test page another test page
+   *  follows; absent prints nothing there. */
+  continues?: string
+}
 export type PaperStyleRules = {
   /** What prints before a True/False question's number. */
   trueFalseMarks: readonly string[]
@@ -89,6 +164,20 @@ export type PaperStyleRules = {
    *  Work Space keeps its count of rows under every style; a smaller pitch
    *  only sets them closer, and never rewrites a stored height. */
   workSpacePitch: number
+  /** The sheet, US Letter or A4. Every page of the test and its Answer Key. */
+  pageSize: PaperSize
+  /** How questions, Parts, Subparts and answers are labelled on the test. The
+   *  Answer Key keeps its own labels whatever the style. */
+  labels: PaperLabels
+  /** How a ruled Work Space is drawn. */
+  ruling: Ruling
+  /** Where Marks print on the test. */
+  marks: MarkPlacements
+  /** Whether the test opens with a Cover Page (ADR-0045). A style with one
+   *  prints the candidate fields there, so its test pages carry no Page
+   *  Header line. */
+  coverPage: boolean
+  running: RunningFurniture
 }
 
 /** The letters a True/False question's student circles, in the order they print. */
@@ -100,6 +189,18 @@ export const STANDARD_QUESTION_GAP = 26
 /** The Work Space pitch every style but Condensed keeps: `WORK_SPACE_LINE_PITCH`,
  *  a third of an inch. */
 const STANDARD_WORK_SPACE_PITCH = 32
+
+/** What every style printed before the Exam Board style: US Letter, `1.`
+ *  `a.` `i.` `A.`, solid rules, no Marks on the test, no Cover Page, and the
+ *  page number at the foot. */
+const SHEET_RULES = {
+  pageSize: 'letter',
+  labels: PERIOD_LABELS,
+  ruling: 'solid',
+  marks: {},
+  coverPage: false,
+  running: { pageNumber: 'foot', paperCode: false },
+} as const satisfies Pick<PaperStyleRules, 'pageSize' | 'labels' | 'ruling' | 'marks' | 'coverPage' | 'running'>
 
 export const PAPER_STYLE_RULES: Record<PaperStyle, PaperStyleRules> = {
   // The sheet as ADR-0029 left it: T and F to circle, a letter circled on its
@@ -113,6 +214,7 @@ export const PAPER_STYLE_RULES: Record<PaperStyle, PaperStyleRules> = {
     defaultWorkSpace: null,
     questionGap: STANDARD_QUESTION_GAP,
     workSpacePitch: STANDARD_WORK_SPACE_PITCH,
+    ...SHEET_RULES,
   },
   // Modeled on what common test generators print by default: an answer blank
   // before every objective question's number, True/False written on that
@@ -127,6 +229,7 @@ export const PAPER_STYLE_RULES: Record<PaperStyle, PaperStyleRules> = {
     defaultWorkSpace: { height: 96, style: 'lines', fill: false },
     questionGap: STANDARD_QUESTION_GAP,
     workSpacePitch: STANDARD_WORK_SPACE_PITCH,
+    ...SHEET_RULES,
   },
   // Paper first: nothing added before a number, questions closer together,
   // answers laid across the line wherever they fit, and room to write kept
@@ -141,6 +244,33 @@ export const PAPER_STYLE_RULES: Record<PaperStyle, PaperStyleRules> = {
     defaultWorkSpace: { height: 96, style: 'lines', fill: false },
     questionGap: 12,
     workSpacePitch: 24,
+    ...SHEET_RULES,
+  },
+  // Set out the way international exam boards' papers commonly are (ADR-0045),
+  // with none of any board's own wording (ADR-0044): A4; `1`, `(a)`, `(i)`;
+  // dotted lines to write on; each answer's Marks in brackets at the right
+  // margin and each Multipart question's total beneath it; a Cover Page with
+  // the Paper Details, the candidate boxes and the paper's total; and the
+  // page number at the top, the paper code and "Turn over" at the foot.
+  'exam-board': {
+    trueFalseMarks: TRUE_FALSE_MARKS,
+    multipleChoiceMarks: [],
+    lettering: 'upper',
+    answersAcross: false,
+    bankPlacement: 'fit',
+    defaultWorkSpace: { height: 96, style: 'lines', fill: false },
+    questionGap: STANDARD_QUESTION_GAP,
+    workSpacePitch: STANDARD_WORK_SPACE_PITCH,
+    pageSize: 'a4',
+    labels: { question: '{n}', part: '({n})', subpart: '({n})', answer: '{n}' },
+    ruling: 'dotted',
+    marks: {
+      marksAfterAnswer: '[{n}]',
+      questionTotal: '[Total: {n}]',
+      paperTotalOnCover: 'The total mark for this paper is {n}.',
+    },
+    coverPage: true,
+    running: { pageNumber: 'top', paperCode: true, continues: 'Turn over' },
   },
 }
 

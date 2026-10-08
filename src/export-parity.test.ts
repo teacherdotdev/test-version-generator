@@ -10,6 +10,7 @@
 // diagnostic; see `docs/export-testing.md`.
 
 import { describe, expect, test } from 'bun:test'
+import JSZip from 'jszip'
 import { createExamDocx } from './docx-export'
 import type { MediaLoader } from './export-media'
 import { docxFingerprint } from './docx-fingerprint'
@@ -129,15 +130,15 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     expectSameDocument(planned, printFingerprint(planOf(fixture)))
   })
 
-  test('carries Marks on the Answer Key under every Paper Style, and never on the test', async () => {
+  test('carries Marks on the Answer Key under every Paper Style, and on the test only where its style prints them', async () => {
     const marked = FIXTURES.find((item) => item.name === 'a marked paper')!
-    for (const paperStyle of PAPER_STYLES) {
+    for (const paperStyle of PAPER_STYLES.filter((style) => style !== 'exam-board')) {
       const fixture = { ...marked, exam: { ...marked.exam, paperStyle } }
       const plans = planOf(fixture)
       const planned = layoutFingerprint(plans)
       const [test, key] = [0, 1].map((stream) =>
         layoutFingerprint([plans[stream]!]).pages.flatMap((page) => page.content))
-      // The test says nothing of Marks under any style yet.
+      // The test says nothing of Marks under a style with no mark placements.
       expect(test!.some((line) => /\[\d+\]|marks?\b/.test(line))).toBe(false)
       // The key gives the paper's total, each marked line its `[n]`, a
       // Matching set's once on its first Item, and an unmarked line none.
@@ -152,6 +153,80 @@ describe('the DOCX Export Adapter carries the planned document', () => {
       expectSameDocument(planned, await docxOf(fixture))
       expectSameDocument(planned, printFingerprint(plans))
     }
+  })
+
+  test('carries an Exam Board paper: its Cover Page, labels, dotted lines and Marks, on A4', async () => {
+    const fixture = FIXTURES.find((item) => item.name === 'a marked paper in the exam board paper style')!
+    const plans = planOf(fixture)
+    const [test, key] = plans
+    const planned = layoutFingerprint(plans)
+    const testPages = layoutFingerprint([test!]).pages
+    const lines = testPages.flatMap((page) => page.content)
+
+    // A4, every page of the test and the key.
+    for (const page of planned.pages) expect([page.width, page.height]).toEqual([794, 1123])
+
+    // The Cover Page is the test's own first page, alone, from the Paper Details.
+    expect(testPages[0]!.content).toEqual([
+      'heading:title Plant Biology',
+      'para Biology: Paper 1',
+      'para 1 hour',
+      'field:Name',
+      'field:Class',
+      'field:Candidate number',
+      'heading:2 Instructions',
+      'list:bullet:0 Answer every question.',
+      'list:bullet:0 Write each answer in the space below its question.',
+      'list:bullet:0 The marks for each answer are shown in brackets [ ] at the right-hand margin.',
+      'para The total mark for this paper is 16.',
+    ])
+    // …and never part of the Answer Key.
+    expect(layoutFingerprint([key!]).pages.flatMap((page) => page.content)).not.toContain('field:Name')
+
+    // `1` before the stem, `A` before an answer, `(a)` and `(i)` before Parts
+    // and Subparts, the Marks after each answer and the Multipart total.
+    expect(lines).toContain('para 1 Which gas do leaves give out in sunlight?')
+    expect(lines).toContain('para B Oxygen')
+    expect(lines).toContain('para 5 Explain why a plant kept in the dark loses mass.')
+    expect(lines).toContain('para (a) State one condition seeds need to germinate.')
+    expect(lines).toContain('para (i) Which colour are the cupboard seedlings?')
+    expect(lines).toContain('para (ii) Explain the difference in their height.')
+    // The style's three dotted lines, then the answer's Marks after them.
+    const shortAnswer = lines.indexOf('para 5 Explain why a plant kept in the dark loses mass.')
+    expect(lines.slice(shortAnswer + 1, shortAnswer + 3)).toEqual(['space:lines:3:dotted', 'para [3]'])
+    // The teacher's own two lines on Part (a) win over the style's three.
+    const partA = lines.indexOf('para (a) State one condition seeds need to germinate.')
+    expect(lines.slice(partA + 1, partA + 3)).toEqual(['space:lines:2:dotted', 'para [2]'])
+    expect(lines.at(-2)).toBe('para [6]')
+    expect(lines.at(-1)).toBe('para [Total: 9]')
+    // A Multiple Choice and a Matching set print their Marks after their answers.
+    expect(lines).toContain('para [1]')
+    expect(lines.indexOf('para [2]')).toBeGreaterThan(lines.findIndex((line) => line.includes('Receives pollen')))
+
+    // The page number at the top, centred; the paper code at the foot; and
+    // "Turn over" on every test page another test page follows.
+    expect(testPages[0]!.header).toEqual(['para'])
+    expect(testPages[1]!.header).toEqual(['para 2'])
+    expect(testPages.map((page) => page.footer[0])).toEqual([
+      ...Array.from({ length: testPages.length - 1 }, () => 'para BIO-1 Turn over'),
+      'para BIO-1',
+    ])
+    // The Answer Key keeps the sheet's own furniture.
+    expect(layoutFingerprint([key!]).pages[0]!.footer).toEqual(['para 1'])
+
+    expectSameDocument(planned, await docxOf(fixture))
+    expectSameDocument(planned, printFingerprint(plans))
+  })
+
+  test('cuts an A4 plan to A4 exactly in Word', async () => {
+    const fixture = FIXTURES.find((item) => item.name === 'a marked paper in the exam board paper style')!
+    const blob = await createExamDocx(planOf(fixture), noImages)
+    const xml = await (await JSZip.loadAsync(await blob.arrayBuffer())).file('word/document.xml')!.async('string')
+    const sizes = [...xml.matchAll(/<w:pgSz [^>]*w:w="(\d+)"[^>]*w:h="(\d+)"/g)].map((match) => `${match[1]}x${match[2]}`)
+    expect(sizes.length).toBeGreaterThan(0)
+    expect(new Set(sizes)).toEqual(new Set(['11906x16838']))
+    // Dotted lines are dotted borders.
+    expect(xml).toContain('w:val="dotted"')
   })
 
   test('continues a Part’s later Subparts on the next page without its letter or lead-in', async () => {
@@ -311,7 +386,7 @@ describe('the supported document vocabulary', () => {
         ),
       ),
     )
-    expect([...headers].sort()).toEqual(['answer-key', 'answer-key-later', 'first', 'later'])
+    expect([...headers].sort()).toEqual(['answer-key', 'answer-key-later', 'cover', 'first', 'later'])
   })
 })
 

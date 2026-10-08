@@ -21,6 +21,8 @@ import {
   AnswerKeyEntry,
   AnswerKeyHeading,
   AnswerKeySection,
+  CoverPageContent,
+  PageFooterContent,
   PageHeaderContent,
   PageItemMeasureView,
   QuestionContent,
@@ -31,6 +33,7 @@ import {
 import { headerLineOf, type HeaderLine } from './page-header'
 import { pageContentStyle } from './export-typography'
 import { pageGeometry } from './page-geometry'
+import { paperStyleRules } from './paper-style'
 import {
   US_LETTER,
   maxWorkSpaceHeight,
@@ -1411,6 +1414,8 @@ function PageItemView({
   onDragEnd: () => void
 }) {
   switch (item.kind) {
+    case 'cover':
+      return <CoverPageContent item={item} />
     case 'section-heading':
       return onSectionHeadingChange ? (
         <EditableSectionHeading
@@ -1467,6 +1472,8 @@ function PageItemView({
 
 function keyOf(item: PageItem): string {
   switch (item.kind) {
+    case 'cover':
+      return 'cover'
     case 'section-heading':
       return `heading-${item.sectionId}`
     case 'question':
@@ -1655,7 +1662,11 @@ export function ExportPreview({ plan }: { plan: LayoutPlan }) {
   return (
     <main className="exam-workspace" style={pageGeometry(plan.pageSize)}>
       {plan.pages.map((page) => (
-        <article className="exam-page" key={`${page.stream}-${page.header}-${page.number}`}>
+        <article
+          className="exam-page"
+          key={`${page.stream}-${page.header}-${page.number}`}
+          data-paper={plan.pageSize.paper}
+        >
           <PageHeaderContent header={page.header} furniture={page.furniture} />
           <div
             className="page-content"
@@ -1666,7 +1677,7 @@ export function ExportPreview({ plan }: { plan: LayoutPlan }) {
               <PageItemMeasureView key={keyOf(item)} item={item} />
             ))}
           </div>
-          <footer className="page-footer">{page.furniture.pageNumber}</footer>
+          <PageFooterContent furniture={page.furniture} />
         </article>
       ))}
     </main>
@@ -2101,6 +2112,9 @@ export function ExamPage({
   // Every test page's header line can be typed on, and every later page shows
   // the one later line: they are the same words printed again.
   const identityEditorFor = (header: PageHeader): IdentityLineEditor | undefined => {
+    // A style with a Cover Page asks for the candidate's details there, and
+    // its pages print no header line to reword.
+    if (paperStyleRules(exam.paperStyle).coverPage) return undefined
     if (!onHeaderLineChange || (header !== 'first' && header !== 'later')) return undefined
     return {
       text: headerLineOf(exam.header, header),
@@ -2133,6 +2147,7 @@ export function ExamPage({
         <article
           className="exam-page"
           key={`${page.header}-${page.number}`}
+          data-paper={plan.pageSize.paper}
           onClick={clearOnBackground}
         >
           {sectionBands
@@ -2195,7 +2210,7 @@ export function ExamPage({
                 chrome: it appears only while the exam is empty, and it is
                 never part of the printed document. It lights up with the
                 pane, which is the drop target; it is not one of its own. */}
-            {blank && index === 0 && (
+            {blank && index === Math.max(0, pages.findIndex((candidate) => candidate.header !== 'cover')) && (
               <div
                 className="secondary-button empty-exam-button"
                 data-active={startsFirstSection ? 'true' : undefined}
@@ -2231,7 +2246,7 @@ export function ExamPage({
               />
             ))}
           </div>
-          <footer className="page-footer">{page.furniture.pageNumber}</footer>
+          <PageFooterContent furniture={page.furniture} />
         </article>
       ))}
 

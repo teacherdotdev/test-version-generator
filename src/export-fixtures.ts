@@ -1620,11 +1620,93 @@ export const FIXTURES: readonly Fixture[] = [
     },
   ),
 
+  // The Exam Board Paper Style (ADR-0045) over a marked paper: a Cover Page
+  // from the Exam's Paper Details on A4, `1`, `(a)`, `(i)` and `A` labels,
+  // dotted lines where the teacher set no Work Space, each marked answer's
+  // `[n]` at the right margin, the Multipart question's `[Total: 9]`, and the
+  // paper code and "Turn over" at the foot of every test page but the last.
+  // One question to a page, so the test runs over several.
+  fixture(
+    'a marked paper in the exam board paper style',
+    {
+      title: 'Plant Biology',
+      paperStyle: 'exam-board',
+      paperDetails: { subject: 'Biology: Paper 1', duration: '1 hour', paperCode: 'BIO-1' },
+      questions: [
+        {
+          ...multipleChoice(
+            'eb-mc',
+            2,
+            [paragraph(text('Which gas do leaves give out in sunlight?'))],
+            [
+              choice('eb-mc-a', false, paragraph(text('Nitrogen'))),
+              choice('eb-mc-b', true, paragraph(text('Oxygen'))),
+              choice('eb-mc-c', false, paragraph(text('Argon'))),
+              choice('eb-mc-d', false, paragraph(text('Helium'))),
+            ],
+          ),
+          marks: 1,
+        },
+        { ...trueFalse('eb-tf', [paragraph(text('Xylem carries water up the stem.'))], 'true'), marks: 1 },
+        {
+          ...matching(
+            'eb-mx',
+            [paragraph(text('Match each part of a flower to its job.'))],
+            [
+              prompt('eb-mx-p1', 'eb-mx-a1', paragraph(text('Anther'))),
+              prompt('eb-mx-p2', 'eb-mx-a2', paragraph(text('Stigma'))),
+            ],
+            [
+              bankAnswer('eb-mx-a1', paragraph(text('Makes pollen'))),
+              bankAnswer('eb-mx-a2', paragraph(text('Receives pollen'))),
+            ],
+          ),
+          marks: 2,
+        },
+        { ...open('eb-sa', paragraph(text('Explain why a plant kept in the dark loses mass.'))), marks: 3 },
+        multipart(
+          'eb-mp',
+          [paragraph(text('A student grows cress seeds on damp cotton wool.'))],
+          [
+            { ...part('eb-mp-a', [paragraph(text('State one condition seeds need to germinate.'))], suggestedAnswer(paragraph(text('Warmth.')))), attrs: { id: 'eb-mp-a', columns: DEFAULT_COLUMNS, marks: 2 } },
+            partWithSubparts(
+              'eb-mp-b',
+              [paragraph(text('Half the seeds are kept in a cupboard.'))],
+              [
+                {
+                  ...subpart(
+                    'eb-mp-b-i',
+                    [paragraph(text('Which colour are the cupboard seedlings?'))],
+                    choicesOf(
+                      choice('eb-mp-b-i-a', true, paragraph(text('Yellow'))),
+                      choice('eb-mp-b-i-b', false, paragraph(text('Dark green'))),
+                    ),
+                  ),
+                  attrs: { id: 'eb-mp-b-i', columns: DEFAULT_COLUMNS, marks: 1 },
+                },
+                { ...subpart('eb-mp-b-ii', [paragraph(text('Explain the difference in their height.'))], suggestedAnswer()), attrs: { id: 'eb-mp-b-ii', columns: DEFAULT_COLUMNS, marks: 6 } },
+              ],
+            ),
+          ],
+        ),
+      ],
+      // The teacher's own Work Space wins over the style's dotted three lines.
+      workSpace: { 'eb-mp-a': { height: 64, style: 'lines', fill: false } },
+    },
+    arrangement(['eb-mc', 'eb-tf', 'eb-mx', 'eb-sa', 'eb-mp']),
+    {
+      answerKey: true,
+      measure: { itemHeight: (item: PageItem) => (item.kind === 'question' ? 600 : 40) },
+    },
+  ),
+
   // Each Paper Style over every Question Type, so every adapter prints its
   // blanks, its letters, its Word Bank and its default Work Space the way the
   // plan resolved them. Two questions to a page, so the PDF has room to draw
-  // them; Condensed's measure fits every answer four across.
-  ...(['classic', 'condensed'] as const).map((paperStyle) =>
+  // them; Condensed's measure fits every answer four across. Unmarked, and
+  // with no Paper Details, an Exam Board Cover Page prints the title, the
+  // style's own candidate fields and instructions, and no total.
+  ...(['classic', 'condensed', 'exam-board'] as const).map((paperStyle) =>
     fixture(
       `every question type in the ${paperStyle} paper style`,
       { ...PAPER_STYLE_EXAM, title: `${paperStyle} style`, paperStyle },

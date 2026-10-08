@@ -1,0 +1,42 @@
+{
+  "format": "test-parrot/exam",
+  "formatVersion": "0.4.0",
+  "name": "Cells and Tissues",
+  "sections": [
+    {
+      "title": "",
+      "instructions": ""
+    }
+  ],
+  "paperStyle": "exam-board",
+  "paperDetails": {
+    "subject": "Biology: Paper 2",
+    "duration": "45 minutes",
+    "paperCode": "BIO-2-NOV",
+    "instructions": [
+      "Answer every question.",
+      "Use a pencil only for diagrams."
+    ],
+    "candidateFields": [
+      "name",
+      "class",
+      "date"
+    ]
+  },
+  "positions": [
+    {
+      "question": {
+        "bank": "bank",
+        "question": "q1"
+      },
+      "section": 0
+    },
+    {
+      "question": {
+        "bank": "bank",
+        "question": "q5"
+      },
+      "section": 0
+    }
+  ]
+}

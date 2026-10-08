@@ -18,6 +18,7 @@
 
 import { isExamHeader, sameExamHeader } from './page-header'
 import { isPageMargins, sameMargins } from './page-margins'
+import { isPaperDetails, normalizedPaperDetails, samePaperDetails } from './paper-details'
 import { DEFAULT_PAPER_STYLE, isPaperStyle } from './paper-style'
 import {
   DEFAULT_HEADING_SIZE,
@@ -216,6 +217,7 @@ export function selectedExam(
     isExamHeader(draft.header) && Object.keys(draft.header).length > 0 ? draft.header : undefined
   const margins =
     isPageMargins(draft.margins) && !sameMargins(draft.margins, undefined) ? draft.margins : undefined
+  const paperDetails = isPaperDetails(draft.paperDetails) ? normalizedPaperDetails(draft.paperDetails) : undefined
   const exam: Exam =
     previous
     && previous.exam.title === draft.title
@@ -233,6 +235,7 @@ export function selectedExam(
     && previous.exam.textSize === textSize
     && previous.exam.paperStyle === paperStyle
     && previous.exam.margins === margins
+    && samePaperDetails(previous.exam.paperDetails, paperDetails)
       ? previous.exam
       : {
           title: draft.title,
@@ -248,6 +251,7 @@ export function selectedExam(
           ...(paperStyle ? { paperStyle } : {}),
           ...(header ? { header } : {}),
           ...(margins ? { margins } : {}),
+          ...(paperDetails ? { paperDetails } : {}),
         }
 
   // Only ids the bank can resolve: an ordering may tolerate a stranger, but an

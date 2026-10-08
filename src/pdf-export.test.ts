@@ -240,6 +240,49 @@ describe('PDF Export Adapter', () => {
     expect(key).toContain('b (ii).')
   })
 
+  test('draws an Exam Board paper on A4: its Cover Page, labels, Marks at the right margin and running furniture', async () => {
+    const { plans } = plansOf('a marked paper in the exam board paper style')
+    const bytes = await createPublicationPdf(plans, noImages, fonts)
+    const pdf = await PDFDocument.load(bytes)
+    for (const page of pdf.getPages()) {
+      const { width, height } = page.getSize()
+      expect(width).toBeCloseTo(595.28, 2)
+      expect(height).toBeCloseTo(841.89, 2)
+    }
+    const document = await getDocument({ data: bytes, disableWorker: true }).promise
+    const items = async (page: number) =>
+      (await (await document.getPage(page)).getTextContent()).items.flatMap((item) =>
+        'str' in item && item.str.trim() ? [{ text: item.str.trim(), x: item.transform[4] as number }] : [])
+    const testPageCount = plans[0]!.pages.length
+    const pages = await Promise.all(Array.from({ length: document.numPages }, (_, index) => items(index + 1)))
+    const textOf = (page: number) => pages[page]!.map((item) => item.text).join(' ')
+
+    // The Cover Page: title, Paper Details, candidate fields, instructions, total.
+    const cover = textOf(0)
+    for (const text of ['Plant Biology', 'Biology: Paper 1', '1 hour', 'Name', 'Candidate number', 'Instructions',
+      'Answer every question.', 'The total mark for this paper is 16.']) {
+      expect(cover).toContain(text)
+    }
+    // Labels and Marks on the question pages, each `[n]` at the right margin.
+    const test = pages.slice(1, testPageCount).flat()
+    const texts = test.map((item) => item.text)
+    for (const text of ['(a)', '(b)', '(i)', '(ii)', '[1]', '[2]', '[3]', '[6]', '[Total: 9]']) expect(texts).toContain(text)
+    const right = test.find((item) => item.text === '[Total: 9]')!.x
+    const left = test.find((item) => item.text === '(a)')!.x
+    expect(right).toBeGreaterThan(left + 300)
+    // "Turn over" on every test page but the last, the paper code on each,
+    // and the page number at the top of every page after the cover.
+    for (let page = 0; page < testPageCount; page += 1) {
+      expect(textOf(page)).toContain('BIO-1')
+      expect(textOf(page).includes('Turn over')).toBe(page < testPageCount - 1)
+    }
+    expect(pages[1]![0]!.text).toBe('2')
+    // The Answer Key keeps the sheet's own: no Cover Page, no Turn over.
+    const key = pages.slice(testPageCount).map((page) => page.map((item) => item.text).join(' ')).join(' ')
+    expect(key).not.toContain('Turn over')
+    expect(key).not.toContain('Candidate number')
+  })
+
   test('draws a boxed passage inside a black border around its text', async () => {
     const { plans } = plansOf('a boxed passage that opens its question')
     const bytes = await createPublicationPdf(plans, noImages, fonts)

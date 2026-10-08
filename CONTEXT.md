@@ -37,7 +37,7 @@ The versioned, format-owned machine-readable representation of one Question Bank
 _Avoid_: PDF metadata, extracted questions
 
 **Exam Record**:
-The versioned, format-owned machine-readable composition of one Exam: its name and, for each position, the Question it references in a Question Bank Record travelling in the same Test Parrot Package, with that position's answer columns, answer order, Hidden Answers, Word Bank layout and Work Space, and the Question Section it is in, and the Exam's heading and text sizes, Paper Style and Page Margins. It carries the Exam's Sections in print order, each with its Section Heading and Section Directions, so a test an assistant converts keeps its own parts in its own order. It never references a Question outside its package.
+The versioned, format-owned machine-readable composition of one Exam: its name and, for each position, the Question it references in a Question Bank Record travelling in the same Test Parrot Package, with that position's answer columns, answer order, Hidden Answers, Word Bank layout and Work Space, and the Question Section it is in, and the Exam's heading and text sizes, Paper Style and Page Margins. It carries the Exam's Sections in print order, each with its Section Heading and Section Directions, so a test an assistant converts keeps its own parts in its own order, and its Paper Details. It never references a Question outside its package.
 _Avoid_: Exam layout, test JSON
 
 **Test Parrot Package**:
@@ -186,7 +186,7 @@ Room an Exam leaves below a Short Answer question or Short Answer Part for a stu
 _Avoid_: White space, answer box, response area
 
 **Page Header**:
-The line an Exam prints at the top of each test page, beside the paper's ID. By default it is Name, Class and Date blanks on the first page and a Name blank on later ones; an Exam may reword the first page's line and the later pages' line, as plain text in which underscores are the blanks, or clear either. The ID is the one value the header fills in for each paper and is never part of the line. The Exam's title prints on its own line under the first page's header, and Answer Key pages carry the ID alone.
+The line an Exam prints at the top of each test page, beside the paper's ID. By default it is Name, Class and Date blanks on the first page and a Name blank on later ones; an Exam may reword the first page's line and the later pages' line, as plain text in which underscores are the blanks, or clear either. The ID is the one value the header fills in for each paper and is never part of the line. The Exam's title prints on its own line under the first page's header, and Answer Key pages carry the ID alone. A Paper Style with a Cover Page asks for the candidate's details there instead, so its test pages print no header line.
 _Avoid_: Letterhead, banner, identity line
 
 **Page Margins**:

@@ -763,14 +763,24 @@ button { cursor: pointer; }
 /* Page furniture. Fixed heights, because the packer subtracted exactly these
    from the sheet before deciding what fits. */
 .page-header { flex: none; display: flex; flex-direction: column; }
+.page-header--cover { height: var(--page-header-cover); }
 .page-header--first { height: var(--page-header-first); }
 .page-header--later { height: var(--page-header-later); }
 .page-header--answer-key { height: var(--page-header-answer-key); }
 .page-header--answer-key-later { height: var(--page-header-answer-key-later); }
 .page-identity {
+  position: relative;
   flex: none; height: var(--page-header-later);
   display: flex; align-items: baseline; gap: 20px;
 }
+/* The page number, centred at the top of a page under a Paper Style that
+   prints it there (ADR-0045). Out of the flow, so the line keeps its height
+   and the ID keeps the right margin. */
+.page-running-number {
+  position: absolute; left: 50%; top: 0; transform: translateX(-50%);
+  font-weight: 700;
+}
+.page-header--cover .page-identity { justify-content: flex-end; }
 .identity-field { flex: 1 1 0; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .identity-blank { flex: 1 1 auto; min-width: 48px; border-bottom: 1px solid #332a24; }
 .page-id { flex: none; font-weight: 700; white-space: nowrap; }
@@ -823,6 +833,29 @@ button { cursor: pointer; }
   display: flex; align-items: flex-end; justify-content: center;
   font-size: 13px;
 }
+/* A running foot: the paper code at the left margin and "Turn over" against
+   the right, in the body's own type. */
+.page-footer--running { justify-content: space-between; font-size: 15px; }
+.page-foot-right { margin-left: auto; font-weight: 700; }
+
+/* The Cover Page (ADR-0045): the title, the Paper Details, a box for each
+   candidate field, the instructions and the paper's total, alone on the
+   test's first page. Its heading and type match the page's own. */
+.cover-page { padding-top: 24px; }
+.cover-title { margin: 0 0 18px; font: 700 26px/1.1 Georgia, serif; overflow-wrap: anywhere; }
+.cover-subject { margin: 0 0 8px; font-size: 18px; font-weight: 700; }
+.cover-duration { margin: 0 0 8px; }
+.cover-fields { display: grid; gap: 14px; margin: 28px 0 32px; }
+.cover-field { display: grid; grid-template-columns: 160px 1fr; align-items: center; gap: 12px; }
+.cover-field-box { height: 32px; border: 1px solid #332a24; }
+.cover-heading { margin: 0 0 8px; font: 700 17px/1.2 Georgia, serif; }
+.cover-instructions ul { margin: 0; }
+.cover-total { margin: 24px 0 0; font-weight: 700; }
+
+/* Marks a Paper Style prints on the test: `[2]` after an answer, `[Total: 9]`
+   after a question, against the right margin on a line of their own. */
+.marks-after { margin: 4px 0 0; text-align: right; }
+.question-closing { grid-column: 1 / -1; }
 
 /* Where `dom-measure.ts` lays a page item out to find its height: off-screen,
    at the content width, and `flow-root` so a child's margin is contained and
@@ -1244,6 +1277,8 @@ button { cursor: pointer; }
 .work-space-line {
   box-sizing: border-box; height: 32px; border-bottom: 1px solid #8f847a;
 }
+/* Dotted lines to write on, under a Paper Style that rules them so. */
+.work-space[data-ruling='dotted'] .work-space-line { border-bottom: 1.5px dotted #4a4038; }
 
 /* On the sheet a teacher edits, blank space is otherwise invisible, so the
    question that owns it shows its extent while hovered, selected or being
@@ -2128,6 +2163,9 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
    would shrink the box the content was packed for and push it onto an extra
    sheet. */
 @page { size: 8.5in 11in; margin: 0; }
+/* An A4 plan's sheets (ADR-0045) print on A4, the same sheet in millimetres. */
+@page a4 { size: 210mm 297mm; margin: 0; }
+.exam-page[data-paper='a4'] { page: a4; }
 
 @media print {
   /* Browser print has no product document. Hide the application wholesale so
