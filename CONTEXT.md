@@ -79,9 +79,9 @@ An optional classification of a question as easy, medium, or hard.
 An optional, free-form label describing subject matter assessed by a question. A question may have more than one Topic.
 _Avoid_: Concept
 
-**Marks**:
-What answering something correctly is worth, as a whole number: an optional part of a Question that is the same on every Exam using it. Marks belong to what a student answers — a Multiple Choice, True/False or Short Answer Question, a whole Matching set, or a Part or Subpart that answers — so a Multipart question's Marks, and an Exam's total, are always the sum of their parts and never set apart from them. Something with no Marks is unmarked, not worth nothing: it adds nothing to a total, and an Exam shows a total only when some of its Questions have Marks.
-_Avoid_: Points, score, weight
+**Points**:
+What answering something correctly is worth, as a whole number: an optional part of a Question that is the same on every Exam using it. Points belong to what a student answers — a Multiple Choice, True/False or Short Answer Question, a whole Matching set, or a Part or Subpart that answers — so a Multipart question's Points, and an Exam's total, are always the sum of their parts and never set apart from them. Something with no Points is unpointed, not worth nothing: it adds nothing to a total. Like Question Metadata, Points never show on the exam sheet or the student test unless the Exam's Paper Style prints them; the Answer Key always records them.
+_Avoid_: Marks (except where a Paper Style prints its own wording), score, weight
 
 **Authored Image Size**:
 How wide a teacher makes a block image: the width of what it shows, as a share of its printable container, such as the Question Content lane, a Panel or an answer-choice cell. It never exceeds the container and always preserves the picture's proportions, so the editor resizes a picture from its corners and sides alike, in proportion. A picture no one has sized fits its container at its own width, or the container's when that is narrower. A picture taken from a Source Document for a Question's own content arrives at about the width it had on its page, and a Picture Crop keeps what it shows at the size it printed at before.
@@ -194,15 +194,15 @@ How far in from each edge of the sheet an Exam's pages print, in inches: three q
 _Avoid_: Padding, page border, gutter
 
 **Paper Style**:
-How an Exam's paper is drawn, apart from what it asks and how its Questions are arranged: its paper size, fonts, how Questions, Parts and Subparts are labelled, how ruled Work Space looks, where Marks and their totals print, its running header and footer, and its Cover Page. An Exam names one Paper Style — Standard, Classic, Condensed or Exam Board — chosen from the Format menu and never set per question; it decides what prints before a question's number, how answers and a Word Bank are lettered and laid out, how far apart questions stand, and what Work Space or Word Bank layout a question has when the teacher has set none. Standard is the sheet as it always printed, and switching between them never changes the Exam or its Questions, so switching back restores the same paper. A Paper Style is a description Test Parrot draws, never code of its own, and no Paper Style carries an exam board's name, marks or wording.
+How an Exam's paper is drawn, apart from what it asks and how its Questions are arranged: its paper size, fonts, how Questions, Parts and Subparts are labelled, how ruled Work Space looks, where Points and their totals print, its running header and footer, and its Cover Page. An Exam names one Paper Style — Standard, Classic, Condensed or Exam Board — chosen from the Format menu and never set per question; it decides what prints before a question's number, how answers and a Word Bank are lettered and laid out, how far apart questions stand, and what Work Space or Word Bank layout a question has when the teacher has set none. Standard is the sheet as it always printed, and switching between them never changes the Exam or its Questions, so switching back restores the same paper. A Paper Style is a description Test Parrot draws, never code of its own, and no Paper Style carries an exam board's name, marks or wording.
 _Avoid_: Question Style, template, theme, format, layout preset
 
 **Paper Details**:
-Facts about one Exam that its Paper Style may print — its subject line, duration, paper code, instructions and which candidate fields to ask for — written by the teacher for that Exam. The total of its Marks is never a Paper Detail: it is always counted.
+Facts about one Exam that its Paper Style may print — its subject line, duration, paper code, instructions and which candidate fields to ask for — written by the teacher for that Exam. The total of its Points is never a Paper Detail: it is always counted.
 _Avoid_: Exam metadata, cover fields
 
 **Cover Page**:
-A first page some Paper Styles put before the Questions, arranging the Exam's Paper Details, its candidate fields and its total Marks. Whether there is one, and how it is set out, belongs to the Paper Style; what it says belongs to the Exam.
+A first page some Paper Styles put before the Questions, arranging the Exam's Paper Details, its candidate fields and its total Points. Whether there is one, and how it is set out, belongs to the Paper Style; what it says belongs to the Exam.
 _Avoid_: Title page, front page
 
 **Question Section**:
