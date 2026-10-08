@@ -10,7 +10,7 @@ Always create one complete UTF-8 JSON file using the **Test Parrot Package `0.1.
 <short-name>.parrot.json
 ```
 
-A package always holds exactly one Question Bank Record `0.7.0` with every converted Question. What else goes in it depends on the source, so triage it first:
+A package always holds exactly one Question Bank Record `0.9.0` with every converted Question. What else goes in it depends on the source, so triage it first:
 
 - **The source is a test** — an exam, quiz, worksheet or any paper a student sits, with its questions in a printed order: also add one Exam Record `0.3.0` that lays the Questions out as the test does, in its printed order and under its own section headings (see [Tests](#tests)).
 - **The source is only questions** — a question pool, a study list, a bank exported from elsewhere, anything not laid out as one paper: add no Exam. `exams` is an empty array.
@@ -30,16 +30,18 @@ Do not generate a PDF. Do not return a summary in place of the JSON file.
 
 Use these resources as the source of truth:
 
-- [JSON Schema](./formats/question-bank/0.7.0/schema.json)
-- [Minimal Multiple Choice example](./formats/question-bank/0.7.0/examples/minimal-multiple-choice.json)
-- [True/False example](./formats/question-bank/0.7.0/examples/true-false.json)
-- [Matching example](./formats/question-bank/0.7.0/examples/matching.json)
-- [Multipart example](./formats/question-bank/0.7.0/examples/multipart.json)
-- [Short Answer example](./formats/question-bank/0.7.0/examples/short-answer.json)
-- [Complete rich-text example](./formats/question-bank/0.7.0/examples/complete-rich-text.json)
-- [Provenance and links example](./formats/question-bank/0.7.0/examples/provenance-and-links.json)
-- [Pending Images example](./formats/question-bank/0.7.0/examples/pending-images.json)
-- [Side-by-side example](./formats/question-bank/0.7.0/examples/side-by-side.json)
+- [JSON Schema](./formats/question-bank/0.9.0/schema.json)
+- [Minimal Multiple Choice example](./formats/question-bank/0.9.0/examples/minimal-multiple-choice.json)
+- [True/False example](./formats/question-bank/0.9.0/examples/true-false.json)
+- [Matching example](./formats/question-bank/0.9.0/examples/matching.json)
+- [Multipart example](./formats/question-bank/0.9.0/examples/multipart.json)
+- [Subparts example](./formats/question-bank/0.9.0/examples/subparts.json)
+- [Marks example](./formats/question-bank/0.9.0/examples/marks.json)
+- [Short Answer example](./formats/question-bank/0.9.0/examples/short-answer.json)
+- [Complete rich-text example](./formats/question-bank/0.9.0/examples/complete-rich-text.json)
+- [Provenance and links example](./formats/question-bank/0.9.0/examples/provenance-and-links.json)
+- [Pending Images example](./formats/question-bank/0.9.0/examples/pending-images.json)
+- [Side-by-side example](./formats/question-bank/0.9.0/examples/side-by-side.json)
 - [Test Parrot Package JSON Schema](./formats/package/0.1.0/schema.json) and [Exam Record JSON Schema](./formats/exam/0.3.0/schema.json)
 - [Package example: a test, with its bank and its Exam's sections as printed](./formats/package/0.1.0/examples/printed-test.json)
 - [Package example: questions only, with a bank and no Exam](./formats/package/0.1.0/examples/bank-only.json)
@@ -49,7 +51,7 @@ The Question Bank Record inside the package has this top-level shape:
 ```json
 {
   "format": "test-parrot/question-bank",
-  "formatVersion": "0.7.0",
+  "formatVersion": "0.9.0",
   "generator": {
     "name": "Name of the assistant or conversion tool",
     "version": "Version or model name"
@@ -79,7 +81,7 @@ The file itself is the package, with the Question Bank Record under `questionBan
   },
   "requiredFeatures": [],
   "questionBanks": [
-    { "id": "bank", "record": { "format": "test-parrot/question-bank", "formatVersion": "0.7.0", "...": "the complete Question Bank Record" } }
+    { "id": "bank", "record": { "format": "test-parrot/question-bank", "formatVersion": "0.9.0", "...": "the complete Question Bank Record" } }
   ],
   "exams": [
     {
@@ -110,7 +112,7 @@ When triage says the source is a test:
 - Write every Question's choices and Word Bank answers into the bank in the order the test prints them. That records the test's answer order, so leave out `answerOrder`: answers print in the order the bank records them, and the answer key's letters stay right.
 - Record `columns` (`1`, `2` or `4`) on a Multiple Choice position whenever the source layout shows how many columns its answers are printed in: count the answers side by side on one line. Four answers across one line is `4`. Answers printed as a grid of two across — (A) beside (B), (C) beside (D), a 2 × 2 grid — are `2`. Answers printed one under another are `1`. Answers that are pictures, such as four graphs to choose from, are nearly always printed as a grid: look at the page and record it, since a picture answer with no `columns` prints as wide as the whole question. Leave `columns` out only when the layout truly cannot be read, such as answers split across a page break. Never put `columns` on any other Question Type.
 - Record `workSpace` on a Short Answer position whenever the source prints room to write its answer below it, so the test arrives with the room it printed: `{ "height": <lines × 32>, "style": "lines", "fill": false }` when the room is ruled, counting the printed lines (three lines is `96`); and `{ "height": <rows × 32>, "style": "blank", "fill": false }` when it is empty space, as many 32-pixel rows as the space is tall at 96 pixels to the inch (about one row per third of an inch, never fewer than one). Leave `workSpace` out when the source prints the answer on the same line, leaves no room, or its room cannot be read, such as an answer split across a page break. Never put `workSpace` on any other Question Type, nor on a Multipart question: its Short Answer Parts take Test Parrot's defaults.
-- Do not add `headingSize`, `textSize`, `header`, point values, or any other member. The teacher sets how the test prints in Test Parrot.
+- Do not add `headingSize`, `textSize`, `header`, point values, or any other member. The teacher sets how the test prints in Test Parrot. A question's marks are not the Exam's: they go on the Question itself in the bank, as `marks` (see [Marks](#marks)).
 
 Test Parrot prints the Exam exactly in the order you record: its sections in the order `sections` lists them, and the questions in each in the order of their positions. It never sorts them by Question Type, so the order you write is the order the teacher gets. Reproduce the test as printed, question by question.
 
@@ -144,14 +146,14 @@ Completeness means accounting for every source question, not pretending every qu
 
 1. Inspect every supplied page, image, table, answer-key section, footnote, continuation, and annotation.
 2. For a long source, process it in batches and maintain a page-coverage and question-count checklist. Do not silently stop because of a context or output limit.
-3. Inventory all questions in authored order. Reconcile the inventory with visible numbering. A matching section counts one source number per item, but is converted as one Question per word bank (see [Matching](#matching)). Likewise, questions that share one passage, quote, image or table count one source number each, but are converted as one Multipart Question (see [Multipart](#multipart)).
+3. Inventory all questions in authored order. Reconcile the inventory with visible numbering. A matching section counts one source number per item, but is converted as one Question per word bank (see [Matching](#matching)). Likewise, questions that share one passage, quote, image or table count one source number each, but are converted as one Multipart Question (see [Multipart](#multipart)). A question printed under one number with lettered parts, such as 2(a), 2(b)(i) and 2(b)(ii), counts one source number and is converted as one Multipart Question.
 4. Record unexplained duplicate or missing numbers as source ambiguities; do not silently renumber them away.
 5. Identify any content that is unreadable or cannot be represented by this format before claiming completion.
 
 ### During conversion
 
-1. Classify a question as `multiple-choice`, `true-false`, `matching`, `short-answer` or `multipart` only when the source supports that classification. Version `0.7.0` supports only those five types. If its type is uncertain or it cannot be represented without material loss, leave it out and report it explicitly; never coerce it into the closest supported type.
-2. Preserve the exact wording, punctuation, capitalization, symbols, units, and meaningful whitespace. A Question's stem is what the source prints at its number, and nothing more: never add the directions printed above a group of questions to each one. Under “Write the capital of each country below.”, the item `18. Peru` has the stem “Peru”.
+1. Classify a question as `multiple-choice`, `true-false`, `matching`, `short-answer` or `multipart` only when the source supports that classification. Version `0.9.0` supports only those five types. If its type is uncertain or it cannot be represented without material loss, leave it out and report it explicitly; never coerce it into the closest supported type.
+2. Preserve the exact wording, punctuation, capitalization, symbols, units, and meaningful whitespace. A Question's stem is what the source prints at its number, and nothing more: never add the directions printed above a group of questions to each one, and take out a mark printed beside it, such as `[2]`, which becomes its `marks` (see [Marks](#marks)). Under “Write the capital of each country below.”, the item `18. Peru` has the stem “Peru”.
 3. Preserve authored question and choice order.
 4. Preserve paragraphs, headings, blockquotes, lists, code, rules, tables, equations, hard breaks, links, images, captions, content printed side by side, and text formatting when present (see [Page layout: boxes and side-by-side content](#page-layout-boxes-and-side-by-side-content)).
 5. Do not rewrite, summarize, correct, simplify, or “improve” source content unless the user explicitly requests editing.
@@ -175,7 +177,10 @@ Perform a second pass against the original source and verify all of the followin
 - all supplied Difficulty and Topics values were preserved;
 - meaningful formatting, especially subscript and superscript, was preserved semantically;
 - every image, caption, table, list, equation, hard break, and safe link was preserved, and every table is a block of its own in a `content` list, never nested inside a paragraph;
-- all Question, choice, item, word bank, Part and Part choice IDs are unique and sequential;
+- every question printed under one number with lettered parts is one Multipart Question, each lettered part a Part and each `(i)`, `(ii)`, … beneath a part a Subpart of it, in printed order, with no label left in a stem;
+- every Part that holds Subparts has its lead-in as its `stem` and its `subparts`, and no `type`, `choices`, `suggestedAnswer` or `marks`;
+- every mark the source prints for a question, Part or Subpart is that one's `marks`, a positive whole number; no `[2]`, `(2 marks)` or `[Total: 9]` is left in a stem, choice or Suggested Answer; no Multipart Question carries `marks`; and no total was stored;
+- all Question, choice, item, word bank, Part, Part choice, Subpart and Subpart choice IDs are unique and sequential;
 - every meaningful image, including an image used as an answer choice, matching item or word bank answer, is a Pending Image;
 - every picture has its own Pending Image, with pictures printed side by side split rather than merged — one per `panel` of a `side-by-side`;
 - shared material — a passage, picture, table or anything else that directions such as “Use the information above for problems 3 – 5” refer to — appears once, in the stem of the one Multipart Question whose Parts are those problems, and is never repeated in a Part's stem or in another Question;
@@ -196,7 +201,7 @@ If any check fails, fix the record or disclose the precise limitation. Never say
 
 ## Question types
 
-Version `0.7.0` supports `multiple-choice`, `true-false`, `matching`, `short-answer`, and `multipart` Questions. Do not use any of them as a fallback for an unknown, mixed, or unsupported Question Type. In particular, do not turn an uncertain question into Short Answer merely because it has no clearly detected choices, do not turn a two-choice question into True/False unless those two choices really are true and false, do not turn a matching section into Multiple Choice questions that each repeat the word bank, and do not turn a passage and its questions into separate questions that each repeat the passage — or that leave it out. Leave it unconverted and warn the user instead.
+Version `0.9.0` supports `multiple-choice`, `true-false`, `matching`, `short-answer`, and `multipart` Questions. Do not use any of them as a fallback for an unknown, mixed, or unsupported Question Type. In particular, do not turn an uncertain question into Short Answer merely because it has no clearly detected choices, do not turn a two-choice question into True/False unless those two choices really are true and false, do not turn a matching section into Multiple Choice questions that each repeat the word bank, and do not turn a passage and its questions into separate questions that each repeat the passage — or that leave it out. Leave it unconverted and warn the user instead.
 
 ### Multiple Choice
 
@@ -210,6 +215,8 @@ A Multiple Choice Question:
 - does not have `suggestedAnswer`.
 
 Zero correct choices is valid and means the source did not identify a correct answer. Do not guess one.
+
+Write no `locked` member on a choice. Test Parrot keeps an answer such as “All of the above” or “Both A and B” in its printed place by itself whenever it shuffles a test's answers.
 
 ```json
 {
@@ -546,6 +553,8 @@ Recognise a Multipart question by an instruction such as “Base your answers to
 
 Two or more numbered blanks that label one picture, diagram or piece of notation — `8.` and `9.` pointing at two parts of one labelled drawing of a flower — are one Multipart question too: the picture or notation is its stem, and each numbered blank is a Short Answer Part, in printed order.
 
+**A question numbered once and asked in lettered parts is one Multipart question too.** Structured papers number a question `2` and print its parts `(a)`, `(b)`, … beneath it, and sometimes number further questions `(i)`, `(ii)`, … beneath a part, so that the paper asks question 2(b)(i). Convert the whole of question 2 as one `multipart` Question, even when its parts share no material: whatever it prints after its number and before `(a)` — a sentence, a table, a diagram — is its stem, or a blank paragraph when it prints nothing there; each lettered part is a Part, in printed order; and each `(i)`, `(ii)`, … beneath a part is one of that Part's Subparts (see [Subparts](#subparts)).
+
 The test is shared material, not shared directions. Questions that all need the same picture, table, passage or notation are one Multipart question. Questions that only share a line of directions, such as “Answer the following questions.” or “Write the capital of each country below.”, are separate Questions in a section with those directions (see [Sections](#sections)). When the directions name shared material (“Use the chart …”), the material goes in the Multipart question's stem and the directions are its section's `instructions`.
 
 A question that names other questions by their source numbers, such as “Which of the cities in questions 5–8 …”, keeps its wording. Test Parrot renumbers the test, so list it in the report as a question whose numbers the teacher must check.
@@ -555,18 +564,21 @@ A Multipart Question:
 - has an ID such as `q5`;
 - keeps the shared material in the `stem`: the passage, quote, image, table or diagram, with any source or attribution line (for example “Source: …”, “— Patrick Henry, 1775”, a caption under a map) written as ordinary content in the stem, where the source prints it;
 - leaves out the “Base your answers to questions 12 and 13 …” instruction itself, since it names source numbers that Test Parrot replaces, and its section prints its own directions;
+- leaves the source's labels — `12`, `2`, `(a)`, `(i)` — out of every stem, since Test Parrot numbers the Question and letters its Parts itself;
 - has `parts`: the questions asked about the material, in printed order, with IDs such as `q5-s1`, `q5-s2`, and so on;
 - gives `difficulty` and `topics` to the Multipart Question, never to a Part;
-- does not have `choices`, `prompts`, `wordBank` or `suggestedAnswer` of its own — each Part carries its own answers.
+- does not have `choices`, `prompts`, `wordBank`, `suggestedAnswer` or `marks` of its own — each Part carries its own answers and marks.
 
-Each Part has an `id`, a `type`, and its own `stem`, and its type is one of exactly two:
+Each Part has an `id` and its own `stem`, and either answers or holds Subparts (see [Subparts](#subparts)). A Part that answers has a `type`, which is one of exactly two:
 
 - A `multiple-choice` Part has at least two `choices` in authored order, with IDs such as `q5-s1-c1`, `q5-s1-c2`, and so on, zero or one of them `correct`, and no `suggestedAnswer`.
 - A `short-answer` Part has no `choices`, and may have a rich-text `suggestedAnswer` only when the source or user supplies one.
 
+A Part that answers may also have `marks` (see [Marks](#marks)).
+
 Leave the source's question numbers (`12`, `13`) out of each Part's stem, and its choice numbers or letters (`(1)`, `(2)`, `A.`) out of each choice — they are positions, not content. A key of `12: 4` marks the fourth choice of the Part numbered 12. Never infer correctness from general knowledge, and never reorder the Parts: they are lettered in place and often build on one another.
 
-**If any question in the block is not Multiple Choice or Short Answer** — a True/False statement, a matching set, a nested passage, or a question whose type you cannot determine — do not force it into a Part and do not convert the rest of the block without it. Leave the whole block, material and every question, unconverted and list it under **Unconverted Questions** with the reason. Likewise, when you cannot tell which questions a piece of material belongs to, leave that block unconverted and say so.
+**If any question in the block is not Multiple Choice or Short Answer** — a True/False statement, a matching set, or a question whose type you cannot determine — do not force it into a Part or a Subpart and do not convert the rest of the block without it. Leave the whole block, material and every question, unconverted and list it under **Unconverted Questions** with the reason. Likewise, when you cannot tell which questions a piece of material belongs to, leave that block unconverted and say so. A question numbered `(i)`, `(ii)`, … beneath a Part is not such a question: it is a Subpart. Only a question beneath a Subpart, a level deeper still, cannot be written: leave its block unconverted and say so.
 
 ```json
 {
@@ -678,6 +690,131 @@ A Short Answer Part is written the same way, without `choices`:
 ```
 
 When the shared material is an image, a map or a chart, put it in the stem as a Pending Image `block-image` (see [Images and Pending Images](#images-and-pending-images)); a table is a `table`. A passage or quote printed inside a border is a `blockquote`, with its “Source: …” line as the ordinary paragraph right after it, as in the example above; material printed side by side, such as two graphs or a picture beside text, is a `side-by-side` (see [Page layout: boxes and side-by-side content](#page-layout-boxes-and-side-by-side-content)). The material belongs to the Multipart question alone: write it once, in its stem, and never copy it into a Part's stem or into any other Question.
+
+#### Subparts
+
+A Part may ask questions of its own, numbered beneath it. It typically looks like this in the source:
+
+```text
+6   A class measured how far a toy car rolled from ramps of different heights.
+
+    (a) Name the variable the class changed.                         [1]
+
+    (b) The car rolled 40 cm from a 10 cm ramp and 80 cm from a 20 cm ramp.
+
+        (i)  Describe the pattern in these results.                  [2]
+
+        (ii) Predict how far the car rolls from a 15 cm ramp.        [1]
+
+                                                             [Total: 4]
+```
+
+Question 6 is one Multipart Question. Part (a) answers. Part (b) holds **Subparts** (i) and (ii): its stem is the lead-in they share, and the questions numbered beneath it are its `subparts`, in printed order. Test Parrot prints them beneath their Part and numbers them (i), (ii)… itself.
+
+A Part that holds Subparts:
+
+- has an `id` and a `stem`: the lead-in printed between its letter and its first Subpart, or a blank paragraph when it prints none;
+- has `subparts`: at least one, in printed order, with IDs such as `q6-s2-s1`, `q6-s2-s2`, and so on;
+- has no `type`, `choices`, `suggestedAnswer` or `marks`: it answers nothing itself, and its Subparts carry the answers and the marks.
+
+A Subpart is written exactly as a Part that answers — an `id`, a `type` of `multiple-choice` or `short-answer`, its own `stem`, the `choices` or optional `suggestedAnswer` its type calls for, and optional `marks` — and its choices have IDs such as `q6-s2-s1-c1`. A Subpart never holds Subparts of its own. Leave the `(i)`, `(ii)` labels out of each stem, and never reorder Subparts.
+
+A Part never both answers and holds Subparts. When a lettered part asks for an answer of its own and also has questions numbered beneath it, ask the user, or leave the block unconverted and say so.
+
+```json
+{
+  "id": "q6",
+  "type": "multipart",
+  "stem": {
+    "type": "document",
+    "content": [
+      {
+        "type": "paragraph",
+        "content": [{ "type": "text", "text": "A class measured how far a toy car rolled from ramps of different heights." }]
+      }
+    ]
+  },
+  "parts": [
+    {
+      "id": "q6-s1",
+      "type": "short-answer",
+      "stem": {
+        "type": "document",
+        "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Name the variable the class changed." }] }]
+      },
+      "marks": 1
+    },
+    {
+      "id": "q6-s2",
+      "stem": {
+        "type": "document",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [{ "type": "text", "text": "The car rolled 40 cm from a 10 cm ramp and 80 cm from a 20 cm ramp." }]
+          }
+        ]
+      },
+      "subparts": [
+        {
+          "id": "q6-s2-s1",
+          "type": "short-answer",
+          "stem": {
+            "type": "document",
+            "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Describe the pattern in these results." }] }]
+          },
+          "marks": 2
+        },
+        {
+          "id": "q6-s2-s2",
+          "type": "short-answer",
+          "stem": {
+            "type": "document",
+            "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Predict how far the car rolls from a 15 cm ramp." }] }]
+          },
+          "marks": 1
+        }
+      ]
+    }
+  ]
+}
+```
+
+The `[Total: 4]` is written nowhere: Test Parrot adds up a Multipart Question's marks itself (see [Marks](#marks)).
+
+## Marks
+
+Many tests print what each question is worth beside it: `[2]`, `(2 marks)`, `(3 pts)`, `2 marks`, usually at the right margin or at the end of the answer line. That number is the question's **marks**, an optional positive whole number.
+
+- Write it as `marks` on what the student answers: a Multiple Choice, True/False or Short Answer Question; a Matching Question, once for the whole set; a Part that answers; or a Subpart. `[2]` printed beside Part (a) is `"marks": 2` on that Part.
+- **Never leave a mark in the text.** Take `[2]`, `(2 marks)` and the like out of the stem, choice or Suggested Answer where it is printed, as you take out question numbers.
+- **Never write a total.** A Multipart Question and a Part that holds Subparts have no `marks`: Test Parrot adds up their Parts' and Subparts' marks itself, and adds up the test's total. Drop a total the source prints for a question, such as `[Total: 9]` or `(10 marks in all)`, and a total for the whole paper, such as `Total: 60 marks`. If a printed total does not equal the sum of the marks you wrote beneath it, say so in the report.
+- A matching set that prints a mark beside each item has `marks` equal to their sum; one that prints a single mark for the set has that mark.
+- Directions that give every question under them the same worth, such as “Each question is worth 2 marks.”, give each of those questions `"marks": 2`, and stay in the section's `instructions` as printed.
+- Write only marks the source prints. Never guess a mark for a question that has none, and never give the rest of a test's questions a mark because some have one.
+- When a mark is not a positive whole number — `[½]`, `(0 marks)`, `[1–2]` — or you cannot tell which question it belongs to, leave `marks` out and say so in the report.
+- A section heading keeps its point value as printed, such as “Part B – Short Answer (10 points)” (see [Sections](#sections)): the heading is text, not marks.
+
+```text
+7   Name the gas that plants give off in sunlight.   ........................   [1]
+```
+
+```json
+{
+  "id": "q7",
+  "type": "short-answer",
+  "stem": {
+    "type": "document",
+    "content": [
+      {
+        "type": "paragraph",
+        "content": [{ "type": "text", "text": "Name the gas that plants give off in sunlight." }]
+      }
+    ]
+  },
+  "marks": 1
+}
+```
 
 ## Rich text
 
@@ -914,7 +1051,7 @@ A Question may have:
 - `difficulty`: `easy`, `medium`, or `hard`;
 - `topics`: an ordered array of strings.
 
-A Multipart Part never has either: they belong to its Multipart Question.
+A Multipart Part or Subpart never has either: they belong to its Multipart Question. Marks are not Question Metadata: see [Marks](#marks).
 
 A bank may have:
 
@@ -926,7 +1063,7 @@ Include only information explicitly present in the source or supplied by the use
 
 ## Final validation and delivery
 
-Validate the package against the [package schema](./formats/package/0.1.0/schema.json), its Question Bank Record against the [Question Bank Record schema](./formats/question-bank/0.7.0/schema.json), and any Exam against the [Exam Record schema](./formats/exam/0.3.0/schema.json). Schema validation alone is not sufficient: also verify Question cardinality, unique IDs, that every matching `answer` names an ID in the same Question's `wordBank`, that every Multipart Part is Multiple Choice with at least two choices or Short Answer with none, that every `side-by-side` has two or three panels and stands directly in a stem, safe links, and that every Pending Image follows the rules above.
+Validate the package against the [package schema](./formats/package/0.1.0/schema.json), its Question Bank Record against the [Question Bank Record schema](./formats/question-bank/0.9.0/schema.json), and any Exam against the [Exam Record schema](./formats/exam/0.3.0/schema.json). Schema validation alone is not sufficient: also verify Question cardinality, unique IDs, that every matching `answer` names an ID in the same Question's `wordBank`, that every Multipart Part is Multiple Choice with at least two choices, Short Answer with none, or holds at least one Subpart and no `type`, `choices`, `suggestedAnswer` or `marks`, that every Subpart is Multiple Choice or Short Answer in the same way, that every `marks` is a positive whole number on a Question that is not Multipart, a Part that answers, or a Subpart, that every `side-by-side` has two or three panels and stands directly in a stem, safe links, and that every Pending Image follows the rules above.
 
 Relevant import limits include:
 
@@ -952,7 +1089,8 @@ Also include a concise conversion report containing:
 - source pages/images inspected;
 - whether triage treated the source as a test (the package has an Exam) or as questions only (no Exam), and for a test which Multiple Choice positions were given `columns`;
 - total Questions converted;
-- counts by Question Type (a matching set is one Question; also give its item count; a Multipart question is one Question; also give its Part count);
+- counts by Question Type (a matching set is one Question; also give its item count; a Multipart question is one Question; also give its Part and Subpart counts);
+- whether the source prints marks, and if so how many Questions, Parts and Subparts carry them, every mark left out because it was not a positive whole number or had no clear question, and every printed total that does not match the marks beneath it;
 - whether answer correctness was supplied by the source's answer key or left unmarked because it has none;
 - every question that names other questions by their source numbers, and every set of source numbers that became one Question (a Multipart question, a table to complete), so the teacher can check the numbering;
 - every image tag, and which Questions and answers use it as a picture, or how it was transcribed instead;
