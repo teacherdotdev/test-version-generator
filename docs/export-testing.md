@@ -116,6 +116,12 @@ take a `para 1` line of their own. Print marks it with the
 classes, which its fingerprint reads; DOCX steps the number and letters
 through tab stops on one hanging line.
 
+A page may break between the top-level blocks of any stem — a question's, a
+Part's or lead-in's, a Subpart's — when the piece is taller than a page
+(ADR-0048). Each piece of a broken Part or Subpart carries the stem blocks it
+prints; a continued one prints no label, so its first line is its first
+block's own, and the room and Points follow its last piece.
+
 A Short Answer question's Work Space is a `space:` line: blank, or ruled with
 the plan's own count of lines. Its height is geometry and is not compared, nor
 are the rows it is ruled in — its `pitch`, closer under Condensed, and its
@@ -187,6 +193,9 @@ The implementations are:
   shuffled Versions (distinctness, what moves, names), and partial reprints.
 - `src/export-plan.test.ts` — semantic derivation, numbering, grids, geometry,
   packing, splitting, furniture, streams, and breaks.
+- `src/stem-breaks.test.ts` — where a page may break inside a stem
+  (ADR-0048): between blocks only, a caption kept with its picture, labels
+  with their first block, and a Part a page would hold moved whole.
 - `src/paper-style.test.ts` — each Paper Style's rules through the
   plan: what prints before a number, answer and Word Bank letters and layout,
   the Work Space a style supplies and what overrides it, the question gap

@@ -461,6 +461,24 @@ describe('PDF Export Adapter', () => {
     )
   })
 
+  test('draws a Part taller than a page across the pages it broke onto, none past its margin', async () => {
+    const { plans } = plansOf('a part taller than a page, broken between its stem’s blocks')
+    const { bytes, pagesPastMargin } = await createPublicationPdf(plans, pixel, fonts)
+    expect(pagesPastMargin).toEqual([])
+    const document = await getDocument({ data: bytes, disableWorker: true }).promise
+    const textOf = async (page: number) =>
+      (await (await document.getPage(page)).getTextContent()).items
+        .map((item) => ('str' in item ? item.str : '')).join(' ')
+    // Cover, then Part (a) from its letter to Fig. 1.2, then on from Fig. 1.3
+    // without its letter again, ending with its room and [4].
+    const [second, third] = [await textOf(2), await textOf(3)]
+    expect(second).toContain('(a)')
+    expect(second).toContain('Fig. 1.2')
+    expect(third).toContain('Fig. 1.3')
+    expect(third).toContain('[4]')
+    expect(third).not.toContain('(a)')
+  })
+
   test('names every page that runs past its margin, and says nothing when none does', async () => {
     expect(pastMarginWarning([])).toBeNull()
     expect(pastMarginWarning([2, 5])).toBe(

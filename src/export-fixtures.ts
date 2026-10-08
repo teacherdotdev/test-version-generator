@@ -1826,6 +1826,70 @@ export const FIXTURES: readonly Fixture[] = [
     { answerKey: true },
   ),
 
+  // A Part whose stem — text, three pictures with their captions, two tables
+  // — and ruled room are taller than an A4 page (ADR-0048). It breaks between
+  // its stem's blocks: its letter with the first, each caption with its
+  // picture, the room and its Points with the last, and Part (b) after it.
+  // Measured generously, block by block, so the PDF, which sets the same
+  // content by its own metrics, keeps every page inside its margins.
+  fixture(
+    'a part taller than a page, broken between its stem’s blocks',
+    {
+      title: 'Pendulums',
+      paperStyle: 'exam-board',
+      questions: [
+        multipart(
+          'tp',
+          [paragraph(text('This question is about a pendulum.'))],
+          [
+            {
+              ...part(
+                'tp-a',
+                [
+                  paragraph(text('A pendulum is set swinging from three heights.')),
+                  ...[1, 2, 3].flatMap((figure) => [
+                    { type: 'image-block', attrs: { src: `/local-images/${String(figure).repeat(64)}`, caption: '' } },
+                    paragraph(text(`Fig. 1.${figure}`)),
+                  ]),
+                  ...['Swings', 'Seconds'].map((heading) => ({
+                    type: 'table',
+                    content: ['Height', '10 cm', '20 cm', '30 cm'].map((cell) => ({
+                      type: 'table_row',
+                      content: [
+                        { type: 'table_cell', content: [paragraph(text(cell))] },
+                        { type: 'table_cell', content: [paragraph(text(heading))] },
+                      ],
+                    })),
+                  })),
+                  paragraph(text('Describe how the height changes the time for one swing.')),
+                ],
+                suggestedAnswer(),
+              ),
+              attrs: { id: 'tp-a', columns: DEFAULT_COLUMNS, points: 4 },
+            },
+            part('tp-b', [paragraph(text('Name the force that slows the pendulum.'))], suggestedAnswer()),
+          ],
+        ),
+      ],
+    },
+    arrangement(['tp']),
+    {
+      images: true,
+      measure: {
+        itemHeight: (item: PageItem) => {
+          if (item.kind !== 'question') return 40
+          const blocks = (stem: readonly ProseMirrorJSON[]) =>
+            stem.reduce((sum, block) =>
+              sum + (block.type === 'image-block' ? 260 : block.type === 'table' ? 160 : 40), 0)
+          return blocks(item.stem) + (item.parts ?? []).reduce(
+            (sum, piece) => sum + 30 + blocks(piece.stem) + (piece.workSpace?.height ?? 0) + (piece.pointsAfter ? 30 : 0),
+            0,
+          )
+        },
+      },
+    },
+  ),
+
   // Each Paper Style over every Question Type, so every adapter prints its
   // blanks, its letters, its Word Bank and its default Work Space the way the
   // plan resolved them. Two questions to a page, so the PDF has room to draw

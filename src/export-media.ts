@@ -163,10 +163,10 @@ export function picturesOf(plans: readonly LayoutPlan[]): ExportPicture[] {
         for (const row of item.grid?.cells ?? []) {
           for (const cell of row) if (cell) visit(cell.node)
         }
-        // A Part's lead-in prints once, on the first piece of it; its
-        // Subparts print in order beneath it.
+        // Each piece of a Part prints the stem blocks it carries, then its
+        // Subparts in order beneath it.
         for (const part of item.parts ?? []) {
-          for (const shown of [...(part.continued ? [] : [part]), ...part.subparts]) {
+          for (const shown of [part, ...part.subparts]) {
             for (const block of shown.stem) visit(block)
             for (const row of shown.grid?.cells ?? []) {
               for (const cell of row) if (cell) visit(cell.node)

@@ -1185,7 +1185,7 @@ button { cursor: pointer; }
 /* A Part's Subparts, under its lead-in and one level further in, spaced as
    Parts are; a piece continued from an earlier page has no lead-in above. */
 .multipart-subparts-print { display: grid; gap: 18px; margin: 14px 0 0; }
-.multipart-part-print[data-continued] .multipart-subparts-print { margin-top: 0; }
+.multipart-part-print[data-continued] > .part-body > .multipart-subparts-print:first-child { margin-top: 0; }
 /* A Multipart question with no stem puts Part (a) on its number's line, and a
    Part with no lead-in puts Subpart (i) on its letter's: `1 (a) (i) …`. */
 .multipart-parts-print--opening,

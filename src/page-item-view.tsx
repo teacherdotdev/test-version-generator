@@ -331,12 +331,13 @@ export function PartContent({
         {!part.continued && <span className="part-count">{printedLabel(part.letter, part.printed)}</span>}
       </div>
       <div className="part-body">
-        {!part.continued && <DocView className="question-stem" content={part.stem} />}
+        {/* A continued piece prints the stem blocks it carries, if any. */}
+        {(!part.continued || part.stem.length > 0) && <DocView className="question-stem" content={part.stem} />}
         {part.grid && <ChoiceGridView grid={part.grid} showCorrectness={showCorrectness} />}
         <AnswerSpace
           id={part.id}
           space={part.workSpace}
-          pointsAfter={part.continued ? undefined : part.pointsAfter}
+          pointsAfter={part.pointsAfter}
           points={part.points}
           renderWorkSpace={renderWorkSpace}
           renderPoints={renderPoints}
@@ -379,14 +380,16 @@ function SubpartContent({
   renderWorkSpace?: (partId: string, space: PlannedWorkSpace, points?: ReactNode) => ReactNode
   renderPoints?: RenderPrintedPoints
 }) {
+  // A piece continued from an earlier page keeps the label column, empty.
   return (
     <div
       className="multipart-part-print multipart-subpart-print"
       data-part-id={subpart.id}
       data-part-type={subpart.type}
+      {...(subpart.continued ? { 'data-continued': 'true' } : {})}
     >
       <div className="part-letter">
-        <span className="part-count">{printedLabel(subpart.label, subpart.printed)}</span>
+        {!subpart.continued && <span className="part-count">{printedLabel(subpart.label, subpart.printed)}</span>}
       </div>
       <div className="part-body">
         <DocView className="question-stem" content={subpart.stem} />

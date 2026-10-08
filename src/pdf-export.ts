@@ -965,20 +965,30 @@ function drawPart(
   if (opening) {
     drawTextLine(context, printedLabel(part.letter, part.printed), { font: 'bold', x, width: indent - 5 })
     context.y += BODY_LINE
-  } else if (!part.continued) {
-    drawAnswering(context, printedLabel(part.letter, part.printed), part, x, width, last < 0 ? reserve : 0)
+  } else {
+    // A continued piece draws no letter, only the stem blocks it carries.
+    drawAnswering(
+      context, part.continued ? null : printedLabel(part.letter, part.printed), part, x, width,
+      last < 0 ? reserve : 0,
+    )
   }
+  // Above Subpart (i), the gap a lead-in or a letter line leaves, as print's.
+  const above = !opening && (!part.continued || part.stem.length > 0)
   for (const [index, subpart] of part.subparts.entries()) {
-    if (index > 0 || (!part.continued && !opening)) {
+    if (index > 0 || above) {
       context.y -= pt(index === 0 ? PARTS_GAP_ABOVE : PARTS_GAP_BETWEEN)
     }
-    drawAnswering(context, printedLabel(subpart.label, subpart.printed), subpart, bodyX, bodyWidth, index === last ? reserve : 0)
+    drawAnswering(
+      context, subpart.continued ? null : printedLabel(subpart.label, subpart.printed), subpart, bodyX, bodyWidth,
+      index === last ? reserve : 0,
+    )
   }
 }
 
 function drawAnswering(
   context: DrawContext,
-  label: string,
+  /** `null` on a piece continued from an earlier page (ADR-0048). */
+  label: string | null,
   part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'pointsAfter'>,
   x: number,
   width: number,
@@ -987,10 +997,12 @@ function drawAnswering(
   const indent = pt(PART_INDENT)
   const bodyX = x + indent
   const bodyWidth = width - indent
-  drawTextLine(context, label, { font: 'bold', x, width: indent - 5 })
-  context.y += BODY_LINE
+  if (label !== null) {
+    drawTextLine(context, label, { font: 'bold', x, width: indent - 5 })
+    context.y += BODY_LINE
+  }
   if (part.stem.length > 0) drawBlocks(context, part.stem, { x: bodyX, width: bodyWidth })
-  else context.y -= BODY_LINE
+  else if (label !== null) context.y -= BODY_LINE
   if (part.grid) drawChoiceGrid(context, part.grid, bodyX + pt(CHOICE_INDENT), bodyWidth - pt(CHOICE_INDENT))
   const onRule = part.pointsAfter !== undefined && pointsOnLastRule(part.workSpace)
   const points = part.pointsAfter && !onRule ? [part.pointsAfter] : []

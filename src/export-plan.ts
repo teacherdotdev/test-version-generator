@@ -333,8 +333,13 @@ export type PlannedSubpart = {
   printed?: string
   /** Its Points as the Paper Style prints them after its answer, against the
    *  right margin — `[2]` under Exam Board. Absent on an unpointed one and
-   *  under every style that prints no Points on the test. */
+   *  under every style that prints no Points on the test, and on every piece
+   *  of one broken across pages but the last. */
   pointsAfter?: string
+  /** Set on a piece of one whose stem broke across pages (ADR-0048): its
+   *  label printed on an earlier page, so this piece prints none — only the
+   *  stem blocks it carries, and its answers or room when it is the last. */
+  continued?: true
 }
 
 // One Part of a Multipart question as it prints: lettered `a`, `b`, … in authored order
@@ -351,8 +356,10 @@ export type PlannedPart = Omit<PlannedSubpart, 'label' | 'type'> & {
   /** The Subparts this piece prints beneath the Part's lead-in, in authored
    *  order; empty for a Part that answers itself. */
   subparts: PlannedSubpart[]
-  /** Set on a piece of a Part whose letter and lead-in printed on an earlier
-   *  page: it prints only the Subparts it carries, in their place. */
+  /** Set on a piece of a Part whose letter printed on an earlier page: it
+   *  prints no letter, only the stem blocks it carries — the rest of its stem
+   *  or lead-in, none when it only goes on with its Subparts — then its
+   *  answers or room, or its Subparts, in their place. */
   continued?: true
 }
 
@@ -1428,9 +1435,9 @@ function wholeQuestion(question: PlannedQuestion): QuestionItem {
 }
 
 // The indivisible segments a question may be broken between: its number line
-// glued to the first stem block, so a split can never strand a bare number at
-// the foot of a page; then one segment per remaining top-level block; then the
-// choice grid whole, since a grid is never split. A question with no stem at
+// glued to the first run of its stem (`stemRuns`), so a split can never strand
+// a bare number at the foot of a page; then one segment per remaining run;
+// then the choice grid whole, since a grid is never split. A question with no stem at
 // all is a single segment, so it moves rather than coming apart. A matching set
 // and a Multipart question have segments of their own (see `matchingSegmentsOf` and
 // `multipartSegmentsOf`).
@@ -1462,7 +1469,7 @@ function segmentsWithin(question: PlannedQuestion, measure: Measure, fullPage: n
   const workSpace = question.workSpace
   if (question.matching) return matchingSegmentsOf(question, question.matching, workSpace)
   if (question.parts) return multipartSegmentsOf(question, question.parts, measure, fullPage)
-  const [first, ...rest] = question.stem
+  const [first, ...rest] = stemRuns(question.stem)
   if (first === undefined) {
     return [
       {
@@ -1476,11 +1483,11 @@ function segmentsWithin(question: PlannedQuestion, measure: Measure, fullPage: n
     ]
   }
   const segments: Segment[] = [
-    { stem: [first], numbered: true, grid: null, matching: null, workSpace: null, parts: [] },
+    { stem: first, numbered: true, grid: null, matching: null, workSpace: null, parts: [] },
   ]
-  for (const block of rest) {
+  for (const run of rest) {
     segments.push({
-      stem: [block], numbered: false, grid: null, matching: null, workSpace: null, parts: [],
+      stem: run, numbered: false, grid: null, matching: null, workSpace: null, parts: [],
     })
   }
   if (question.grid) {
@@ -1492,14 +1499,76 @@ function segmentsWithin(question: PlannedQuestion, measure: Measure, fullPage: n
   return segments
 }
 
-// A Multipart question breaks only between its Parts and between a Part's Subparts:
+/** Whether a top-level block is a picture: a block picture, a paragraph of
+ *  nothing but pictures, or a Side-by-Side with a picture in a Panel. */
+function isPicture(block: ProseMirrorJSON): boolean {
+  const content = Array.isArray(block.content) ? (block.content as ProseMirrorJSON[]) : []
+  switch (block.type) {
+    case 'image-block':
+    case 'image':
+      return true
+    case 'paragraph':
+      return content.some((node) => node.type === 'image')
+        && content.every((node) => node.type === 'image' || (node.type === 'text' && !String(node.text ?? '').trim()))
+    case 'sideBySide':
+      return content.some((panel) =>
+        (Array.isArray(panel.content) ? (panel.content as ProseMirrorJSON[]) : []).some(isPicture))
+    default:
+      return false
+  }
+}
+
+/**
+ * A stem's top-level blocks in the runs a page may break between (ADR-0048):
+ * one block each — a paragraph, a picture, a table, a Side-by-Side, a
+ * Blockquote, never anything inside one — except that a paragraph directly
+ * after a picture is its caption and goes with it, so a page never ends
+ * between a figure and the line that names it.
+ */
+export function stemRuns(stem: readonly ProseMirrorJSON[]): ProseMirrorJSON[][] {
+  const runs: ProseMirrorJSON[][] = []
+  stem.forEach((block, index) => {
+    const previous = stem[index - 1]
+    const caption = previous !== undefined && isPicture(previous) && block.type === 'paragraph' && !isPicture(block)
+    if (caption) runs.at(-1)!.push(block)
+    else runs.push([block])
+  })
+  return runs
+}
+
+/** A Part or Subpart that answers, as the pieces its stem breaks into
+ *  between runs: the first printing its label, the rest `continued`; then
+ *  its choice grid whole as a piece of its own, since a grid is never split.
+ *  Its room and its Points go with its last piece, as a question's do. Itself
+ *  alone when there is nothing to break it between. */
+function answeringPieces<T extends PlannedSubpart | PlannedPart>(answering: T): T[] {
+  const runs = stemRuns(answering.stem)
+  if (runs.length + (answering.grid ? 1 : 0) < 2) return [answering]
+  const { pointsAfter, ...rest } = answering
+  const bare = { ...rest, grid: null, workSpace: null } as unknown as T
+  const end = {
+    grid: answering.grid,
+    workSpace: answering.workSpace,
+    ...(pointsAfter !== undefined ? { pointsAfter } : {}),
+  }
+  const pieces: T[] = runs.map((run, index) => ({ ...bare, stem: run, ...(index > 0 ? { continued: true as const } : {}) }))
+  if (answering.grid) pieces.push({ ...bare, stem: [], continued: true })
+  pieces[pieces.length - 1] = { ...pieces[pieces.length - 1]!, ...end }
+  return pieces
+}
+
+// A Multipart question breaks between its Parts and between a Part's Subparts:
 // its number and its stem glued to Part a — and, when Part a holds Subparts,
 // to its lead-in and Subpart (i) — then one segment per Part or Subpart after
 // it, so a student never turns a page to find the first question about what
 // they have just read, nor a lead-in apart from its first Subpart.
-// Only when the stem and Part a together are taller than a whole page does the
-// stem itself come apart between its blocks, as any oversized stem does —
-// there is then no page that could hold them together.
+// A Part, a lead-in with its Subpart (i), or a Subpart that is taller than a
+// whole page on its own breaks between the runs of its stem as a question's
+// stem does (ADR-0048); one a page would hold moves whole.
+// Only when the stem and Part a's first piece together are taller than a
+// whole page does the stem itself come apart between its runs — there is
+// then no page that could hold them together — and when the stem cannot,
+// Part a breaks so that its first run can stay with the number.
 function multipartSegmentsOf(
   question: PlannedQuestion,
   parts: readonly PlannedPart[],
@@ -1509,46 +1578,112 @@ function multipartSegmentsOf(
   const partSegment = (part: PlannedPart): Segment => ({
     stem: [], numbered: false, grid: null, matching: null, workSpace: null, parts: [part],
   })
+  const fits = (segment: Segment) => measure.itemHeight(pieceOf(question, [segment])) <= fullPage
   // A Part that holds Subparts is its letter and lead-in glued to Subpart
   // (i), then each later Subpart as a continuation of the same Part.
-  const piecesOf = (part: PlannedPart): PlannedPart[] => {
+  const unitsOf = (part: PlannedPart): PlannedPart[] => {
     const [first, ...later] = part.subparts
     if (!first) return [part]
     return [
       { ...part, subparts: [first] },
-      ...later.map((subpart): PlannedPart => ({ ...part, subparts: [subpart], continued: true })),
+      ...later.map((subpart): PlannedPart => ({ ...part, stem: [], subparts: [subpart], continued: true })),
     ]
   }
-  const [firstPiece, ...laterPieces] = parts.flatMap(piecesOf)
-  const lead: Segment = {
+  // A unit too tall for a page, broken between its runs: an answering Part's
+  // own; or a lead-in's, its last run glued to its Subpart's first piece, and
+  // the Subpart's own when it too is taller than a page.
+  const brokenUnit = (unit: PlannedPart): PlannedPart[] => {
+    const [subpart] = unit.subparts
+    if (!subpart) return answeringPieces(unit)
+    const holder: PlannedPart = { ...unit, stem: [], continued: true }
+    const subpieces = fits(partSegment({ ...holder, subparts: [subpart] })) ? [subpart] : answeringPieces(subpart)
+    const later = subpieces.slice(1).map((piece): PlannedPart => ({ ...holder, subparts: [piece] }))
+    if (unit.continued) return [{ ...holder, subparts: [subpieces[0]!] }, ...later]
+    const runs = stemRuns(unit.stem)
+    if (runs.length === 0) return [{ ...unit, subparts: [subpieces[0]!] }, ...later]
+    const leadIn = runs.map((run, index): PlannedPart => ({
+      ...unit,
+      stem: run,
+      subparts: [],
+      ...(index > 0 ? { continued: true as const } : {}),
+    }))
+    // The lead-in's last run goes with the Subpart's first piece where a page
+    // holds both; otherwise the Subpart, which a page holds, moves whole.
+    const glued = { ...leadIn.at(-1)!, subparts: [subpieces[0]!] }
+    if (fits(partSegment(glued))) return [...leadIn.slice(0, -1), glued, ...later]
+    return [...leadIn, { ...holder, subparts: [subpieces[0]!] }, ...later]
+  }
+  const units = parts.flatMap(unitsOf)
+  const pieces = units.flatMap((unit) => (fits(partSegment(unit)) ? [unit] : brokenUnit(unit)))
+  const leadOf = (first: PlannedPart | undefined): Segment => ({
     stem: question.stem,
     numbered: true,
     grid: null,
     matching: null,
     workSpace: null,
-    parts: firstPiece ? [firstPiece] : [],
+    parts: first ? [first] : [],
+  })
+  const lead = leadOf(pieces[0])
+  if (fits(lead)) return [lead, ...pieces.slice(1).map(partSegment)]
+  const runs = stemRuns(question.stem)
+  if (runs.length >= 2) {
+    const [first, ...rest] = runs
+    return [
+      { stem: first!, numbered: true, grid: null, matching: null, workSpace: null, parts: [] },
+      ...rest.map((run): Segment => ({
+        stem: run, numbered: false, grid: null, matching: null, workSpace: null, parts: [],
+      })),
+      ...pieces.map(partSegment),
+    ]
   }
-  if (measure.itemHeight(pieceOf(question, [lead])) <= fullPage || question.stem.length < 2) {
-    return [lead, ...laterPieces.map(partSegment)]
+  // A stem that cannot break keeps the number with Part a's first run.
+  const [firstUnit] = units
+  if (firstUnit && pieces[0] === firstUnit) {
+    const finer = brokenUnit(firstUnit)
+    return [leadOf(finer[0]), ...[...finer.slice(1), ...pieces.slice(1)].map(partSegment)]
   }
-  const [first, ...rest] = question.stem
-  return [
-    { stem: [first!], numbered: true, grid: null, matching: null, workSpace: null, parts: [] },
-    ...rest.map((block): Segment => ({
-      stem: [block], numbered: false, grid: null, matching: null, workSpace: null, parts: [],
-    })),
-    ...(firstPiece ? [firstPiece, ...laterPieces] : []).map(partSegment),
-  ]
+  return [lead, ...pieces.slice(1).map(partSegment)]
 }
 
-/** Consecutive pieces of the same Part, joined back into one: the Subparts of
- *  a Part that holds them travel one to a segment, but print together. */
+/** A piece of a Part or Subpart and the piece continuing it on the same
+ *  page, joined back into one: the stem runs of both, and the answers, room
+ *  and Points the later one ends with. */
+function joinedAnswering<T extends PlannedSubpart | PlannedPart>(earlier: T, later: T): T {
+  const pointsAfter = later.pointsAfter ?? earlier.pointsAfter
+  const rest = { ...earlier }
+  delete rest.pointsAfter
+  return {
+    ...rest,
+    stem: [...earlier.stem, ...later.stem],
+    grid: later.grid ?? earlier.grid,
+    workSpace: later.workSpace ?? earlier.workSpace,
+    ...(pointsAfter !== undefined ? { pointsAfter } : {}),
+  }
+}
+
+/** Consecutive pieces of the same Subpart, joined back into one. */
+function joinedSubparts(pieces: readonly PlannedSubpart[]): PlannedSubpart[] {
+  const joined: PlannedSubpart[] = []
+  for (const piece of pieces) {
+    const last = joined.at(-1)
+    if (last && last.id === piece.id && piece.continued) joined[joined.length - 1] = joinedAnswering(last, piece)
+    else joined.push(piece)
+  }
+  return joined
+}
+
+/** Consecutive pieces of the same Part, joined back into one: a Part broken
+ *  between its runs, or one that holds Subparts, travels one piece to a
+ *  segment, but the pieces a page holds print together. */
 function joinedParts(pieces: readonly PlannedPart[]): PlannedPart[] {
   const joined: PlannedPart[] = []
   for (const piece of pieces) {
     const last = joined.at(-1)
     if (last && last.id === piece.id && piece.continued) {
-      joined[joined.length - 1] = { ...last, subparts: [...last.subparts, ...piece.subparts] }
+      joined[joined.length - 1] = {
+        ...joinedAnswering(last, piece),
+        subparts: joinedSubparts([...last.subparts, ...piece.subparts]),
+      }
     } else joined.push(piece)
   }
   return joined

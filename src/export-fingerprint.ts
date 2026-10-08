@@ -595,7 +595,8 @@ function planQuestion(item: QuestionItem, images: ImageOrdinals): ContentLine[] 
 // A Multipart question's Part reads as a question of its kind does: its letter
 // opens its stem, and its grid or work space follows — or, for a Part that
 // holds Subparts, each Subpart read the same way under its own label. A piece
-// continued from an earlier page carries no letter or lead-in, only Subparts.
+// continued from an earlier page carries no letter or label, only the stem
+// blocks it carries and what follows them (ADR-0048).
 // `lead` is what opens the Part's first line before its own letter: the
 // question's number, when the Part prints on the number's line. A Part with
 // no lead-in passes its letter on, with the lead, to its first Subpart.
@@ -603,13 +604,15 @@ function planPart(part: PlannedPart, images: ImageOrdinals, lead: Segment[] = []
   const letter: Segment[] = [...lead, { kind: 'text', text: `${printedLabel(part.letter, part.printed)} `, marks: [] }]
   const opening = subpartsOpenLabelLine(part)
   return [
-    ...(part.continued || opening ? [] : planAnswering(letter, part, images)),
+    ...(opening ? [] : planAnswering(part.continued ? [] : letter, part, images)),
     ...part.subparts.flatMap((subpart, index) =>
       planAnswering(
-        [
-          ...(opening && index === 0 ? letter : []),
-          { kind: 'text', text: `${printedLabel(subpart.label, subpart.printed)} `, marks: [] },
-        ],
+        subpart.continued
+          ? []
+          : [
+              ...(opening && index === 0 ? letter : []),
+              { kind: 'text', text: `${printedLabel(subpart.label, subpart.printed)} `, marks: [] },
+            ],
         subpart,
         images,
       )),
@@ -623,7 +626,7 @@ function planAnswering(
 ): ContentLine[] {
   const stem = planBlocks(part.stem, { opener }, images)
   return [
-    ...(stem.length > 0 ? stem : [line('para', renderInline(opener))]),
+    ...(stem.length > 0 ? stem : opener.length > 0 ? [line('para', renderInline(opener))] : []),
     ...(part.grid ? planGrid(part.grid, images) : []),
     ...answerSpaceLines(part.workSpace, part.pointsAfter),
   ]

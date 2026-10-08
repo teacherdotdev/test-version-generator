@@ -1160,12 +1160,12 @@ function partContent(
     stops: [...(lead?.stops ?? []), twips(multipartIndentPx + PART_INDENT)],
   }
   return [
-    ...(part.continued || opening
+    ...(opening
       ? []
-      : answeringContent(label, part, multipartIndentPx, build, lead)),
+      : answeringContent(part.continued ? null : label, part, multipartIndentPx, build, lead)),
     ...part.subparts.flatMap((subpart, index) =>
       answeringContent(
-        printedLabel(subpart.label, subpart.printed),
+        subpart.continued ? null : printedLabel(subpart.label, subpart.printed),
         subpart,
         multipartIndentPx + PART_INDENT,
         build,
@@ -1175,8 +1175,10 @@ function partContent(
   ]
 }
 
+// `label` is `null` on a piece continued from an earlier page (ADR-0048): it
+// prints no label, only the stem blocks it carries and what follows them.
 function answeringContent(
-  label: string,
+  label: string | null,
   part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'pointsAfter'>,
   outerIndentPx: number,
   build: BuildContext,
@@ -1184,17 +1186,21 @@ function answeringContent(
 ): (Paragraph | Table)[] {
   const indentPx = outerIndentPx + PART_INDENT
   const indent = twips(indentPx)
-  const prefix: ParagraphChild[] = [...(lead?.prefix ?? []), new TextRun({ text: `${label}\t` })]
-  const context: BlockContext = {
-    indent,
-    // A lead starts the first line further out, at the number or letter.
-    hanging: lead ? twips(indentPx - lead.start) : twips(PART_INDENT),
-    prefix,
-    ...(lead ? { tabStops: lead.stops } : {}),
-  }
+  const prefix: ParagraphChild[] | undefined = label === null
+    ? undefined
+    : [...(lead?.prefix ?? []), new TextRun({ text: `${label}\t` })]
+  const context: BlockContext = prefix
+    ? {
+        indent,
+        // A lead starts the first line further out, at the number or letter.
+        hanging: lead ? twips(indentPx - lead.start) : twips(PART_INDENT),
+        prefix,
+        ...(lead ? { tabStops: lead.stops } : {}),
+      }
+    : { indent }
   const stem = blocks(part.stem, context, { ...build, contentWidth: build.pageWidth - indentPx })
   return [
-    ...(stem.length > 0 ? stem : [new Paragraph(paragraphOptions(context, { children: prefix }))]),
+    ...(stem.length > 0 || !prefix ? stem : [new Paragraph(paragraphOptions(context, { children: prefix }))]),
     // Set in from the Part's stem as a question's answers are from its own.
     ...(part.grid
       ? [choiceGridTable(part.grid, build, build.pageWidth - indentPx - CHOICE_INDENT, indentPx + CHOICE_INDENT)]
