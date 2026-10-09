@@ -1615,6 +1615,11 @@ function QuestionBankTabsPane({
               aria-selected={id === workspace.activeBankId}
               tabIndex={id === workspace.activeBankId ? 0 : -1}
               onClick={() => void activate(id)}
+              // A double-click opens the bank's own page. The editor is left
+              // by loading a document, so the browser's leave-page guard still
+              // stands between the teacher and an unsaved Working Copy.
+              onDoubleClick={() => window.location.assign(`/question-bank?id=${encodeURIComponent(id)}`)}
+              title="Double-click to open this Question Bank's page"
               onKeyDown={(event) => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
                 event.preventDefault()
