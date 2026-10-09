@@ -85,6 +85,12 @@ import { sectionHeadingStyles } from './export-typography'
 import type { WorkspaceDrag } from './use-workspace-drag'
 import { dropStateOf, type QuestionDropState } from './workspace-drag'
 import {
+  draggingPreview,
+  releasedPreview,
+  shownPreviewHeight,
+  type WorkSpacePreview,
+} from './work-space-preview'
+import {
   AlignJustify,
   ArrowDown,
   ArrowDownToLine,
@@ -551,7 +557,9 @@ function QuestionHandles({
 // hidden from print with the rest of the chrome.
 //
 // A drag previews locally and commits once, on release — one undo step per
-// gesture, and one repagination rather than one per pixel. Heights snap to
+// gesture, and one repagination rather than one per pixel. The sheet keeps
+// showing the released height until it has repaginated with it
+// (`work-space-preview.ts`), so a release never flashes the old one. Heights snap to
 // whole rows, laid out at the Paper Style's pitch — closer under Condensed —
 // so blank and lined space always agree about size, and what is committed is
 // the stored height of those rows (`storedWorkSpaceHeight`). Dragging
@@ -565,6 +573,7 @@ function WorkSpaceHandle({
   space,
   max,
   onPreview,
+  onRelease,
   onCommit,
 }: {
   label: string
@@ -573,8 +582,10 @@ function WorkSpaceHandle({
   /** The most room a drag may open on the page: less on an Exam whose
    *  margins leave a shorter page (`maxWorkSpaceHeight`). */
   max: number
-  /** The height on the page a drag is showing, or `null` once it ends. */
-  onPreview: (height: number | null) => void
+  /** The height on the page a drag is showing. */
+  onPreview: (height: number) => void
+  /** The drag has ended, `committed` when it stored a new height. */
+  onRelease: (committed: boolean) => void
   /** The stored height the teacher settled on. */
   onCommit: (height: number) => void
 }) {
@@ -582,10 +593,13 @@ function WorkSpaceHandle({
   const rows = rowsOfPlanned(space)
   const gesture = useRef<{ id: number; startY: number; next: number } | null>(null)
   const lines = rowsIn(height, rows)
-  // Commits a whole count of rows, unless it is the count already showing.
-  const settle = (stored: number) => {
+  // Commits a whole count of rows, unless it is the count already showing,
+  // and says whether it did.
+  const settle = (stored: number): boolean => {
     const snapped = storedWorkSpaceHeight(laidWorkSpaceHeight(stored, rows), rows, max)
-    if (snapped / WORK_SPACE_LINE_PITCH !== lines || space.fill) onCommit(snapped)
+    if (snapped / WORK_SPACE_LINE_PITCH === lines && !space.fill) return false
+    onCommit(snapped)
+    return true
   }
   return (
     <div
@@ -631,13 +645,12 @@ function WorkSpaceHandle({
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
           event.currentTarget.releasePointerCapture(event.pointerId)
         }
-        settle(drag.next)
-        onPreview(null)
+        onRelease(settle(drag.next))
       }}
       onPointerCancel={(event) => {
         if (gesture.current?.id !== event.pointerId) return
         gesture.current = null
-        onPreview(null)
+        onRelease(false)
       }}
       onKeyDown={(event) => {
         const next =
@@ -803,10 +816,11 @@ export function QuestionView({
   } | null>(null)
   const suppressClick = useRef(false)
   const question = item.question
-  // The height a work-space drag is showing before it commits, or `null`.
-  const [previewHeight, setPreviewHeight] = useState<number | null>(null)
+  // The height a work-space drag is showing before the sheet draws it, or `null`.
+  const [preview, setPreview] = useState<WorkSpacePreview | null>(null)
   // The same for one of a Multipart question's Short Answer Parts, by the Part's id.
-  const [partPreview, setPartPreview] = useState<{ partId: string; height: number } | null>(null)
+  const [partPreview, setPartPreview] = useState<{ partId: string; preview: WorkSpacePreview } | null>(null)
+  const questionPreviewHeight = item.workSpace ? shownPreviewHeight(preview, item.workSpace) : null
   const previewed = (space: PlannedWorkSpace, height: number): PlannedWorkSpace => ({
     ...space,
     height,
@@ -814,13 +828,14 @@ export function QuestionView({
     fill: false,
   })
   const withQuestionPreview: QuestionItem =
-    previewHeight === null || !item.workSpace
+    questionPreviewHeight === null || !item.workSpace
       ? item
-      : { ...item, workSpace: previewed(item.workSpace, previewHeight) }
-  const previewedPart = <Part extends { id: string; workSpace: PlannedWorkSpace | null }>(part: Part): Part =>
-    partPreview !== null && part.id === partPreview.partId && part.workSpace
-      ? { ...part, workSpace: previewed(part.workSpace, partPreview.height) }
-      : part
+      : { ...item, workSpace: previewed(item.workSpace, questionPreviewHeight) }
+  const previewedPart = <Part extends { id: string; workSpace: PlannedWorkSpace | null }>(part: Part): Part => {
+    if (partPreview === null || part.id !== partPreview.partId || !part.workSpace) return part
+    const height = shownPreviewHeight(partPreview.preview, part.workSpace)
+    return height === null ? part : { ...part, workSpace: previewed(part.workSpace, height) }
+  }
   const shown: QuestionItem =
     partPreview === null || !withQuestionPreview.parts
       ? withQuestionPreview
@@ -843,8 +858,16 @@ export function QuestionView({
           label={`Work space for question ${numberLabelOf(question)} part ${here?.name ?? ''}`}
           space={here?.part.workSpace ?? space}
           max={maxWorkSpace}
-          onPreview={(height) =>
-            setPartPreview(height === null ? null : { partId, height })}
+          onPreview={(height) => setPartPreview({ partId, preview: draggingPreview(height) })}
+          onRelease={(committed) => {
+            const planned = here?.part.workSpace
+            setPartPreview((current) => {
+              const released = planned && current?.partId === partId
+                ? releasedPreview(current.preview, committed, planned)
+                : null
+              return released ? { partId, preview: released } : null
+            })
+          }}
           onCommit={(height) => onSetWorkSpace([partId], { height, fill: false })}
         />
       </div>
@@ -878,7 +901,8 @@ export function QuestionView({
   if (selected) classes.push('exam-question--selected')
   if (dragging) classes.push('exam-question--dragging')
   if (dropped) classes.push('exam-question--dropped')
-  if (previewHeight !== null || partPreview !== null) classes.push('exam-question--sizing')
+  // Only while the pointer is down: a released drag's height may still show.
+  if (preview?.over === null || partPreview?.preview.over === null) classes.push('exam-question--sizing')
 
   return (
     <section
@@ -1014,7 +1038,11 @@ export function QuestionView({
           label={`Work space for question ${numberLabelOf(question)}`}
           space={item.workSpace}
           max={maxWorkSpace}
-          onPreview={setPreviewHeight}
+          onPreview={(height) => setPreview(draggingPreview(height))}
+          onRelease={(committed) => {
+            const planned = item.workSpace
+            setPreview((current) => planned ? releasedPreview(current, committed, planned) : null)
+          }}
           onCommit={(height) => onSetWorkSpace([question.id], { height, fill: false })}
         />
       )}
