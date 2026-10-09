@@ -22,9 +22,9 @@ describe('the instructions an assistant is given', () => {
   })
 
   test('ask for a test’s own Sections in printed order, linking an example that exists', async () => {
-    expect(instructions).toContain('one Exam Record `0.3.0`')
-    expect(instructions).toContain('./formats/exam/0.3.0/schema.json')
-    expect(instructions).not.toContain('./formats/exam/0.1.0/')
+    expect(instructions).toContain('one Exam Record `0.4.0`')
+    expect(instructions).toContain('./formats/exam/0.4.0/schema.json')
+    expect(instructions).not.toMatch(/\.\/formats\/exam\/0\.[0-3]\.0\//)
     expect(instructions).toContain('It never sorts them by Question Type')
     const example = './formats/package/0.1.0/examples/printed-test.json'
     expect(instructions).toContain(example)
