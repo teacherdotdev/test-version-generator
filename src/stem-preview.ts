@@ -66,9 +66,16 @@ export function stemPreview(question: Question): StemPreview {
       .filter(Boolean)
     return { ...preview, text: items.join(' · ') }
   }
-  return question.type === 'multipart'
-    ? { ...preview, parts: partsOf(question).length }
-    : preview
+  if (question.type !== 'multipart') return preview
+  const parts = partsOf(question)
+  // A Multipart question with no shared material — as an exam board writes
+  // one, its Parts asked straight away — is named by its first line: the
+  // first Part's, or a Subpart's under a lead-in left blank.
+  const text = preview.text || parts
+    .flatMap((part) => [part.stem, ...part.subparts.map(({ stem }) => stem)])
+    .map((stem) => previewOf(stem).text)
+    .find(Boolean) || ''
+  return { ...preview, text, parts: parts.length }
 }
 
 /**

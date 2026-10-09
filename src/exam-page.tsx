@@ -100,6 +100,7 @@ import {
   ArrowDownToLine,
   ArrowUp,
   Ban,
+  BetweenHorizontalEnd,
   BetweenHorizontalStart,
   CircleMinus,
   Columns2,
@@ -113,7 +114,6 @@ import {
   PencilLine,
   Heading,
   Rows2,
-  SeparatorHorizontal,
   Shuffle,
   SquareDashed,
   X,
@@ -315,9 +315,25 @@ type QuestionSectionActions = {
   onMoveToNewSection: (questionIds: readonly string[]) => void
 }
 
+/** The Parts and Subparts a right-click on `partId` speaks for: a Part that
+ *  answers, or a Subpart, alone; a Part's lead-in, its Subparts. `null` — the
+ *  whole question — when it landed on no Part. */
+function pointedPartIdsOf(question: PlannedQuestion, partId: string | null): ReadonlySet<string> | null {
+  if (!partId) return null
+  for (const part of question.parts ?? []) {
+    if (part.id === partId) {
+      return new Set(part.type === 'subparts' ? part.subparts.map(({ id }) => id) : [part.id])
+    }
+    if (part.subparts.some(({ id }) => id === partId)) return new Set([partId])
+  }
+  return null
+}
+
 // One list, however it was opened. The grip beside a question and a right-click
 // on the question itself raise exactly the same actions, which is what makes
-// the grip discoverable rather than a second, lesser control.
+// the grip discoverable rather than a second, lesser control — except on a
+// Multipart question, where a right-click on one Part offers that Part's own
+// rows alone, rather than every Part's.
 function questionMenuItems({
   question,
   columns,
@@ -336,8 +352,12 @@ function questionMenuItems({
   onSetWorkSpace,
   selectedQuestionIds,
   sectionActions,
+  pointedPartIds = null,
 }: {
   question: PlannedQuestion
+  /** The Parts or Subparts a right-click landed on, whose rows alone the menu
+   *  offers; `null` for the whole question — its grip, or its shared stem. */
+  pointedPartIds?: ReadonlySet<string> | null
   /** Present in the editor: what this menu can do to the Exam's Sections. */
   sectionActions?: QuestionSectionActions
   /** The Incorrect answers shown entry: how many incorrect answers this
@@ -381,10 +401,11 @@ function questionMenuItems({
       onSelect: () => onDuplicate(question.id),
     },
   ]
-  // One question starts a new Section where it is, taking the rest of its
-  // Section with it; a selection of several becomes a Section of its own. The
-  // row is there but disabled when it would change nothing — a question that
-  // already begins its Section, a selection that already is one.
+  // One question opens a new Section directly below it, taking the rest of
+  // its Section with it — or, as the last of its Section, an empty one below
+  // that; a selection of several becomes a Section of its own. The row is
+  // there but disabled when it would change nothing — a selection that
+  // already is a Section.
   if (sectionActions) {
     items.push(
       { kind: 'separator' },
@@ -398,8 +419,8 @@ function questionMenuItems({
           }
         : {
             kind: 'action',
-            label: 'Start new section here',
-            icon: <SeparatorHorizontal />,
+            label: 'Insert new section below',
+            icon: <BetweenHorizontalEnd />,
             disabled: !sectionActions.canSplit(question.id),
             onSelect: () => sectionActions.onSplit(question.id),
           },
@@ -426,6 +447,7 @@ function questionMenuItems({
   // A Part that holds Subparts answers nothing itself: each of its Subparts
   // is laid out, and leaves room, under its own id and name.
   const answering = answeringPartsIn(question.parts ?? [])
+    .filter(({ part }) => !pointedPartIds || pointedPartIds.has(part.id))
   for (const { name, part } of answering) {
     if (part.type !== 'multiple-choice') continue
     answerFormat.push(
@@ -2113,13 +2135,29 @@ export function ExamPage({
           }
         }
       : undefined
+  // The question after this one in its Section, where a Section inserted
+  // below this one begins; `null` for the last of its Section.
+  const nextInSection = (questionId: string): string | null => {
+    const section = sectionOfQuestion.get(questionId)
+    const inSection = distinctIds(orderedIds).filter((id) => sectionOfQuestion.get(id) === section)
+    return inSection[inSection.indexOf(questionId) + 1] ?? null
+  }
   // What a question's menu offers for Sections, asking the Exam's own rules
   // whether each would change anything rather than restating them here.
   const questionSectionActions: QuestionSectionActions | undefined =
     onSplitSection && onMoveToNewSection
       ? {
-          canSplit: (questionId) => splitSection(exam, arrangement, questionId, () => '') !== null,
-          onSplit: onSplitSection,
+          canSplit: (questionId) => {
+            const next = nextInSection(questionId)
+            return next
+              ? splitSection(exam, arrangement, next, () => '') !== null
+              : onInsertSection !== undefined && sectionOfQuestion.has(questionId)
+          },
+          onSplit: (questionId) => {
+            const next = nextInSection(questionId)
+            if (next) onSplitSection(next)
+            else onInsertSection?.(sectionOfQuestion.get(questionId)!, 'below')
+          },
           canMoveToNewSection: (questionIds) =>
             moveToNewSection(exam, arrangement, questionIds, () => '') !== null,
           onMoveToNewSection,
@@ -2155,14 +2193,20 @@ export function ExamPage({
     questionId: string
     point: MenuPoint
     side: MenuSide
+    /** The Part or Subpart a right-click landed on, if it was one. */
+    partId: string | null
   } | null>(null)
+  // Set as a right-click passes down through the sheet, and taken by the menu
+  // it opens; a menu opened any other way finds none.
+  const pointedPart = useRef<string | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
   const openMenu = useCallback(
     (questionId: string, point: MenuPoint, side: MenuSide = 'right') => {
       // A menu raised from outside the selection changes the command scope to
       // that question. Raised from inside it, the selection remains intact.
       if (!selection.isSelected(questionId)) selection.select(questionId)
-      setMenu({ questionId, point, side })
+      setMenu({ questionId, point, side, partId: pointedPart.current })
+      pointedPart.current = null
     },
     [selection],
   )
@@ -2194,6 +2238,9 @@ export function ExamPage({
     <main
       className={workspaceClasses.join(' ')}
       ref={workspace}
+      onContextMenuCapture={(event) => {
+        pointedPart.current = (event.target as HTMLElement).closest<HTMLElement>('[data-part-id]')?.dataset.partId ?? null
+      }}
       {...selectAllPaneProps('exam-draft')}
       style={pageGeometry(plan.pageSize)}
       data-drop-zone=""
@@ -2374,6 +2421,7 @@ export function ExamPage({
             onSetWorkSpace,
             selectedQuestionIds: [...selection.selectedIds],
             sectionActions: questionSectionActions,
+            pointedPartIds: pointedPartIdsOf(menuQuestion, menu.partId),
           })}
           onClose={closeMenu}
         />

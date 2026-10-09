@@ -1342,6 +1342,19 @@ button { cursor: pointer; }
 .exam-question--sizing .work-space-grip { background: #9f5037; }
 .work-space-handle:focus-visible { outline: 2px solid #9f5037; outline-offset: 1px; }
 .exam-question--sizing, .exam-question--sizing * { cursor: ns-resize !important; }
+/* A Part's or Subpart's bar, and the outline of its space, answer to that
+   Part alone: they show while the pointer is on it, or its bar is being
+   dragged or has focus — never because somewhere else on the Multipart
+   question is hovered or selected. */
+.exam-question .part-work-space > .work-space-handle { opacity: 0; }
+.exam-question .part-work-space > .work-space { outline: none; }
+.multipart-part-print:hover > .part-body > .part-work-space > .work-space-handle,
+.part-work-space > .work-space-handle:active,
+.part-work-space > .work-space-handle:focus-visible { opacity: 1; }
+.multipart-part-print:hover > .part-body > .part-work-space > .work-space,
+.part-work-space:has(> .work-space-handle:active) > .work-space {
+  outline: 1px dashed #d4c3ae; outline-offset: -1px;
+}
 /* The note and the bar start where the body does: past the number column and
    its 6px gap, however wide the Paper Style makes that column. Condensed's
    narrower gap between questions takes a smaller note. */
@@ -1543,6 +1556,14 @@ button { cursor: pointer; }
 .margins-input::placeholder { color: #8b7868; }
 .margins-unit { color: #8b7868; }
 body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important; user-select: none; }
+/* While the Margins panel is open, each sheet draws where its margins fall:
+   a dashed line on all four sides, over the content, taking no room. */
+body.margins-guides .exam-page::after {
+  content: ''; position: absolute; z-index: 4; pointer-events: none;
+  top: var(--page-margin-top); right: var(--page-margin-right);
+  bottom: var(--page-margin-bottom); left: var(--page-margin-left);
+  border: 1px dashed var(--paper-accent); opacity: .7;
+}
 
 .vary-summary {
   position: fixed; z-index: 40; left: 50%; bottom: 22px; transform: translateX(-50%);

@@ -55,6 +55,9 @@ const MARGIN_RANGE: ScrubRange = { min: MIN_MARGIN, max: MAX_MARGIN, step: MARGI
  *  wherever the pointer strays. */
 const SCRUBBING_CLASS = 'margins-scrubbing'
 
+/** Set on the page while the panel is open: every sheet draws its margins. */
+const MARGIN_GUIDES_CLASS = 'margins-guides'
+
 /** A margin as the field shows it: no trailing zeros, never a float's tail. */
 function formatInches(inches: number): string {
   return String(Math.round(inches * 100) / 100)
@@ -249,6 +252,14 @@ export function MarginsPanel({
   // than scrubs, and Escape still closes from here.
   useEffect(() => {
     panel.current?.focus()
+  }, [])
+
+  // While the panel is open every page draws its margins as a dashed line,
+  // following each change as it is dragged or typed, so the teacher sees where
+  // the edge of the text will fall rather than only the reflow it causes.
+  useEffect(() => {
+    document.body.classList.add(MARGIN_GUIDES_CLASS)
+    return () => document.body.classList.remove(MARGIN_GUIDES_CLASS)
   }, [])
 
   useEffect(() => {
