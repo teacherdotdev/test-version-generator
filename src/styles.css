@@ -1342,17 +1342,11 @@ button { cursor: pointer; }
   box-shadow: 0 0 0 1px rgb(58 42 30 / 30%);
   pointer-events: auto; cursor: ns-resize;
 }
-/* The bar shows on its selected Work Space, and on an empty one — a thin
-   strip there is nothing else to point at — under a selected question. */
+/* The handle shows on its selected Work Space. One with no height has
+   nothing to select: it is added from the question's menu. */
 .work-space-handle[data-selected],
-.exam-question--selected .work-space-handle[data-empty],
 .work-space-handle:active,
 .work-space-handle:focus-visible { opacity: 1; }
-/* An empty one is a line where its bottom edge would be. */
-.work-space-handle[data-empty]::before {
-  content: ''; position: absolute; left: 0; right: 0; top: 50%;
-  border-top: 2px solid var(--paper-accent);
-}
 .work-space-handle:focus-visible { outline: none; }
 .work-space-handle:focus-visible .work-space-grip { outline: 2px solid var(--paper-accent); outline-offset: 2px; }
 .exam-question--sizing, .exam-question--sizing * { cursor: ns-resize !important; }

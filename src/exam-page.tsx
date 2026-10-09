@@ -269,6 +269,17 @@ function workSpaceMenu(
     onSetWorkSpace(ids, present
       ? { style }
       : { style, height: DEFAULT_WORK_SPACE_HEIGHT })
+  // With none, the one thing to do is add some: it arrives in the style the
+  // question already names, at the default height, and is then sized by
+  // selecting it on the sheet and dragging its handle (ADR-0050).
+  if (!present) {
+    return [{
+      kind: 'action',
+      label: label.replace(/Work space$/, 'Add work space'),
+      icon: <PencilLine />,
+      onSelect: () => withStyle(workSpace.style),
+    }]
+  }
   return [
     {
       kind: 'submenu',
