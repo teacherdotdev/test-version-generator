@@ -1,17 +1,15 @@
-# Exam Record 0.4.0
+# Exam Record 0.5.0
 
-> **Superseded by [Exam Record 0.5.0](exam-record-0.5.0.md).** Test Parrot no longer writes `0.4.0` records; it still reads them, as Exams that print every picture at its Default Picture Size.
-
-The **Exam Record** is the portable composition of one Exam: its name, its test-page header lines, its Question Sections in print order and how each one's heading reads, how large its headings and text print, how its questions print, how far in from each edge its pages print, and, for each position, the Question it uses, the Section it is in, and that position's answer columns, answer order, Hidden Answers and Work Space. It never carries Question Content. It references Questions in Question Bank Records that travel beside it in the same [Test Parrot Package](test-parrot-package-0.1.0.md), and it is importable only inside one. See ADR-0022, ADR-0029, ADR-0038, ADR-0039, ADR-0041, ADR-0044 and ADR-0045.
+The **Exam Record** is the portable composition of one Exam: its name, its test-page header lines, its Question Sections in print order and how each one's heading reads, how large its headings and text print, how its questions print, how far in from each edge its pages print, and, for each position, the Question it uses, the Section it is in, and that position's answer columns, answer order, Hidden Answers, Work Space and Exam Picture Sizes. It never carries Question Content. It references Questions in Question Bank Records that travel beside it in the same [Test Parrot Package](test-parrot-package-0.1.0.md), and it is importable only inside one. See ADR-0022, ADR-0029, ADR-0038, ADR-0039, ADR-0041, ADR-0044, ADR-0045 and ADR-0050.
 
 ## Published contract
 
 - Format: `test-parrot/exam`
-- Version: `0.4.0`, versioned separately from the Question Bank Record and the Test Parrot Package
-- Stable schema identifier: `https://testparrot.com/formats/exam/0.4.0/schema.json`
-- Checked-in schema: [`/formats/exam/0.4.0/schema.json`](../public/formats/exam/0.4.0/schema.json)
-- [Canonical examples](../public/formats/exam/0.4.0/examples/)
-- Superseded but still readable: [Exam Record 0.3.0](exam-record-0.3.0.md), and Exam Records `0.2.0` and `0.1.0`
+- Version: `0.5.0`, versioned separately from the Question Bank Record and the Test Parrot Package
+- Stable schema identifier: `https://testparrot.com/formats/exam/0.5.0/schema.json`
+- Checked-in schema: [`/formats/exam/0.5.0/schema.json`](../public/formats/exam/0.5.0/schema.json)
+- [Canonical examples](../public/formats/exam/0.5.0/examples/)
+- Superseded but still readable: [Exam Record 0.4.0](exam-record-0.4.0.md), [Exam Record 0.3.0](exam-record-0.3.0.md), and Exam Records `0.2.0` and `0.1.0`
 - Invalid counterexamples live with the package, since an Exam Record is validated there: [`/formats/package/0.1.0/invalid/`](../public/formats/package/0.1.0/invalid/)
 
 The schema is the structural contract; this document supplies the rules JSON Schema cannot express. Implementations must perform both.
@@ -21,7 +19,7 @@ The schema is the structural contract; this document supplies the rules JSON Sch
 | Member          | Meaning                                                  |
 | --------------- | -------------------------------------------------------- |
 | `format`        | Exactly `test-parrot/exam`.                              |
-| `formatVersion` | Exactly `0.4.0`. Importers accept exact versions only.   |
+| `formatVersion` | Exactly `0.5.0`. Importers accept exact versions only.   |
 | `name`          | The Exam's name. An empty name imports as “Untitled Exam”. |
 | `sections`      | The Exam's Question Sections, in the order they print. May be empty. See below. |
 | `headingSize`   | Optional. `small`, `normal` or `large`: how large every heading prints — the Exam's title, and each section heading and its directions. Absent means `normal`. |
@@ -64,6 +62,8 @@ Each position has these members:
 | `wordBankLayoutSet` | no | `true` when the teacher chose this **Matching** position's `wordBankLayout`, rather than it being placed by the `paperStyle` and the fit rule. Read only beside a `wordBankLayout`; absent means `false`. Allowed on no other Question Type. See Paper Style. |
 | `workSpace`   | no       | `{ "height", "style", "fill" }`, room left below a **Short Answer** Question for a student's working. Allowed on no other Question Type. `height` is in CSS pixels at 96 dpi and is snapped to whole ruled lines of 32 px on import — each 32 px is one row, which the `paperStyle` lays out on the page (closer together under `condensed`); `style` is `blank` or `lines`; `fill` stretches the space to the foot of its page, with `height` the least room it takes. A `height` of 0 with `fill` false is no room, set on purpose; it wins over the room a `paperStyle` would rule there. |
 
+| `pictureSizes` | no     | **Exam Picture Sizes**: `[{ "picture", "size" }]`, how wide this position prints some of its Question's block pictures. Allowed on any Question Type. See below. |
+
 Semantic rules:
 
 - Every `question` reference must resolve to a Question in a Question Bank Record in the same package.
@@ -79,6 +79,16 @@ A Multiple Choice position may show fewer of its Question's incorrect answers th
 - A consumer shows a Locked Answer (Question Bank Record `0.9.0`) whatever `hiddenAnswers` says, shows at least one incorrect answer, and hides nothing while the Question has no correct answer or has a Locked Answer that names others by letter, such as “Both A and B”. A producer never writes a position that breaks these rules; a consumer reading one shows the answers the rules require and hides the rest it names.
 - The answers shown keep `answerOrder`, with the hidden ones taken out, and are lettered by their place among the answers shown. A Locked Answer last stays last.
 - Producers record only answers actually hidden. An absent `hiddenAnswers` shows every answer.
+
+## Picture Sizes
+
+A position may print some of its Question's block pictures at a width of its own (ADR-0050). Each is an **Exam Picture Size**: Exam presentation like `workSpace`, which wins over the picture's Default Picture Size — the `authoredSize` its Question Bank Record gives it, or its own width when it has none — on this Exam alone, in its test and Answer Key. The Question in its Question Bank Record is unchanged.
+
+- `picture` counts, from 1, the Question's `block-image` nodes in this order: its `stem`; then each of its `choices`, `prompts` and `wordBank` answers in turn; then its `suggestedAnswer`; then each Part in turn, itself in that order — its `stem`, its `choices` and `suggestedAnswer`, then each of its Subparts the same way. Each document is read depth first in document order, so a picture in a Panel of a Side-by-Side is counted where the Panel stands. Pending Images are counted too. Inline images are never counted and cannot be sized.
+- `size` is the width of what the picture shows as a share of its container — the Question Content lane, a Panel or an answer-choice cell — from 0.05 to 1. It keeps the picture's proportions.
+- Each `picture` must be one of the Question's block pictures and may appear at most once; a record that breaks either rule, or gives a `size` outside 0.05 to 1, is rejected.
+- A size on a Pending Image is accepted and has nothing to apply to until the picture is resolved; Test Parrot drops it on import.
+- Producers record only pictures the Exam actually sized. An absent `pictureSizes` prints every picture at its Default Picture Size.
 
 ## Order
 
@@ -126,6 +136,7 @@ Every page is US Letter, or A4 under `exam-board`. By default it prints three qu
 - A Multiple Choice position without `columns` takes the answer columns of the Multiple Choice position before it, or one column if it is the first — the same rule that applies when a teacher adds a Question to an Exam.
 - A position without `answerOrder` prints its answers in their authored order.
 - A position without `hiddenAnswers` prints every answer.
+- A position without `pictureSizes` prints every picture at its Default Picture Size.
 - A Short Answer position without `workSpace` leaves the room its `paperStyle` rules, which under `standard` is none.
 - A Matching position without `wordBankLayout` is given one on import, once, as a Question added to an Exam is: above its Items under `classic`; otherwise beside them when its widest answer fits a column beside them on one line, and above them when it does not or when its Word Bank has more than twice as many answers as there are Items, and more than five. Test Parrot then stores and writes that layout; it is not worked out again.
 - A **Multipart** position (Question Bank Record `0.4.0`) carries only `question` and `section`. Answer order, answer columns and Work Space are set per Part in Test Parrot, and this version has no member for a Part's, so none of the three, nor `hiddenAnswers`, is allowed on a Multipart position and every Part imports with its defaults: answers in authored order, the default answer columns, and a Short Answer Part's default Work Space.
@@ -134,7 +145,11 @@ Every page is US Letter, or A4 under `exam-board`. By default it prints three qu
 
 Record `columns` only when the source layout makes them clear, and a Short Answer position's `workSpace` only when the source prints room to write below it — ruled lines counted, blank space in 32 px rows. Record `paperStyle` only when it is not `standard`, and `workSpace` wherever the teacher set it, a zero-height one included under any style: the room a style rules is not written out as a `workSpace`. Record `wordBankLayout` when the source shows where a Word Bank prints; leave it out to let the importer choose. Record `wordBankLayoutSet` only for a layout the teacher chose.
 
-## Changes from 0.3.0
+## Changes from 0.4.0
+
+One member is new, and optional: `pictureSizes`, on any position — the Exam Picture Sizes it gives its Question's block pictures, each naming its picture by its place among them (ADR-0050). Nothing else changed, so a `0.4.0` record is a `0.5.0` record that prints every picture at its Default Picture Size. Test Parrot writes `0.5.0` and still imports `0.4.0`, `0.3.0`, `0.2.0` and `0.1.0`; a `pictureSizes` in an older record is an unknown optional member and is ignored.
+
+## Changes in 0.4.0, from 0.3.0
 
 Five members are new, all optional:
 
@@ -144,7 +159,7 @@ Five members are new, all optional:
 - `margins`: an Exam's Page Margins, one per side, in inches (ADR-0039).
 - `paperStyle`: how every question on the Exam prints (ADR-0041, ADR-0044, ADR-0045). A Short Answer position's default Work Space now follows it. A zero-height `workSpace` was always conforming; it now means "no room" even where the style would rule lines.
 
-Nothing else changed, so a `0.3.0` record is a `0.4.0` record that hides nothing, has every Word Bank placed on import, keeps the default margins and prints in the `standard` style. Test Parrot writes `0.4.0` and still imports `0.3.0`, `0.2.0` and `0.1.0`, each that way; a `hiddenAnswers`, `wordBankLayout`, `wordBankLayoutSet`, `margins` or `paperStyle` in an older record is an unknown optional member and is ignored.
+Nothing else changed, so a `0.3.0` record is a `0.4.0` record that hides nothing, has every Word Bank placed on import, keeps the default margins and prints in the `standard` style. Test Parrot wrote `0.4.0` and imported `0.3.0`, `0.2.0` and `0.1.0`, each that way; a `hiddenAnswers`, `wordBankLayout`, `wordBankLayoutSet`, `margins` or `paperStyle` in an older record is an unknown optional member and is ignored.
 
 ## Changes in 0.3.0, from 0.2.0
 

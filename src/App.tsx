@@ -2925,6 +2925,7 @@ function ExamEditor({
             arrangement={arrangement}
             selection={selection}
             onPasteQuestions={(questionIds, after) => void pasteQuestions(questionIds, after)}
+            onSetPictureSize={(questionId, picture, size) => store.setPictureSize(questionId, picture, size)}
             drag={drag}
             revealQuestionId={revealQuestionId}
             onRevealed={clearReveal}

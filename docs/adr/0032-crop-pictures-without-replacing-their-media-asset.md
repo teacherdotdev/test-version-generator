@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted (resizing superseded by ADR-0050)
 ---
 
 # Crop pictures without replacing their Media Asset

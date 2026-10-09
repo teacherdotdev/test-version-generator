@@ -12,7 +12,6 @@ import {
   isWholeCrop,
   keptAspect,
   legacyRatioOf,
-  MIN_SIZE,
   normalizedCrop,
   pictureCropOf,
   pictureSizeOf,
@@ -23,9 +22,10 @@ import {
 } from './picture-geometry'
 
 /**
- * A block picture in the question editor, drawn the way Google Docs draws one.
- * One click selects it and shows a handle at each corner and side, each of
- * which resizes it in proportion — a picture never distorts. A double click, or Enter while it is selected, crops it in place:
+ * A block picture in the question editor, drawn the way Google Docs draws one,
+ * at its Default Picture Size: how wide it prints is each Exam's to decide,
+ * on the sheet (ADR-0050), so nothing here resizes it. One click selects it.
+ * A double click, or Enter while it is selected, crops it in place:
  * black handles on the part it keeps, the rest of the picture shown faded
  * around it, and a drag inside slides the picture under the crop. Enter, a
  * click outside or another double click keeps the crop; Escape puts back the
@@ -169,12 +169,6 @@ export function pictureView(initial: ProseMirrorNode, view: EditorView, getPos: 
   const window_ = element('div', 'picture-window', frame)
   const image = element('img', 'picture-image', window_)
   image.draggable = false
-  const handles = [...CORNERS, ...EDGES].map((grip) => {
-    const handle = element('span', 'picture-handle', frame)
-    handle.dataset.grip = grip
-    handle.setAttribute('aria-hidden', 'true')
-    return handle
-  })
   const caption = element('input', 'picture-caption', dom)
   caption.placeholder = 'Write a caption'
   caption.setAttribute('aria-label', 'Caption')
@@ -224,44 +218,6 @@ export function pictureView(initial: ProseMirrorNode, view: EditorView, getPos: 
     caption.hidden = !captionShown && !text
   }
   image.addEventListener('load', () => draw())
-
-  // ---- Resizing from a corner or a side ----
-
-  const resize = (grip: Corner | Edge, start: PointerEvent) => {
-    start.preventDefault()
-    start.stopPropagation()
-    const startWidth = frame.getBoundingClientRect().width
-    const aspect = frame.getBoundingClientRect().width / Math.max(1, frame.getBoundingClientRect().height)
-    const column = containerWidth()
-    // A side follows the pointer along its own axis, a corner whichever way
-    // it moved further; either way the other side keeps the proportions.
-    const east = grip.includes('e') ? 1 : grip.includes('w') ? -1 : 0
-    const south = grip.includes('s') ? 1 : grip.includes('n') ? -1 : 0
-    let width = startWidth
-    const move = (event: PointerEvent) => {
-      const across = east * (event.clientX - start.clientX)
-      const down = south * (event.clientY - start.clientY) * aspect
-      const grow = Math.abs(across) >= Math.abs(down) ? across : down
-      width = Math.max(MIN_SIZE * column, Math.min(column, startWidth + grow))
-      frame.style.width = `${width}px`
-    }
-    const up = () => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      dom.classList.remove('is-resizing')
-      if (Math.abs(width - startWidth) < 1) {
-        draw()
-        return
-      }
-      setAttrs({ size: clampSize(width / column) })
-    }
-    dom.classList.add('is-resizing')
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
-  }
-  handles.forEach((handle) => {
-    handle.addEventListener('pointerdown', (event) => resize(handle.dataset.grip as Corner | Edge, event))
-  })
 
   // ---- Cropping in place ----
 
@@ -504,7 +460,6 @@ export function pictureView(initial: ProseMirrorNode, view: EditorView, getPos: 
       const target = event.target as Node | null
       if (!target) return false
       if (cropping) return true
-      if (handles.some((handle) => handle.contains(target))) return true
       if (caption.contains(target) || empty.contains(target)) return true
       return event.type === 'contextmenu' || event.type === 'dblclick'
     },

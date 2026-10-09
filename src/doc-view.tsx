@@ -10,7 +10,8 @@ import { useContext, type CSSProperties, type ReactNode } from 'react'
 import katex from 'katex'
 import { isCentred } from './centring'
 import { pendingImageOf, type PendingImageReference, type ProseMirrorJSON } from './question-doc'
-import { keptAspect, legacyRatioOf, pictureCropOf, pictureSizeOf, type PictureCrop } from './picture-geometry'
+import { keptAspect, legacyRatioOf, pictureCropOf, pictureKey as pictureKeyOf, pictureSizeOf, type PictureCrop } from './picture-geometry'
+import { SheetPicture } from './sheet-pieces'
 import { PictureSlotContext } from './picture-slot'
 import { BLANK_LINE } from './blank'
 
@@ -204,7 +205,7 @@ function renderNode(node: ProseMirrorJSON, key: number): ReactNode {
           <Slot pictureKey={attrs.pictureKey}>
             {pending
               ? <PictureNeeded pending={pending} />
-              : blockPicture(attrs, caption)}
+              : <SheetPicture pictureKey={pictureKeyOf(attrs)}>{blockPicture(attrs, caption)}</SheetPicture>}
           </Slot>
           {caption && <figcaption>{caption}</figcaption>}
         </figure>

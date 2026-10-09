@@ -1292,13 +1292,14 @@ button { cursor: pointer; }
 .work-space[data-ruling='dotted'] .work-space-rule { border-bottom: 1.5px dotted #4a4038; }
 .work-space-points { flex: none; white-space: nowrap; }
 
-/* On the sheet a teacher edits, blank space is otherwise invisible, so the
-   question that owns it shows its extent while hovered, selected or being
-   sized. The outline paints outside the box and takes no height. */
-.exam-question:has(.work-space-handle):hover .work-space,
-.exam-question--selected .work-space,
-.exam-question--sizing .work-space {
-  outline: 1px dashed #d4c3ae; outline-offset: -1px;
+/* On the sheet a teacher edits, blank space is otherwise invisible. Like a
+   design tool (ADR-0050), a Work Space shows its extent while pointed at, and
+   holds it once selected — its bar then shows at its bottom edge. The outline
+   paints over the box and takes no height. */
+.exam-question .work-space:hover,
+.exam-question:has(> .work-space-handle[data-selected]) .work-space:not(.part-work-space .work-space),
+.part-work-space:has(> .work-space-handle[data-selected]) > .work-space {
+  outline: 1px dashed #b89a80; outline-offset: -1px;
 }
 
 /* A Short Answer Part's space carries its own bar, in the gap below the Part
@@ -1334,27 +1335,17 @@ button { cursor: pointer; }
 .work-space-grip {
   width: 44px; height: 4px; border-radius: 2px; background: #b3a498;
 }
-.exam-question:hover .work-space-handle,
-.exam-question--selected .work-space-handle,
-.exam-question--sizing .work-space-handle,
+/* The bar shows on its selected Work Space, and on an empty one — a thin
+   strip there is nothing else to point at — under a selected question. */
+.work-space-handle[data-selected],
+.exam-question--selected .work-space-handle[data-empty],
+.work-space-handle:active,
 .work-space-handle:focus-visible { opacity: 1; }
+.work-space-handle[data-empty] { border: 1px dashed #d4c3ae; background: rgb(255 253 248 / 85%); }
 .work-space-handle:hover .work-space-grip,
 .exam-question--sizing .work-space-grip { background: #9f5037; }
 .work-space-handle:focus-visible { outline: 2px solid #9f5037; outline-offset: 1px; }
 .exam-question--sizing, .exam-question--sizing * { cursor: ns-resize !important; }
-/* A Part's or Subpart's bar, and the outline of its space, answer to that
-   Part alone: they show while the pointer is on it, or its bar is being
-   dragged or has focus — never because somewhere else on the Multipart
-   question is hovered or selected. */
-.exam-question .part-work-space > .work-space-handle { opacity: 0; }
-.exam-question .part-work-space > .work-space { outline: none; }
-.multipart-part-print:hover > .part-body > .part-work-space > .work-space-handle,
-.part-work-space > .work-space-handle:active,
-.part-work-space > .work-space-handle:focus-visible { opacity: 1; }
-.multipart-part-print:hover > .part-body > .part-work-space > .work-space,
-.part-work-space:has(> .work-space-handle:active) > .work-space {
-  outline: 1px dashed #d4c3ae; outline-offset: -1px;
-}
 /* The note and the bar start where the body does: past the number column and
    its 6px gap, however wide the Paper Style makes that column. Condensed's
    narrower gap between questions takes a smaller note. */
@@ -2209,6 +2200,7 @@ body.margins-guides .exam-page::after {
   html[data-export-reference-print] .document-bar,
   html[data-export-reference-print] .question-handles,
   html[data-export-reference-print] .work-space-handle,
+  html[data-export-reference-print] .sheet-picture-frame,
   html[data-export-reference-print] .context-menu,
   html[data-export-reference-print] .vary-summary,
   html[data-export-reference-print] .measure-host,
@@ -3864,21 +3856,6 @@ button.pop-over-chip-option[aria-pressed='true'] svg { visibility: visible; }
 .milkdown .picture-image { display: block; width: 100%; max-width: 100%; }
 .milkdown .picture-frame.is-cropped .picture-image { position: absolute; max-width: none; }
 .milkdown .picture-block.is-selected .picture-frame { outline: 2px solid var(--paper-accent); outline-offset: 0; }
-.milkdown .picture-handle {
-  position: absolute; width: 10px; height: 10px; box-sizing: border-box;
-  border: 1.5px solid #fff; border-radius: 2px; background: var(--paper-accent);
-  box-shadow: 0 0 0 1px rgb(58 42 30 / 30%); display: none; z-index: 2;
-}
-.milkdown .picture-block.is-selected:not(.is-cropping) .picture-handle { display: block; }
-.milkdown .picture-handle[data-grip='nw'] { left: -5px; top: -5px; cursor: nwse-resize; }
-.milkdown .picture-handle[data-grip='ne'] { right: -5px; top: -5px; cursor: nesw-resize; }
-.milkdown .picture-handle[data-grip='sw'] { left: -5px; bottom: -5px; cursor: nesw-resize; }
-.milkdown .picture-handle[data-grip='se'] { right: -5px; bottom: -5px; cursor: nwse-resize; }
-.milkdown .picture-handle[data-grip='n'] { left: calc(50% - 5px); top: -5px; cursor: ns-resize; }
-.milkdown .picture-handle[data-grip='s'] { left: calc(50% - 5px); bottom: -5px; cursor: ns-resize; }
-.milkdown .picture-handle[data-grip='e'] { right: -5px; top: calc(50% - 5px); cursor: ew-resize; }
-.milkdown .picture-handle[data-grip='w'] { left: -5px; top: calc(50% - 5px); cursor: ew-resize; }
-.milkdown .picture-block.is-resizing .picture-frame { outline-style: dashed; }
 
 .milkdown .picture-block.is-cropping .picture-frame { outline: none; z-index: 5; }
 .milkdown .picture-block.is-cropping .picture-window { visibility: hidden; }
@@ -3926,3 +3903,25 @@ button.pop-over-chip-option[aria-pressed='true'] svg { visibility: visible; }
 .milkdown .picture-upload { position: relative; cursor: pointer; }
 .milkdown .picture-upload-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .milkdown .picture-link { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--paper-outline); border-radius: 6px; font: inherit; }
+
+/* A block picture on the exam sheet (ADR-0050): outlined while pointed at,
+   and once selected given a handle at each corner that resizes it on this
+   Exam, in proportion. The chrome is drawn over the picture and takes no
+   room; the figure it is placed in is its frame of reference. */
+.exam-workspace .doc-figure { position: relative; }
+.sheet-picture { display: contents; }
+.sheet-picture-frame {
+  position: absolute; z-index: 3; pointer-events: none;
+  outline: 1px solid var(--paper-accent); outline-offset: 0;
+}
+.sheet-picture-frame[data-selected] { outline-width: 2px; }
+.sheet-picture-handle {
+  position: absolute; width: 10px; height: 10px; box-sizing: border-box;
+  border: 1.5px solid #fff; border-radius: 2px; background: var(--paper-accent);
+  box-shadow: 0 0 0 1px rgb(58 42 30 / 30%); pointer-events: auto; touch-action: none;
+}
+.sheet-picture-handle[data-grip='nw'] { left: -5px; top: -5px; cursor: nwse-resize; }
+.sheet-picture-handle[data-grip='ne'] { right: -5px; top: -5px; cursor: nesw-resize; }
+.sheet-picture-handle[data-grip='sw'] { left: -5px; bottom: -5px; cursor: nesw-resize; }
+.sheet-picture-handle[data-grip='se'] { right: -5px; bottom: -5px; cursor: nwse-resize; }
+@media print { .sheet-picture-frame { display: none; } }

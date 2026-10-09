@@ -147,6 +147,12 @@ export type Exam = {
    *  question id. A change of Paper Style places every other one again and
    *  never these (ADR-0044). Absent means the teacher chose none. */
   wordBankLayoutSet?: Record<string, true>
+  /** How wide this Exam prints a question's block pictures, keyed by question
+   *  id and then by picture (`pictureKey`): an Exam Picture Size, set on the
+   *  sheet, which wins over the picture's Authored Image Size on this Exam
+   *  alone and never changes the Question. Absent means each prints as
+   *  authored. */
+  pictureSizes?: Record<string, Record<string, number>>
   /** This Exam's Question Sections, in the order they print. Absent on an Exam
    *  written before Sections were stored: its Sections are then derived, one
    *  per Question Type (see `sectionsOf`). */

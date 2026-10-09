@@ -22,6 +22,9 @@ import type { QuestionBankResource } from './question-bank-workspaces'
 import {
   EXAM_FORMAT,
   EXAM_FORMAT_VERSION,
+  blockPictureKeysOf,
+  recordBlockPictures,
+  type ExamRecordPictureSize,
   PACKAGE_FORMAT,
   PACKAGE_FORMAT_VERSION,
   type ExamRecord,
@@ -110,8 +113,24 @@ export async function examPackage({
   // per-type wording into its derived Sections.
   const sections = sectionsOf(exam)
   const sectionIndex = new Map(sections.map((section, index) => [section.id, index]))
-  const positions = printed.map((question): ExamRecordPosition => {
+  // Each Exam Picture Size the teacher set, by the place its picture has
+  // among the Question's block pictures (ADR-0050). The record holds the same
+  // pictures in the same order as the Question's own document, so a picture
+  // is found by counting; were they ever to disagree, the sizes are left out
+  // rather than put on the wrong pictures.
+  const pictureSizesOf = (question: (typeof printed)[number], index: number): ExamRecordPictureSize[] => {
+    const sizes = exam.pictureSizes?.[question.id]
+    if (!sizes) return []
+    const keys = blockPictureKeysOf(question)
+    if (keys.length !== recordBlockPictures(prepared.record.bank.questions[index]!).length) return []
+    return keys.flatMap((key, at) => {
+      const size = key ? sizes[key] : undefined
+      return size !== undefined ? [{ picture: at + 1, size }] : []
+    })
+  }
+  const positions = printed.map((question, questionIndex): ExamRecordPosition => {
     const ids = recordIds.get(question.id)!
+    const pictureSizes = pictureSizesOf(question, questionIndex)
     // Only a Work Space the teacher set travels, and every one they set,
     // "None" included whatever the Exam's Paper Style now rules there: a
     // lining style taken after import must not rule lines over it (ADR-0044).
@@ -137,6 +156,7 @@ export async function examPackage({
       ...(takesWorkSpace(question.type) && space && isWorkSpace(space)
         ? { workSpace: { ...space } }
         : {}),
+      ...(pictureSizes.length > 0 ? { pictureSizes } : {}),
     }
   })
   const examRecord: ExamRecord = {

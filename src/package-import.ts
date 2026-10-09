@@ -1,5 +1,7 @@
 import Ajv2020, { type ErrorObject } from 'ajv/dist/2020'
-import type { ColumnSetting, WordBankLayout, WorkSpace } from './exam'
+import type { ColumnSetting, Question, WordBankLayout, WorkSpace } from './exam'
+import { pictureKey } from './picture-geometry'
+import type { ProseMirrorJSON } from './question-doc'
 import type { HeadingSize, SectionHeadings, TextSize } from './section-headings'
 import type { ExamHeader } from './page-header'
 import type { PageMargins } from './page-margins'
@@ -8,6 +10,7 @@ import examSchema010 from './exam-record-0.1.0.schema.json'
 import examSchema020 from './exam-record-0.2.0.schema.json'
 import examSchema030 from './exam-record-0.3.0.schema.json'
 import examSchema040 from './exam-record-0.4.0.schema.json'
+import examSchema050 from './exam-record-0.5.0.schema.json'
 import packageSchema010 from './test-parrot-package-0.1.0.schema.json'
 import type { QuestionFileSummary } from './question-formats'
 import { PackageZipError, isPackageZip, readPackageZip } from './package-zip'
@@ -16,6 +19,8 @@ import {
   RECORD_TYPE_ORDER,
   type QuestionBankRecordQuestion,
   type QuestionBankRecordQuestionType,
+  type SemanticDocument,
+  type SemanticNode,
 } from './question-bank-export'
 import {
   DEFAULT_QUESTION_BANK_IMPORT_LIMITS,
@@ -43,7 +48,7 @@ import {
  */
 
 export const EXAM_FORMAT = 'test-parrot/exam'
-export const EXAM_FORMAT_VERSION = '0.4.0'
+export const EXAM_FORMAT_VERSION = '0.5.0'
 export const PACKAGE_FORMAT = 'test-parrot/package'
 export const PACKAGE_FORMAT_VERSION = '0.1.0'
 /** The conventional extension a standalone package is saved under. */
@@ -79,6 +84,72 @@ export type ExamRecordPosition = {
   /** From Exam Record 0.4.0: whether the teacher chose that layout, so a
    *  change of Paper Style leaves it (ADR-0044). Absent means false. */
   wordBankLayoutSet?: boolean
+  /** From Exam Record 0.5.0: Exam Picture Sizes (ADR-0050), each naming one of
+   *  the Question's block pictures by its place among them (`picture`, from 1,
+   *  in `recordBlockPictures` order) and the share of its container it
+   *  prints at. */
+  pictureSizes?: ExamRecordPictureSize[]
+}
+
+/**
+ * A local Question's block pictures by `pictureKey`, in the order an Exam
+ * Record counts a record Question's (`recordBlockPictures`): the editor's
+ * document holds its stem, answers and Parts in that same order, and a Short
+ * Answer's Suggested Answer is read after it. A Pending Image has no picture
+ * to size yet and is counted with an empty key.
+ */
+export function blockPictureKeysOf(question: Pick<Question, 'doc' | 'suggestedAnswer'>): string[] {
+  const keys: string[] = []
+  const visit = (node: ProseMirrorJSON) => {
+    if (node.type === 'image-block') {
+      const attrs = (node.attrs ?? {}) as Record<string, unknown>
+      keys.push(attrs.src ? pictureKey(attrs) : '')
+    }
+    if (Array.isArray(node.content)) (node.content as ProseMirrorJSON[]).forEach(visit)
+  }
+  visit(question.doc)
+  if (question.suggestedAnswer) visit(question.suggestedAnswer)
+  return keys
+}
+
+/** One Exam Picture Size, as an Exam Record 0.5.0 writes it. */
+export type ExamRecordPictureSize = { picture: number; size: number }
+
+/**
+ * A record Question's block pictures in the order an Exam Record 0.5.0 counts
+ * them: its stem; then its choices, Matching Items and Word Bank answers in
+ * turn; then its Suggested Answer; then each Part in turn — its stem, its
+ * choices and Suggested Answer, then each of its Subparts the same way. Each
+ * document is read depth first in document order, Pending Images included.
+ * This is also the order the editor's own document holds them in, which is
+ * what lets an exported size find its picture again on import.
+ */
+export function recordBlockPictures(question: QuestionBankRecordQuestion): SemanticNode[] {
+  const found: SemanticNode[] = []
+  const visit = (node: SemanticNode) => {
+    if (node.type === 'block-image') found.push(node)
+    node.content?.forEach(visit)
+  }
+  const document = (doc: SemanticDocument | undefined) => doc?.content.forEach(visit)
+  type Answering = {
+    stem: SemanticDocument
+    choices?: { content: SemanticDocument }[]
+    suggestedAnswer?: SemanticDocument
+    subparts?: Answering[]
+  }
+  const part = (each: Answering) => {
+    document(each.stem)
+    each.choices?.forEach(({ content }) => document(content))
+    document(each.suggestedAnswer)
+    each.subparts?.forEach(part)
+  }
+  document(question.stem)
+  question.choices?.forEach(({ content }) => document(content))
+  question.prompts?.forEach(({ content }) => document(content))
+  question.wordBank?.forEach(({ content }) => document(content))
+  document(question.suggestedAnswer)
+  question.parts?.forEach((each) => part(each as Answering))
+  return found
 }
 
 /**
@@ -206,6 +277,7 @@ const validateExam010 = ajv.compile(examSchema010)
 const validateExam020 = ajv.compile(examSchema020)
 const validateExam030 = ajv.compile(examSchema030)
 const validateExam040 = ajv.compile(examSchema040)
+const validateExam050 = ajv.compile(examSchema050)
 const validatePackage010 = ajv.compile(packageSchema010)
 
 function schemaFailure(
@@ -329,7 +401,7 @@ const examParser020: ExamParser = (value) => {
 // per-type `sectionHeadings` is gone (ADR-0029).
 function sectionedParser(
   validate: typeof validateExam030,
-  formatVersion: '0.3.0' | '0.4.0',
+  formatVersion: '0.3.0' | '0.4.0' | '0.5.0',
   extra: (position: ExamRecordPosition) => Partial<ExamRecordPosition> = () => ({}),
 ): ExamParser {
   return (value) => {
@@ -362,24 +434,40 @@ const examParser030: ExamParser = sectionedParser(validateExam030, '0.3.0')
 // today's margins and prints in the standard style; a Matching position
 // without a `wordBankLayout` takes one on import, from its style and the fit
 // rule (`planImport`), and is not the teacher's choice.
-const sectionedParser040: ExamParser = sectionedParser(validateExam040, '0.4.0', (position) => ({
+const positionFrom040 = (position: ExamRecordPosition): Partial<ExamRecordPosition> => ({
   ...(position.hiddenAnswers !== undefined ? { hiddenAnswers: [...position.hiddenAnswers] } : {}),
   ...(position.wordBankLayout !== undefined ? { wordBankLayout: position.wordBankLayout } : {}),
   ...(position.wordBankLayout !== undefined && position.wordBankLayoutSet === true
     ? { wordBankLayoutSet: true }
     : {}),
-}))
+})
 
-const examParser040: ExamParser = (value) => {
-  const parsed = sectionedParser040(value)
-  const { paperStyle, margins } = value as ExamRecord
-  const { top, right, bottom, left } = margins ?? {}
-  return {
-    ...parsed,
-    ...(paperStyle ? { paperStyle } : {}),
-    ...(margins ? { margins: { top: top!, right: right!, bottom: bottom!, left: left! } } : {}),
+/** 0.4.0's Exam-wide members, Paper Style and Page Margins, read on top of
+ *  its Sections and positions. */
+function withPaperOf(parser: ExamParser): ExamParser {
+  return (value) => {
+    const parsed = parser(value)
+    const { paperStyle, margins } = value as ExamRecord
+    const { top, right, bottom, left } = margins ?? {}
+    return {
+      ...parsed,
+      ...(paperStyle ? { paperStyle } : {}),
+      ...(margins ? { margins: { top: top!, right: right!, bottom: bottom!, left: left! } } : {}),
+    }
   }
 }
+
+const examParser040: ExamParser = withPaperOf(sectionedParser(validateExam040, '0.4.0', positionFrom040))
+
+// 0.5.0 adds to 0.4.0 a position's `pictureSizes`, the Exam Picture Sizes it
+// gives its Question's block pictures (ADR-0050), and nothing else. A record
+// without them prints every picture at its Default Picture Size.
+const examParser050: ExamParser = withPaperOf(sectionedParser(validateExam050, '0.5.0', (position) => ({
+  ...positionFrom040(position),
+  ...(position.pictureSizes !== undefined
+    ? { pictureSizes: position.pictureSizes.map(({ picture, size }) => ({ picture, size })) }
+    : {}),
+})))
 
 /** Exact versions only, as for the Question Bank Record: each supported
  *  version names its own parser, which migrates it forward. */
@@ -388,6 +476,7 @@ export const SUPPORTED_EXAM_VERSIONS = Object.freeze({
   '0.2.0': examParser020,
   '0.3.0': examParser030,
   '0.4.0': examParser040,
+  '0.5.0': examParser050,
 } satisfies Record<string, ExamParser>)
 
 type PackageParser = (value: unknown) => TestParrotPackage
@@ -546,6 +635,31 @@ function proposedExam(
           throw new QuestionBankImportError(
             'invalid-position',
             `${where} hides “${id}”, Question “${questionId}”’s correct answer.`,
+          )
+        }
+      }
+    }
+    if (position.pictureSizes !== undefined) {
+      const pictures = recordBlockPictures(question).length
+      const sized = new Set<number>()
+      for (const { picture, size } of position.pictureSizes) {
+        if (!Number.isInteger(picture) || picture < 1 || picture > pictures) {
+          throw new QuestionBankImportError(
+            'dangling-reference',
+            `${where} sizes picture ${picture}, but Question “${questionId}” has ${pictures === 1 ? '1 block picture' : `${pictures} block pictures`}.`,
+          )
+        }
+        if (sized.has(picture)) {
+          throw new QuestionBankImportError(
+            'invalid-position',
+            `${where} sizes picture ${picture} more than once.`,
+          )
+        }
+        sized.add(picture)
+        if (!(size >= 0.05 && size <= 1)) {
+          throw new QuestionBankImportError(
+            'invalid-position',
+            `${where} sizes picture ${picture} at ${size}, outside 0.05 to 1 of its container.`,
           )
         }
       }

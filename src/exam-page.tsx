@@ -16,7 +16,7 @@
 // `pages` is state rather than a value computed during render: see
 // `usePaginatedExam`.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react'
 import {
   AnswerKeyEntry,
   AnswerKeyHeading,
@@ -79,6 +79,7 @@ import type { Selection } from './use-selection'
 import { selectAllPaneProps, useSelectAll } from './use-select-all'
 import { distinctIds } from './select-all'
 import { useQuestionClipboard } from './use-question-clipboard'
+import { SheetPiecesContext, SheetQuestionContext, spacePieceOf, type SheetPiece, type SheetPieces } from './sheet-pieces-context'
 import { answerVisibilityNote } from './hidden-answers'
 import { pointsLabel, parsePointsInput } from './points'
 import { shownIncorrectChoices, shownIncorrectMenuOf, type ShownIncorrectMenu } from './question-menu'
@@ -109,6 +110,7 @@ import {
   EyeOff,
   EllipsisVertical,
   FoldVertical,
+  ImageIcon,
   ListRestart,
   Pencil,
   PencilLine,
@@ -353,8 +355,11 @@ function questionMenuItems({
   selectedQuestionIds,
   sectionActions,
   pointedPartIds = null,
+  onResetPictureSize,
 }: {
   question: PlannedQuestion
+  /** Present when the menu was raised on a picture this Exam has resized. */
+  onResetPictureSize?: () => void
   /** The Parts or Subparts a right-click landed on, whose rows alone the menu
    *  offers; `null` for the whole question — its grip, or its shared stem. */
   pointedPartIds?: ReadonlySet<string> | null
@@ -401,6 +406,14 @@ function questionMenuItems({
       onSelect: () => onDuplicate(question.id),
     },
   ]
+  if (onResetPictureSize) {
+    items.push({
+      kind: 'action',
+      label: 'Reset picture size',
+      icon: <ImageIcon />,
+      onSelect: onResetPictureSize,
+    })
+  }
   // One question opens a new Section directly below it, taking the rest of
   // its Section with it — or, as the last of its Section, an empty one below
   // that; a selection of several becomes a Section of its own. The row is
@@ -598,11 +611,15 @@ function WorkSpaceHandle({
   label,
   space,
   max,
+  selected = false,
   onPreview,
   onRelease,
   onCommit,
 }: {
   label: string
+  /** Whether its Work Space is the sheet's selected piece, which is when the
+   *  bar shows (ADR-0050); an empty one shows under a selected question. */
+  selected?: boolean
   /** The space as this page lays it out: its height, and the rows it is in. */
   space: PlannedWorkSpace
   /** The most room a drag may open on the page: less on an Exam whose
@@ -630,6 +647,8 @@ function WorkSpaceHandle({
   return (
     <div
       className="work-space-handle"
+      data-selected={selected ? 'true' : undefined}
+      data-empty={height === 0 ? 'true' : undefined}
       role="separator"
       aria-orientation="horizontal"
       aria-label={label}
@@ -860,6 +879,7 @@ export function QuestionView({
   } | null>(null)
   const suppressClick = useRef(false)
   const question = item.question
+  const pieces = useContext(SheetPiecesContext)
   // A work space drawn at the height its drag is showing, when the sheet holds
   // one for it (`workSpaceSizing`), and otherwise as the plan draws it.
   const previewed = (positionId: string, space: PlannedWorkSpace): PlannedWorkSpace => {
@@ -896,6 +916,7 @@ export function QuestionView({
           label={`Work space for question ${numberLabelOf(question)} part ${here?.name ?? ''}`}
           space={here?.part.workSpace ?? space}
           max={maxWorkSpace}
+          selected={pieces?.selected === spacePieceOf(partId)}
           onPreview={(height) => workSpaceSizing.onPreview(partId, height)}
           onRelease={(committed) => workSpaceSizing.onRelease(partId, committed)}
           onCommit={(height) => onSetWorkSpace([partId], { height, fill: false })}
@@ -948,6 +969,12 @@ export function QuestionView({
         const target = event.target as HTMLElement
         if (target.closest('button, input, textarea, select, a, [contenteditable="true"]')) {
           return
+        }
+        // A press on a Work Space selects it, as a press on a picture does
+        // (`SheetPicture`), and its question with it.
+        if (target.closest('.work-space')) {
+          const part = target.closest<HTMLElement>('.part-work-space')?.closest<HTMLElement>('[data-part-id]')
+          pieces?.select(spacePieceOf(part?.dataset.partId ?? question.id))
         }
         // Shift-click extends the app's question range, not the browser's
         // native text range. Cancelling pointer-down is early enough to stop
@@ -1052,12 +1079,14 @@ export function QuestionView({
       {item.numbered && (
         <QuestionHandles question={question} onOpenMenu={onOpenMenu} />
       )}
-      <QuestionContent
-        item={shown}
-        showCorrectness
-        renderPartWorkSpace={renderPartWorkSpace}
-        renderPoints={renderPoints}
-      />
+      <SheetQuestionContext.Provider value={question.id}>
+        <QuestionContent
+          item={shown}
+          showCorrectness
+          renderPartWorkSpace={renderPartWorkSpace}
+          renderPoints={renderPoints}
+        />
+      </SheetQuestionContext.Provider>
       {/* Editing chrome, like the work space bar: placed in the gap below
           the answers, so it takes none of the height the page measured. */}
       {item.grid && question.answerVisibility && (
@@ -1070,6 +1099,7 @@ export function QuestionView({
           label={`Work space for question ${numberLabelOf(question)}`}
           space={item.workSpace}
           max={maxWorkSpace}
+          selected={pieces?.selected === spacePieceOf(question.id)}
           onPreview={(height) => workSpaceSizing.onPreview(question.id, height)}
           onRelease={(committed) => workSpaceSizing.onRelease(question.id, committed)}
           onCommit={(height) => onSetWorkSpace([question.id], { height, fill: false })}
@@ -1786,6 +1816,7 @@ export function ExamPage({
   unsavedDraft = false,
   contentSelection = { test: true, answerKey: true },
   onPasteQuestions,
+  onSetPictureSize,
 }: {
   exam: Exam
   arrangement: Arrangement
@@ -1839,8 +1870,34 @@ export function ExamPage({
    *  order they were copied, and the selected question they go after — the
    *  last one on the page — or `null` for the end of the Exam. */
   onPasteQuestions?: (questionIds: string[], after: string | null) => void
+  /** Sets how wide this Exam prints one of a question's pictures, as a share
+   *  of its container; `null` goes back to its Default Picture Size. */
+  onSetPictureSize?: (questionId: string, picture: string, size: number | null) => void
 }) {
   const workspace = useRef<HTMLElement | null>(null)
+  // The one picture or Work Space selected for resizing (ADR-0050). A press
+  // anywhere lets it go first; a press on a piece then takes it again.
+  const [piece, setPiece] = useState<SheetPiece | null>(null)
+  useEffect(() => {
+    const release = (event: PointerEvent) => {
+      if ((event.target as Element | null)?.closest?.('.work-space-handle, .sheet-picture-handle')) return
+      setPiece(null)
+    }
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPiece(null)
+    }
+    document.addEventListener('pointerdown', release, true)
+    document.addEventListener('keydown', escape)
+    return () => {
+      document.removeEventListener('pointerdown', release, true)
+      document.removeEventListener('keydown', escape)
+    }
+  }, [])
+  const pieces = useMemo<SheetPieces>(() => ({
+    selected: piece,
+    select: setPiece,
+    ...(onSetPictureSize ? { onResizePicture: onSetPictureSize } : {}),
+  }), [piece, onSetPictureSize])
   const blank = exam.questions.length === 0
   const { plan, plannedFrom } = usePaginatedExam(exam, arrangement, workspace, contentSelection)
   const workSpaceSizing = useWorkSpaceSizing(exam, plannedFrom)
@@ -2195,18 +2252,22 @@ export function ExamPage({
     side: MenuSide
     /** The Part or Subpart a right-click landed on, if it was one. */
     partId: string | null
+    /** The picture a right-click landed on, by its `pictureKey`, if any. */
+    picture: string | null
   } | null>(null)
   // Set as a right-click passes down through the sheet, and taken by the menu
   // it opens; a menu opened any other way finds none.
   const pointedPart = useRef<string | null>(null)
+  const pointedPicture = useRef<string | null>(null)
   const closeMenu = useCallback(() => setMenu(null), [])
   const openMenu = useCallback(
     (questionId: string, point: MenuPoint, side: MenuSide = 'right') => {
       // A menu raised from outside the selection changes the command scope to
       // that question. Raised from inside it, the selection remains intact.
       if (!selection.isSelected(questionId)) selection.select(questionId)
-      setMenu({ questionId, point, side, partId: pointedPart.current })
+      setMenu({ questionId, point, side, partId: pointedPart.current, picture: pointedPicture.current })
       pointedPart.current = null
+      pointedPicture.current = null
     },
     [selection],
   )
@@ -2235,11 +2296,14 @@ export function ExamPage({
   if (droppedQuestionIds.size > 0) workspaceClasses.push('exam-workspace--drop-feedback')
 
   return (
+    <SheetPiecesContext.Provider value={pieces}>
     <main
       className={workspaceClasses.join(' ')}
       ref={workspace}
       onContextMenuCapture={(event) => {
-        pointedPart.current = (event.target as HTMLElement).closest<HTMLElement>('[data-part-id]')?.dataset.partId ?? null
+        const target = event.target as HTMLElement
+        pointedPart.current = target.closest<HTMLElement>('[data-part-id]')?.dataset.partId ?? null
+        pointedPicture.current = target.closest<HTMLElement>('[data-picture-key]')?.dataset.pictureKey ?? null
       }}
       {...selectAllPaneProps('exam-draft')}
       style={pageGeometry(plan.pageSize)}
@@ -2422,10 +2486,17 @@ export function ExamPage({
             selectedQuestionIds: [...selection.selectedIds],
             sectionActions: questionSectionActions,
             pointedPartIds: pointedPartIdsOf(menuQuestion, menu.partId),
+            // A picture this Exam has resized can go back to its own size.
+            onResetPictureSize: menu.picture !== null
+              && exam.pictureSizes?.[menuQuestion.id]?.[menu.picture] !== undefined
+              && onSetPictureSize
+              ? () => onSetPictureSize(menuQuestion.id, menu.picture!, null)
+              : undefined,
           })}
           onClose={closeMenu}
         />
       )}
     </main>
+    </SheetPiecesContext.Provider>
   )
 }

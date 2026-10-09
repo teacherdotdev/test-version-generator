@@ -93,6 +93,7 @@ import {
   type ExportRecord,
 } from './export-preparation'
 import { wordBankLayoutFor, wordBankLayoutOf, type BankAnswerWidth } from './export-plan'
+import { clampSize } from './picture-geometry'
 
 /** Everything authoring owns: canonical content, the selection made from it,
  *  and whether that has reached the saved state yet. */
@@ -224,6 +225,15 @@ function isWorkSpaceSettings(value: unknown): value is Record<string, WorkSpace>
   )
 }
 
+/** An Exam's picture sizes (ADR-0050): by question, then by picture, each a
+ *  share of its container. */
+function isPictureSizeSettings(value: unknown): value is Record<string, Record<string, number>> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  return Object.values(value).every((sizes) =>
+    typeof sizes === 'object' && sizes !== null && !Array.isArray(sizes)
+    && Object.values(sizes).every((size) => typeof size === 'number' && size > 0 && size <= 1))
+}
+
 function isWorkingCopy(value: unknown): value is ExamWorkingCopy {
   const draft = value as ExamWorkingCopy | null
   return (
@@ -236,6 +246,7 @@ function isWorkingCopy(value: unknown): value is ExamWorkingCopy {
     (draft.workSpace === undefined || isWorkSpaceSettings(draft.workSpace)) &&
     (draft.wordBankLayout === undefined || isWordBankLayoutSettings(draft.wordBankLayout)) &&
     (draft.wordBankLayoutSet === undefined || isWordBankLayoutChoices(draft.wordBankLayoutSet)) &&
+    (draft.pictureSizes === undefined || isPictureSizeSettings(draft.pictureSizes)) &&
     (draft.choiceOrder === undefined || isChoiceOrder(draft.choiceOrder)) &&
     (draft.hiddenAnswers === undefined || isChoiceOrder(draft.hiddenAnswers)) &&
     (draft.sections === undefined || isSectionList(draft.sections)) &&
@@ -270,6 +281,7 @@ const WORKING_COPY_SETTINGS: Readonly<Record<string, (value: unknown) => boolean
   workSpace: isWorkSpaceSettings,
   wordBankLayout: isWordBankLayoutSettings,
   wordBankLayoutSet: isWordBankLayoutChoices,
+  pictureSizes: isPictureSizeSettings,
   choiceOrder: isChoiceOrder,
   // The same shape as an order: ids, keyed by question.
   hiddenAnswers: isChoiceOrder,
@@ -403,6 +415,10 @@ export type ExamStore = {
    *  other Question Type in `questionIds` is left alone. Work space is Exam
    *  presentation, so the Question Bank is never touched. */
   setQuestionWorkSpace(questionIds: readonly string[], patch: Partial<WorkSpace>): void
+  /** How wide this Exam prints one of a question's pictures, named by its
+   *  `pictureKey`, as a share of its container; `null` goes back to the
+   *  picture's Default Picture Size (ADR-0050). One undoable change. */
+  setPictureSize(questionId: string, picture: string, size: number | null): void
   /** References a newly canonical copy immediately after the original while
    * preserving the original's visible Exam presentation. The caller may supply
    * a copy already committed to the owning Question Bank. */
@@ -511,6 +527,8 @@ function sameExamWorkingCopy(left: ExamWorkingCopy, right: ExamWorkingCopy): boo
     )
     && sameEntries(left.wordBankLayout, right.wordBankLayout, (first, second) => first === second)
     && sameEntries(left.wordBankLayoutSet, right.wordBankLayoutSet, (first, second) => first === second)
+    && sameEntries(left.pictureSizes, right.pictureSizes, (first, second) =>
+      sameEntries(first, second, (one, other) => one === other))
     && sameEntries(left.choiceOrder, right.choiceOrder, (first, second) =>
       first.length === second.length && first.every((id, index) => id === second[index]),
     )
@@ -1042,6 +1060,28 @@ export function createExamStore(options: {
       })
     },
 
+    setPictureSize: (questionId, picture, size) => {
+      change((current) => {
+        if (!current.workingCopy.questionIds.includes(questionId)) return current
+        const sizes = { ...(current.workingCopy.pictureSizes?.[questionId] ?? {}) }
+        if (size === null) {
+          if (sizes[picture] === undefined) return current
+          delete sizes[picture]
+        } else {
+          const clamped = clampSize(size)
+          if (sizes[picture] === clamped) return current
+          sizes[picture] = clamped
+        }
+        const pictureSizes = { ...(current.workingCopy.pictureSizes ?? {}) }
+        if (Object.keys(sizes).length > 0) pictureSizes[questionId] = sizes
+        else delete pictureSizes[questionId]
+        const workingCopy = { ...current.workingCopy }
+        if (Object.keys(pictureSizes).length > 0) workingCopy.pictureSizes = pictureSizes
+        else delete workingCopy.pictureSizes
+        return { ...current, workingCopy }
+      })
+    },
+
     setQuestionWorkSpace: (questionIds, patch) => {
       const targeted = new Set(questionIds)
       change((current) => {
@@ -1157,6 +1197,16 @@ export function createExamStore(options: {
                   workSpace: {
                     ...workingCopy.workSpace,
                     [copy.id]: workingCopy.workSpace[questionId]!,
+                  },
+                }
+              : {}),
+            // Its pictures are the same pictures, at the sizes this Exam gave
+            // them.
+            ...(workingCopy.pictureSizes?.[questionId]
+              ? {
+                  pictureSizes: {
+                    ...workingCopy.pictureSizes,
+                    [copy.id]: { ...workingCopy.pictureSizes[questionId]! },
                   },
                 }
               : {}),

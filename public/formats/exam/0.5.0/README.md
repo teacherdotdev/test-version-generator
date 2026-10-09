@@ -1,10 +1,7 @@
-# Exam Record 0.4.0 fixtures
-
-Superseded by [`../0.5.0/`](../0.5.0/). Test Parrot no longer writes `0.4.0`
-records; these fixtures stay so the tests can prove it still reads them.
+# Exam Record 0.5.0 fixtures
 
 - [`schema.json`](schema.json) is a version-pinned copy of the public schema whose
-  stable identifier is `https://testparrot.com/formats/exam/0.4.0/schema.json`.
+  stable identifier is `https://testparrot.com/formats/exam/0.5.0/schema.json`.
 - [`examples/`](examples/) contains conforming Exam Records. An Exam Record is
   importable only inside a Test Parrot Package. A Section holds Questions of any
   type. `sections.json` has a Warm-up Section holding a Multiple Choice and a
@@ -20,8 +17,12 @@ records; these fixtures stay so the tests can prove it still reads them.
   today's margins in the Standard Paper Style with every answer shown.
 - `hidden-answers.json` has a Multiple Choice position that shows its answers
   in a shuffled order and leaves one incorrect answer off.
+- `picture-sizes.json` has a Short Answer position that prints its Question's
+  first block picture at 45% of its container and its third across the whole
+  container: Exam Picture Sizes, naming each picture by its place among the
+  Question's block pictures.
 - Invalid counterexamples are with the package, in
   [`../../package/0.1.0/invalid/`](../../package/0.1.0/invalid/).
 
 The prose contract is in
-[`docs/exam-record-0.4.0.md`](../../../../docs/exam-record-0.4.0.md).
+[`docs/exam-record-0.5.0.md`](../../../../docs/exam-record-0.5.0.md).

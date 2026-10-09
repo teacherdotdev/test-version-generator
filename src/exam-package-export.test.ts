@@ -20,7 +20,10 @@ import { createPublicationPdf, type PdfFontLoader } from './pdf-export'
 import { examPackage, withExamPackage } from './exam-package-export'
 import { initialSelection } from './import-selection'
 import { planImport } from './package-commit'
-import { inspectImportFile, inspectImportRecord, type ExamRecord } from './package-import'
+import { blockPictureKeysOf, inspectImportFile, inspectImportRecord, type ExamRecord } from './package-import'
+import { PIXEL_PNG } from './export-fixtures'
+import { pictureKey } from './picture-geometry'
+import { writePackageZip } from './package-zip'
 import { selectedExam } from './selected-exam'
 import { shownChoices } from './hidden-answers'
 import { pointsOfQuestion } from './points'
@@ -535,7 +538,7 @@ describe('a Multipart question in an Exam package', () => {
     const carried = (await examPackage({ exam: worded, arrangement, ownerOf, loadMedia: noImages })).package
     // Each derived Section travels with its wording in full, and no type.
     expect(carried.exams[0]).toMatchObject({
-      formatVersion: '0.4.0',
+      formatVersion: '0.5.0',
       sections: [
         { title: 'Multiple Choice', instructions: 'Identify the choice that best completes the statement or answers the question.' },
         { title: 'Vocabulary', instructions: 'Match each item with the correct answer from the word bank. Write its letter in the blank.' },
@@ -603,7 +606,7 @@ describe('an Exam’s stored Sections in its package', () => {
   test('travel in print order, empty ones included, each position naming its Section', async () => {
     const carried = (await examPackage({ exam: sheet, arrangement, ownerOf, loadMedia: noImages })).package
     const record = carried.exams[0]!
-    expect(record.formatVersion).toBe('0.4.0')
+    expect(record.formatVersion).toBe('0.5.0')
     // An Exam that keeps today's margins writes none.
     expect(record).not.toHaveProperty('margins')
     expect(record.sections).toEqual([
@@ -633,5 +636,87 @@ describe('an Exam’s stored Sections in its package', () => {
     ).toEqual(
       sectionsOf(sheet).map((section) => questionsInSection(sheet, arrangement, section.id).map(text)),
     )
+  })
+})
+
+// Exam Picture Sizes (ADR-0050) travel in Exam Record 0.5.0, each naming its
+// picture by its place among the Question's block pictures.
+describe('an Exam’s picture sizes in its package', () => {
+  const pixels = async () => ({ data: PIXEL_PNG.data, mimeType: 'image/png' as const, width: 1, height: 1 })
+  const source = `/local-images/${'b'.repeat(64)}`
+  const whole = { src: source, size: 0.3 }
+  const cropped = { src: source, crop: { left: 0, top: 0, right: 0.5, bottom: 1, width: 1, height: 1 } }
+  const diagram: Question = {
+    id: 'pictured',
+    type: 'open',
+    columns: 1,
+    doc: {
+      type: 'doc',
+      content: [
+        paragraph('Which way does the current flow?'),
+        { type: 'image-block', attrs: whole },
+        { type: 'image-block', attrs: cropped },
+      ],
+    },
+  }
+  const sized: Exam = {
+    title: 'Circuits',
+    questions: [diagram],
+    pictureSizes: { pictured: { [pictureKey(whole)]: 0.45, [pictureKey(cropped)]: 1 } },
+  }
+  const order: Arrangement = { id: 'pictures', letter: 'A', questionOrder: ['pictured'], choiceOrder: {} }
+  const written = () => examPackage({ exam: sized, arrangement: order, ownerOf: async () => null, loadMedia: pixels })
+  const imported = async (edit: (record: ExamRecord) => void = () => {}) => {
+    const carried = await written()
+    edit(carried.package.exams[0]! as ExamRecord)
+    const zip = await writePackageZip(JSON.stringify(carried.package), carried.files)
+    return inspectImportRecord(zip)
+  }
+
+  test('each picture the Exam sized travels by its place among the Question’s block pictures', async () => {
+    const record = (await written()).package.exams[0]!
+    expect(record.formatVersion).toBe('0.5.0')
+    expect(record.positions[0]!.pictureSizes).toEqual([{ picture: 1, size: 0.45 }, { picture: 2, size: 1 }])
+  })
+
+  test('import gives each size back to the same picture, on the Exam alone', async () => {
+    const proposal = await imported()
+    const { questionBank, workingCopy } = planImport(proposal, initialSelection(proposal)).exams[0]!.saved
+    const question = questionBank.questions[0]!
+    const keys = blockPictureKeysOf(question)
+    expect(keys).toHaveLength(2)
+    expect(workingCopy.pictureSizes).toEqual({ [question.id]: { [keys[0]!]: 0.45, [keys[1]!]: 1 } })
+    // The Question keeps its own size.
+    const images = (question.doc.content as ProseMirrorJSON[]).filter((node) => node.type === 'image-block')
+    expect((images[0]!.attrs as { size?: number }).size).toBe(0.3)
+  })
+
+  test('an Exam that sized nothing writes nothing', async () => {
+    const plain = await examPackage({ exam: { ...sized, pictureSizes: undefined }, arrangement: order, ownerOf: async () => null, loadMedia: pixels })
+    expect(plain.package.exams[0]!.positions[0]).not.toHaveProperty('pictureSizes')
+  })
+
+  test('a size naming a picture the Question does not have is refused, naming the Exam and position', async () => {
+    await expect(imported((record) => {
+      record.positions[0]!.pictureSizes = [{ picture: 3, size: 0.5 }]
+    })).rejects.toThrow('Exam “Circuits” position 1 sizes picture 3, but Question “q1” has 2 block pictures.')
+  })
+
+  test('a size outside 0.05 to 1 of its container is refused', async () => {
+    await expect(imported((record) => {
+      record.positions[0]!.pictureSizes = [{ picture: 1, size: 1.5 }]
+    })).rejects.toThrow()
+    await expect(imported((record) => {
+      record.positions[0]!.pictureSizes = [{ picture: 1, size: 0.5 }, { picture: 1, size: 0.6 }]
+    })).rejects.toThrow('sizes picture 1 more than once')
+  })
+
+  test('a 0.4.0 record, which has no picture sizes, still imports', async () => {
+    const proposal = await imported((record) => {
+      record.formatVersion = '0.4.0'
+      delete record.positions[0]!.pictureSizes
+    })
+    expect(proposal.exams[0]!.formatVersion).toBe('0.4.0')
+    expect(planImport(proposal, initialSelection(proposal)).exams[0]!.saved.workingCopy).not.toHaveProperty('pictureSizes')
   })
 })

@@ -182,6 +182,16 @@ export function selectedExam(
     if (matchingIds.has(id) && set === true) wordBankLayoutSet[id] = true
   }
   const hasAnyWordBankLayoutSet = Object.keys(wordBankLayoutSet).length > 0
+  // How wide this Exam prints a referenced question's pictures (ADR-0050):
+  // only readable sizes, kept to a share of the container.
+  const pictureSizes: Record<string, Record<string, number>> = {}
+  for (const [id, sizes] of Object.entries(draft.pictureSizes ?? {})) {
+    if (!referenced.has(id) || typeof sizes !== 'object' || sizes === null) continue
+    const readable = Object.fromEntries(Object.entries(sizes).filter(([key, size]) =>
+      key !== '' && typeof size === 'number' && Number.isFinite(size) && size > 0 && size <= 1))
+    if (Object.keys(readable).length > 0) pictureSizes[id] = readable
+  }
+  const hasAnyPictureSizes = Object.keys(pictureSizes).length > 0
   // Section wording and size are this Exam's presentation too, carried only
   // when readable and only when they say something other than the default.
   const sectionHeadings =
@@ -224,6 +234,7 @@ export function selectedExam(
     && sameWorkSpace(previous.exam.workSpace, hasAnyWorkSpace ? workSpace : undefined)
     && sameStrings(previous.exam.wordBankLayout, hasAnyWordBankLayout ? wordBankLayout : undefined)
     && sameStrings(previous.exam.wordBankLayoutSet, hasAnyWordBankLayoutSet ? wordBankLayoutSet : undefined)
+    && JSON.stringify(previous.exam.pictureSizes ?? null) === JSON.stringify(hasAnyPictureSizes ? pictureSizes : null)
     && sameSections(previous.exam.sections, sections)
     && (previous.exam.sections === undefined) === (sections === undefined)
     && sameSectionOf(previous.exam.sectionOf, hasAnySectionOf ? sectionOf : undefined)
@@ -240,6 +251,7 @@ export function selectedExam(
           ...(hasAnyWorkSpace ? { workSpace } : {}),
           ...(hasAnyWordBankLayout ? { wordBankLayout } : {}),
           ...(hasAnyWordBankLayoutSet ? { wordBankLayoutSet } : {}),
+          ...(hasAnyPictureSizes ? { pictureSizes } : {}),
           ...(sections ? { sections } : {}),
           ...(hasAnySectionOf ? { sectionOf } : {}),
           ...(sectionHeadings ? { sectionHeadings } : {}),

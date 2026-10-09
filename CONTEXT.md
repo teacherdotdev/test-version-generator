@@ -83,9 +83,13 @@ _Avoid_: Concept
 What answering something correctly is worth, as a whole number: an optional part of a Question that is the same on every Exam using it. Points belong to what a student answers — a Multiple Choice, True/False, Fill in the Blank or Short Answer Question, a whole Matching set, or a Part or Subpart that answers — so a Multipart question's Points, and an Exam's total, are always the sum of their parts and never set apart from them. Something with no Points is unpointed, not worth nothing: it adds nothing to a total. Like Question Metadata, Points never show on the exam sheet or the student test unless the Exam's Paper Style prints them; the Answer Key always records them.
 _Avoid_: Marks (except where a Paper Style prints its own wording), score, weight
 
-**Authored Image Size**:
-How wide a teacher makes a block image: the width of what it shows, as a share of its printable container, such as the Question Content lane, a Panel or an answer-choice cell. It never exceeds the container and always preserves the picture's proportions, so the editor resizes a picture from its corners and sides alike, in proportion. A picture no one has sized fits its container at its own width, or the container's when that is narrower. A picture taken from a Source Document for a Question's own content arrives at about the width it had on its page, and a Picture Crop keeps what it shows at the size it printed at before.
-_Avoid_: Image ratio, image height
+**Default Picture Size**:
+How wide a block image starts on any Exam: the width of what it shows, as a share of its printable container, such as the Question Content lane, a Panel or an answer-choice cell. It is part of the Question, but never set in the question editor, which shows each picture at this size and cannot resize it: a picture taken from a Source Document arrives at about the width it had on its page, a Picture Crop keeps what it shows at the size it printed at before, and a picture with none fits its container at its own width, or the container's when that is narrower. Copy, the Pop-over and the Question Bank show pictures at this size.
+_Avoid_: Authored Image Size, image ratio, image height
+
+**Exam Picture Size**:
+How wide one Exam prints one of its Questions' block pictures, set by dragging the picture's corners on the exam sheet. It is Exam presentation, like Work Space, never Question Content: it wins over the Default Picture Size on that Exam alone — in its test and Answer Key, in every format and Version — and the Question never changes. It belongs to the picture as its source and Picture Crop name it, so re-cropping a picture makes it a new one at its default size. It is a share of its container like the default, never exceeds it and always keeps the picture's proportions, so a picture is resized from its corners alone. Duplicate copies it; Reset size lets it go.
+_Avoid_: Image override, picture scale
 
 **Picture Crop**:
 The part of a block image's Media Asset that Question Content shows, measured on the upright picture. The whole Media Asset is kept, so a crop can always be widened again: in the editor a double click shows the cropped-away parts as a ghost around what is kept. Every output shows only the kept part.
