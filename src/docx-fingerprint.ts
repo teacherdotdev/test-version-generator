@@ -22,7 +22,6 @@ import {
 import { child, descendants, parseXml, path, type XmlNode } from './xml'
 import {
   BLOCKQUOTE_TABLE_STYLE,
-  CANDIDATE_FIELD_TABLE_STYLE,
   CENTRED_PARAGRAPH_STYLE,
   CENTRED_TABLE_STYLE,
   SIDE_BY_SIDE_TABLE_STYLE,
@@ -282,18 +281,6 @@ function cellsOf(table: XmlNode): XmlNode[] {
 
 function tableLines(table: XmlNode, reader: Reader): ContentLine[] {
   const style = tableStyleOf(table)
-  // A Cover Page's candidate fields: each row a label and its box, and the
-  // borderless rows between them, which say nothing, left out.
-  if (style === CANDIDATE_FIELD_TABLE_STYLE) {
-    return table.children
-      .filter((row) => row.name === 'w:tr')
-      .map((row) => {
-        const label = row.children.find((cell) => cell.name === 'w:tc')
-        return label ? descendants(label, 'w:t').map((text) => text.text).join('').replace(/\s+/g, ' ').trim() : ''
-      })
-      .filter(Boolean)
-      .map((label) => `field:${label}`)
-  }
   if (style === BLOCKQUOTE_TABLE_STYLE) {
     return ['box', ...cellsOf(table).flatMap((cell) => blockLines(cell, reader)), '/box']
   }

@@ -15,7 +15,6 @@ export function pageGeometry(pageSize: PageSize): CSSProperties {
     '--page-margin-right': `${pageSize.margins.right}px`,
     '--page-margin-bottom': `${pageSize.margins.bottom}px`,
     '--page-margin-left': `${pageSize.margins.left}px`,
-    '--page-header-cover': `${HEADER_HEIGHT.cover}px`,
     '--page-header-first': `${HEADER_HEIGHT.first}px`,
     '--page-header-later': `${HEADER_HEIGHT.later}px`,
     '--page-header-answer-key': `${HEADER_HEIGHT['answer-key']}px`,

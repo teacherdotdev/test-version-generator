@@ -81,13 +81,6 @@ import {
   type PaperStyle,
   type PaperStyleRules,
 } from './paper-style'
-import {
-  CANDIDATE_FIELD_LABELS,
-  candidateFieldsOf,
-  instructionsOf,
-  normalizedPaperDetails,
-  type PaperDetails,
-} from './paper-details'
 
 // How many columns a choice grid is drawn in — the same set a question's
 // `columns` setting comes from, named here because the plan is what the
@@ -642,33 +635,18 @@ export function answerKeyTotalText(points: number): string {
   return `Total: ${points} ${points === 1 ? 'point' : 'points'}`
 }
 
-/** The heading a Cover Page's instructions print under. */
-export const COVER_INSTRUCTIONS_HEADING = 'Instructions'
-
-// A Cover Page (ADR-0045): the test's own first page under a Paper Style
-// that prints one, alone on its page and never part of the Answer Key. It
-// arranges the Exam's title and its Paper Details — each one the teacher left
-// blank printing nothing — the candidate fields as boxes, the instructions,
-// and the paper's total when anything has points. Its instructions are planned
-// as a bulleted list, so every adapter draws them as it draws any list.
-export type CoverPageItem = {
-  kind: 'cover'
-  title: string
-  /** The Exam's heading size, when it is not normal. */
-  titleSize?: HeadingSize
-  subject?: string
-  duration?: string
-  /** The candidate fields' labels, in printed order, each with a box. */
-  candidateFields: string[]
-  /** The instructions, as a bulleted list; `null` when there are none. */
-  instructions: ProseMirrorJSON | null
-  /** The paper's total, worded by the style; absent when nothing has Points. */
-  total?: string
+// The paper's total, as a Paper Style that prints it there (ADR-0045) words
+// it: one line opening the test, beneath the title on its first page, when
+// anything on the paper has Points. Never part of the Answer Key, which
+// prints its own total beside its heading.
+export type PaperTotalItem = {
+  kind: 'paper-total'
+  text: string
 }
 
 // One thing that occupies vertical space on a page, in print order.
 export type PageItem =
-  | CoverPageItem
+  | PaperTotalItem
   | SectionHeadingItem
   | QuestionItem
   | AnswerKeyHeadingItem
@@ -679,11 +657,7 @@ export type PageItem =
 // line and the title; later pages take a Name blank alone; the answer key —
 // begun fresh after the last test page, footer restarted at 1 — takes the
 // arrangement ID alone plus the repeated title, and carries no Name line at all.
-//
-// A test under a Paper Style that prints a Cover Page starts on a `'cover'`
-// page instead, and every test page after it is `'later'`: the title is on
-// the cover, and so are the candidate fields.
-export type PageHeader = 'cover' | 'first' | 'later' | 'answer-key' | 'answer-key-later'
+export type PageHeader = 'first' | 'later' | 'answer-key' | 'answer-key-later'
 
 export function isAnswerKeyHeader(header: PageHeader): boolean {
   return header === 'answer-key' || header === 'answer-key-later'
@@ -739,38 +713,25 @@ export type PageFurniture = {
    *  because a footer is furniture rather than an item that packs. */
   pageNumber: number
   /** Where the page number prints, when not centred at the foot: centred at
-   *  the top under a Paper Style that puts it there, or nowhere — a Cover
-   *  Page's. Absent on every page of every other style. */
-  pageNumberAt?: 'top' | 'none'
-  /** What the foot prints at the left margin — the paper code, under a style
-   *  that prints it — and against the right margin — "Turn over" on a test
-   *  page another test page follows. Absent prints nothing there. */
-  footLeft?: string
+   *  the top, on a row of its own above the header line, under a Paper Style
+   *  that puts it there. Absent on every page of every other style. */
+  pageNumberAt?: 'top'
+  /** What the foot prints against the right margin — "Turn over" on a test
+   *  page another test page follows, under a style that prints it. Absent
+   *  prints nothing there. */
   footRight?: string
 }
 
-/** What a page's header line prints, in order, past its identity line: its
- *  page number when it prints at the top, then its Version label. Every
- *  adapter and fingerprint reads a running header through this. */
-export function runningHeadOf(furniture: PageFurniture): string[] {
-  return [
-    ...(furniture.pageNumberAt === 'top' ? [String(furniture.pageNumber)] : []),
-    furniture.arrangementLabel,
-  ].filter(Boolean)
-}
-
 /** What a page's foot prints, in order: its page number, where it prints
- *  there, then the paper code and "Turn over". */
+ *  there, then "Turn over". */
 export function runningFootOf(furniture: PageFurniture): string[] {
   return [
     ...(furniture.pageNumberAt === undefined ? [String(furniture.pageNumber)] : []),
-    furniture.footLeft ?? '',
     furniture.footRight ?? '',
   ].filter(Boolean)
 }
 
 const IDENTITY_FIELDS: Record<PageHeader, readonly IdentityField[]> = {
-  cover: [],
   first: ['Name', 'Class', 'Date'],
   later: ['Name'],
   // The key is the teacher's copy: it carries the arrangement it belongs to and
@@ -782,8 +743,6 @@ const IDENTITY_FIELDS: Record<PageHeader, readonly IdentityField[]> = {
 // Which variants repeat the exam title. The key repeats it on its first page
 // the way the test does, and drops it on continuation pages.
 const REPEATS_TITLE: Record<PageHeader, boolean> = {
-  // The Cover Page prints the title itself, as content.
-  cover: false,
   first: true,
   later: false,
   'answer-key': true,
@@ -792,7 +751,6 @@ const REPEATS_TITLE: Record<PageHeader, boolean> = {
 
 // Which of an Exam's header lines a test page prints. The key has none.
 const HEADER_LINE: Record<PageHeader, HeaderLine | null> = {
-  cover: null,
   first: 'first',
   later: 'later',
   'answer-key': null,
@@ -800,11 +758,9 @@ const HEADER_LINE: Record<PageHeader, HeaderLine | null> = {
 }
 
 /** What a test page's running furniture needs beyond its header variant:
- *  its Paper Style's rules, the Exam's paper code, and whether another test
- *  page follows it. */
+ *  its Paper Style's rules, and whether another test page follows it. */
 type RunningContext = {
   rules: PaperStyleRules
-  paperCode: string | undefined
   continues: boolean
 }
 
@@ -818,11 +774,8 @@ function furnitureOf(
   running?: RunningContext,
 ): PageFurniture {
   const line = HEADER_LINE[page.header]
-  // A style with a Cover Page asks for the candidate's details there, so its
-  // later pages carry no Name line: only the running head and the ID.
-  const identityLine = !line ? undefined : running?.rules.coverPage ? '' : headerLineOf(header, line)
+  const identityLine = line ? headerLineOf(header, line) : undefined
   const top = running?.rules.running.pageNumber === 'top'
-  const code = running?.rules.running.paperCode ? running.paperCode : undefined
   const continues = running?.continues ? running.rules.running.continues : undefined
   return {
     identityFields: IDENTITY_FIELDS[page.header],
@@ -832,8 +785,7 @@ function furnitureOf(
     ...(REPEATS_TITLE[page.header] && titleLines > 1 ? { titleLines } : {}),
     arrangementLabel: version ?? '',
     pageNumber: page.number,
-    ...(page.header === 'cover' ? { pageNumberAt: 'none' as const } : top ? { pageNumberAt: 'top' as const } : {}),
-    ...(code ? { footLeft: code } : {}),
+    ...(top ? { pageNumberAt: 'top' as const } : {}),
     ...(continues ? { footRight: continues } : {}),
   }
 }
@@ -879,8 +831,6 @@ export const US_LETTER: PageSize = pageSizeOf(undefined)
 // The first answer-key page repeats the title; continuation pages carry only
 // the ID and therefore use the shorter header height.
 export const HEADER_HEIGHT: Record<PageHeader, number> = {
-  // A Cover Page's header holds the ID alone, in a later page's band.
-  cover: 42,
   first: 84,
   later: 42,
   'answer-key': 84,
@@ -888,6 +838,19 @@ export const HEADER_HEIGHT: Record<PageHeader, number> = {
 }
 
 export const FOOTER_HEIGHT = 36
+
+/** The row a page number printed at the top takes, above the header line, so
+ *  it never stands over the line's blanks: a line of body type and the gap
+ *  below it. Only a Paper Style that prints the number there (ADR-0045) adds
+ *  it, to each of its test pages. */
+export const RUNNING_HEAD_HEIGHT = 22
+
+/** How much taller a Paper Style's test pages' headers are than their
+ *  variant's band: a row for the page number, where the style prints it at
+ *  the top. */
+export function runningHeadHeight(style: PaperStyle | undefined): number {
+  return paperStyleRules(style).running.pageNumber === 'top' ? RUNNING_HEAD_HEIGHT : 0
+}
 
 /** How much taller than its one-line band a header grows for a title that
  *  wraps onto `lines` lines at `size`: one title line for each line past the
@@ -897,30 +860,38 @@ export function titleGrowth(lines: number, size: HeadingSize | undefined): numbe
   return lines > 1 ? Math.ceil((lines - 1) * TITLE_PX[size ?? 'normal'] * TITLE_LINE_HEIGHT) : 0
 }
 
-/** How tall a page's header is: its variant's, grown for a title that wraps.
- *  Print, the PDF and the sheet all size the header by this. */
-export function headerHeightOf(header: PageHeader, furniture: Pick<PageFurniture, 'titleLines' | 'titleSize'>): number {
-  return HEADER_HEIGHT[header] + titleGrowth(furniture.titleLines ?? 1, furniture.titleSize)
+/** How tall a page's header is: its variant's, grown for a title that wraps
+ *  and for a page number printed above it. Print, the PDF and the sheet all
+ *  size the header by this. */
+export function headerHeightOf(
+  header: PageHeader,
+  furniture: Pick<PageFurniture, 'titleLines' | 'titleSize' | 'pageNumberAt'>,
+): number {
+  return HEADER_HEIGHT[header]
+    + titleGrowth(furniture.titleLines ?? 1, furniture.titleSize)
+    + (furniture.pageNumberAt === 'top' ? RUNNING_HEAD_HEIGHT : 0)
 }
 
 /** How much vertical space packing may fill on a page carrying `header`, on a
  *  sheet with `pageSize`'s margins, less what a wrapping title grows its
- *  header by on the pages that print the title. */
+ *  header by on the pages that print the title, and less `headExtra` — the
+ *  row a page number printed at the top takes (`runningHeadHeight`). */
 export function pageContentHeight(
   header: PageHeader,
   pageSize: PageSize = US_LETTER,
   titleExtra = 0,
+  headExtra = 0,
 ): number {
   const box = pageSize.height - pageSize.margins.top - pageSize.margins.bottom
-  return box - HEADER_HEIGHT[header] - (REPEATS_TITLE[header] ? titleExtra : 0) - FOOTER_HEIGHT
+  return box - HEADER_HEIGHT[header] - (REPEATS_TITLE[header] ? titleExtra : 0) - headExtra - FOOTER_HEIGHT
 }
 
 /** The most room a teacher can drag a work space to: a whole later page less
  *  an inch for the question itself, so a question and its space still fit on
  *  one sheet. Filling the rest of a page is the way to ask for more. Deeper
  *  margins leave a shorter page, and so a shorter most. */
-export function maxWorkSpaceHeight(pageSize: PageSize = US_LETTER): number {
-  return pageContentHeight('later', pageSize) - 96
+export function maxWorkSpaceHeight(pageSize: PageSize = US_LETTER, headExtra = 0): number {
+  return pageContentHeight('later', pageSize, 0, headExtra) - 96
 }
 
 export const MAX_WORK_SPACE_HEIGHT = maxWorkSpaceHeight()
@@ -1802,9 +1773,10 @@ function paginate(
   initialHeader: PageHeader,
   continuedHeader: PageHeader,
   titleExtra = 0,
+  headExtra = 0,
 ): PackedPage[] {
   const pages: PackedPage[] = []
-  const contentHeight = (header: PageHeader) => pageContentHeight(header, pageSize, titleExtra)
+  const contentHeight = (header: PageHeader) => pageContentHeight(header, pageSize, titleExtra, headExtra)
   let header: PageHeader = initialHeader
   let box = contentHeight(header)
   let current: PageItem[] = []
@@ -1896,13 +1868,6 @@ function paginate(
   for (const [index, item] of items.entries()) {
     if (full) flush()
     const height = measure.itemHeight(item)
-    // A Cover Page is a page of its own: nothing shares it.
-    if (item.kind === 'cover') {
-      if (current.length > 0) flush()
-      place(item, height)
-      full = true
-      continue
-    }
     // A section heading must share a page with at least the first indivisible
     // piece of its first question — the whole question, when it is one piece.
     // Reserve that space before committing the heading; otherwise a heading
@@ -2096,10 +2061,6 @@ export type ExportDocument = {
    *  questions stand, and whether answers fit across the line — and for the
    *  sheet and the running furniture its pages carry. */
   paperStyle?: PaperStyle
-  /** The Exam's Paper Details, where it has written any (ADR-0045). A Cover
-   *  Page already carries what it prints; layout reads the paper code for the
-   *  running foot. */
-  paperDetails?: PaperDetails
 }
 
 /** Semantic derivation, on its own. Exposed so tests and fingerprints can read
@@ -2111,11 +2072,8 @@ export function buildExportDocument(
   version?: string,
 ): ExportDocument {
   const questions = deriveItems(exam, arrangement)
-  const rules = paperStyleRules(exam.paperStyle)
-  const paperDetails = normalizedPaperDetails(exam.paperDetails)
-  const test = rules.coverPage
-    ? [coverPageOf(exam, paperDetails, rules, questions), ...questions]
-    : questions
+  const total = paperTotalOf(paperStyleRules(exam.paperStyle), questions)
+  const test = total ? [total, ...questions] : questions
   return {
     title: exam.title,
     arrangement: {
@@ -2135,7 +2093,6 @@ export function buildExportDocument(
     ...(exam.paperStyle && exam.paperStyle !== DEFAULT_PAPER_STYLE
       ? { paperStyle: exam.paperStyle }
       : {}),
-    ...(paperDetails ? { paperDetails } : {}),
   }
 }
 
@@ -2149,37 +2106,13 @@ function totalPointsIn(items: readonly PageItem[]): number | undefined {
   )
 }
 
-/** The Cover Page a style that prints one opens the test with: the Exam's
- *  title and Paper Details, each detail the teacher left blank printing
- *  nothing; its candidate fields and instructions, the teacher's or the
- *  style's own; and the paper's total, when anything has points. */
-function coverPageOf(
-  exam: Exam,
-  details: PaperDetails | undefined,
-  rules: PaperStyleRules,
-  questions: readonly PageItem[],
-): CoverPageItem {
+/** The paper's total a style prints beneath the title, opening the test;
+ *  `undefined` under a style that prints none there, or when nothing on the
+ *  paper has Points. */
+function paperTotalOf(rules: PaperStyleRules, questions: readonly PageItem[]): PaperTotalItem | undefined {
+  const template = rules.points.paperTotalUnderTitle
   const total = totalPointsIn(questions)
-  const template = rules.points.paperTotalOnCover
-  const instructions = instructionsOf(details)
-  return {
-    kind: 'cover',
-    title: exam.title,
-    ...(exam.headingSize && exam.headingSize !== DEFAULT_HEADING_SIZE ? { titleSize: exam.headingSize } : {}),
-    ...(details?.subject ? { subject: details.subject } : {}),
-    ...(details?.duration ? { duration: details.duration } : {}),
-    candidateFields: candidateFieldsOf(details).map((field) => CANDIDATE_FIELD_LABELS[field]),
-    instructions: instructions.length > 0
-      ? {
-          type: 'bullet_list',
-          content: instructions.map((line) => ({
-            type: 'list_item',
-            content: [{ type: 'paragraph', content: [{ type: 'text', text: line }] }],
-          })),
-        }
-      : null,
-    ...(template && total !== undefined ? { total: labelled(template, total) } : {}),
-  }
+  return template && total !== undefined ? { kind: 'paper-total', text: labelled(template, total) } : undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -2505,8 +2438,11 @@ function resolveLayout(
       pageSize.contentWidth,
       promptsMinWidthOf(paperStyle),
     )
-    const first: PageHeader = test[0]?.kind === 'cover' ? 'cover' : 'first'
-    pages.push(...paginate(test, sized, pageSize, 'test', first, 'later', titleExtra))
+    // The test's pages carry its Paper Style's running head; the Answer
+    // Key's keep the sheet's own.
+    pages.push(
+      ...paginate(test, sized, pageSize, 'test', 'first', 'later', titleExtra, runningHeadHeight(paperStyle)),
+    )
   }
   if (document.selection.answerKey) {
     pages.push(
@@ -2545,7 +2481,6 @@ function resolveLayout(
         page.stream === 'test'
           ? {
               rules,
-              paperCode: document.paperDetails?.paperCode,
               continues: pages[index + 1]?.stream === 'test',
             }
           : undefined,

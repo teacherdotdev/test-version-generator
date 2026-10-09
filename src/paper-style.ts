@@ -7,9 +7,8 @@
 // what room a Short Answer position leaves when the teacher has set none, and
 // how far apart questions stand — and, since the Exam Board style (ADR-0045),
 // the sheet's size, how questions, Parts, Subparts and answers are labelled,
-// how ruled lines look, where Points print, whether there is a Cover Page and
-// what the head and foot of each page carry. The Export Document reads these
-// rules once,
+// how ruled lines look, where Points print and what the head and foot of each
+// page carry. The Export Document reads these rules once,
 // so print, PDF, DOCX, the Export Preview and the exam sheet all draw the same
 // thing; nothing here is read by an adapter.
 //
@@ -51,7 +50,7 @@ export const PAPER_STYLE_LABELS: Record<PaperStyle, { label: string; description
   },
   'exam-board': {
     label: 'Exam Board',
-    description: 'A4 with a cover page: 1 (a) (i) labels, dotted lines, points in brackets at the right.',
+    description: 'A4: 1 (a) (i) labels, dotted lines, points in brackets at the right.',
   },
 }
 
@@ -123,18 +122,16 @@ export type PointPlacements = {
   /** After a Section's last question, against the right margin: the sum of
    *  its questions' Points. */
   sectionTotal?: string
-  /** On the Cover Page: the paper's total. */
-  paperTotalOnCover?: string
+  /** Beneath the title on the test's first page: the paper's total. */
+  paperTotalUnderTitle?: string
 }
 
 /** What a style prints at the head and foot of each test page, past the
- *  Page Header line every style but one with a Cover Page prints. */
+ *  Page Header line every style prints. */
 export type RunningFurniture = {
   /** Where the page number prints: centred at the foot, as the sheet always
    *  printed it, or centred at the top. */
   pageNumber: 'foot' | 'top'
-  /** Whether the Exam's paper code (a Paper Detail) prints at the foot, left. */
-  paperCode: boolean
   /** What prints at the foot, right, of every test page another test page
    *  follows; absent prints nothing there. */
   continues?: string
@@ -173,10 +170,6 @@ export type PaperStyleRules = {
   ruling: Ruling
   /** Where Points print on the test. */
   points: PointPlacements
-  /** Whether the test opens with a Cover Page (ADR-0045). A style with one
-   *  prints the candidate fields there, so its test pages carry no Page
-   *  Header line. */
-  coverPage: boolean
   running: RunningFurniture
 }
 
@@ -191,16 +184,15 @@ export const STANDARD_QUESTION_GAP = 26
 const STANDARD_WORK_SPACE_PITCH = 32
 
 /** What every style printed before the Exam Board style: US Letter, `1.`
- *  `a.` `i.` `A.`, solid rules, no Points on the test, no Cover Page, and the
- *  page number at the foot. */
+ *  `a.` `i.` `A.`, solid rules, no Points on the test, and the page number at
+ *  the foot. */
 const SHEET_RULES = {
   pageSize: 'letter',
   labels: PERIOD_LABELS,
   ruling: 'solid',
   points: {},
-  coverPage: false,
-  running: { pageNumber: 'foot', paperCode: false },
-} as const satisfies Pick<PaperStyleRules, 'pageSize' | 'labels' | 'ruling' | 'points' | 'coverPage' | 'running'>
+  running: { pageNumber: 'foot' },
+} as const satisfies Pick<PaperStyleRules, 'pageSize' | 'labels' | 'ruling' | 'points' | 'running'>
 
 export const PAPER_STYLE_RULES: Record<PaperStyle, PaperStyleRules> = {
   // The sheet as ADR-0029 left it: T and F to circle, a letter circled on its
@@ -249,9 +241,10 @@ export const PAPER_STYLE_RULES: Record<PaperStyle, PaperStyleRules> = {
   // Set out the way international exam boards' papers commonly are (ADR-0045),
   // with none of any board's own wording (ADR-0044): A4; `1`, `(a)`, `(i)`;
   // dotted lines to write on; each answer's Points in brackets at the right
-  // margin and each Multipart question's total beneath it; a Cover Page with
-  // the Paper Details, the candidate boxes and the paper's total; and the
-  // page number at the top, the paper code and "Turn over" at the foot.
+  // margin and each Multipart question's total beneath it; the paper's total
+  // beneath the title; and the page number at the top and "Turn over" at the
+  // foot. It prints no page of its own: the test opens on its first
+  // question, under the Page Header every style prints.
   'exam-board': {
     trueFalseMarks: TRUE_FALSE_MARKS,
     multipleChoiceMarks: [],
@@ -267,10 +260,9 @@ export const PAPER_STYLE_RULES: Record<PaperStyle, PaperStyleRules> = {
     points: {
       pointsAfterAnswer: '[{n}]',
       questionTotal: '[Total: {n}]',
-      paperTotalOnCover: 'The total mark for this paper is {n}.',
+      paperTotalUnderTitle: 'The total mark for this paper is {n}.',
     },
-    coverPage: true,
-    running: { pageNumber: 'top', paperCode: true, continues: 'Turn over' },
+    running: { pageNumber: 'top', continues: 'Turn over' },
   },
 }
 

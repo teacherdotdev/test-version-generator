@@ -19,14 +19,12 @@
 import {
   answerKeyPointsText,
   answerKeyTotalText,
-  COVER_INSTRUCTIONS_HEADING,
   printedLabel,
   partsOpenNumberLine,
   pointsOnLastRule,
   printedNumberOf,
   printsNumberLine,
   runningFootOf,
-  runningHeadOf,
   subpartsOpenLabelLine,
   type ChoiceGrid,
   type ExportDocument,
@@ -34,7 +32,6 @@ import {
   type MatchingSet,
   type PageFurniture,
   type PageItem,
-  type CoverPageItem,
   type PlannedPart,
   type PlannedWorkSpace,
   type QuestionItem,
@@ -93,7 +90,6 @@ export type ExportFingerprint = {
 //   space:blank                    a Short Answer question's empty work space
 //   space:lines:<n>                …or its work space ruled with n lines
 //   space:lines:<n>:dotted         …ruled with n dotted lines
-//   field:<label>                  a Cover Page's candidate field and its box
 //
 // and inline content as:
 //
@@ -638,23 +634,6 @@ function planAnswering(
   ]
 }
 
-/** A Cover Page in the vocabulary: its title, each Paper Detail it prints, a
- *  `field:` line per candidate box, its instructions under their heading as
- *  a bulleted list, and its total. */
-function planCover(item: CoverPageItem, images: ImageOrdinals): ContentLine[] {
-  const text = (value: string) => renderInline([{ kind: 'text', text: value, marks: [] }])
-  return [
-    ...(item.title ? [line('heading:title', text(item.title))] : []),
-    ...(item.subject ? [line('para', text(item.subject))] : []),
-    ...(item.duration ? [line('para', text(item.duration))] : []),
-    ...item.candidateFields.map((field) => `field:${normalizeSpace(field).trim()}`),
-    ...(item.instructions
-      ? [line('heading:2', COVER_INSTRUCTIONS_HEADING), ...planBlocks([item.instructions], {}, images)]
-      : []),
-    ...(item.total ? [line('para', text(item.total))] : []),
-  ]
-}
-
 /** An Answer Key line's `[n]`, after its answer, when it has points. */
 export function pointsSegments(points: number | undefined): Segment[] {
   return points === undefined ? [] : [{ kind: 'text', text: ` ${answerKeyPointsText(points)}`, marks: [] }]
@@ -665,8 +644,8 @@ export function planItemLines(
   images: ImageOrdinals,
 ): ContentLine[] {
   switch (item.kind) {
-    case 'cover':
-      return planCover(item, images)
+    case 'paper-total':
+      return [line('para', renderInline([{ kind: 'text', text: item.text, marks: [] }]))]
     case 'section-heading':
       // A cleared part says nothing in any format, so it says nothing here.
       return [
@@ -743,10 +722,12 @@ function furnitureLines(furniture: PageFurniture): {
     ...(furniture.identityLine !== undefined
       ? [normalizeSpace(furniture.identityLine).trim()]
       : furniture.identityFields.map((field) => `${field}:`)),
-    ...runningHeadOf(furniture),
+    furniture.arrangementLabel,
   ].filter(Boolean).join(' ')
   return {
     header: [
+      // A page number printed at the top is a row of its own, above the line.
+      ...(furniture.pageNumberAt === 'top' ? [`para ${furniture.pageNumber}`] : []),
       // An unlabeled answer key page's identity line holds nothing at all.
       identity ? `para ${identity}` : 'para',
       ...(furniture.title === null ? [] : [`heading:title ${furniture.title}`]),

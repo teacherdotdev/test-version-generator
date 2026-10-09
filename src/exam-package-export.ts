@@ -151,7 +151,6 @@ export async function examPackage({
       : {}),
     ...(exam.header ? { header: { ...exam.header } } : {}),
     ...(exam.margins ? { margins: { ...exam.margins } } : {}),
-    ...(exam.paperDetails ? { paperDetails: structuredClone(exam.paperDetails) } : {}),
     positions,
   }
   return {

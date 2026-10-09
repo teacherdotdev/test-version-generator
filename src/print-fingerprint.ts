@@ -149,8 +149,6 @@ function isBlankParagraph(node: XmlNode): boolean {
 
 const HEADING_CLASSES: Record<string, string> = {
   'exam-title': 'heading:title',
-  'cover-title': 'heading:title',
-  'cover-heading': 'heading:2',
   'section-title': 'heading:1',
   'answer-key-heading': 'heading:1',
   'answer-key-section': 'heading:2',
@@ -183,11 +181,6 @@ function blockLines(
       node.attrs['data-ruling'],
       points ? normalizeSpace(textOf(points)).trim() : undefined,
     )]
-  }
-  // A Cover Page's candidate field is its label and the box beside it.
-  if (has(node, 'cover-field')) {
-    const label = find(node, 'cover-field-label')
-    return [`field:${label ? normalizeSpace(textOf(label)).trim() : ''}`]
   }
   const headingClass = classes(node).find((name) => HEADING_CLASSES[name])
   if (headingClass) {
@@ -586,6 +579,9 @@ function furnitureLines(header: XmlNode | string, reader: Reader): ContentLine[]
   if (!root) return []
   const identity = find(root, 'page-identity')
   const lines: ContentLine[] = []
+  // A page number printed at the top is a row of its own, above the line.
+  const head = find(root, 'page-running-head')
+  if (head) lines.push(line('para', normalizeSpace(textOf(head)).trim()))
   if (identity) {
     const fields = identity.children.map((child) =>
       normalizeSpace(textOf(child)).trim(),

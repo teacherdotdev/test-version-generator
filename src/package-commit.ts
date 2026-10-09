@@ -184,7 +184,6 @@ export function planImport(
       ...(exam.paperStyle ? { paperStyle: exam.paperStyle } : {}),
       ...(exam.header ? { header: exam.header } : {}),
       ...(exam.margins ? { margins: exam.margins } : {}),
-      ...(exam.paperDetails ? { paperDetails: exam.paperDetails } : {}),
     }
     return [{
       source: exam.key,

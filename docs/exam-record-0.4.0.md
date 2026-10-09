@@ -1,6 +1,6 @@
 # Exam Record 0.4.0
 
-The **Exam Record** is the portable composition of one Exam: its name, its test-page header lines, its Question Sections in print order and how each one's heading reads, how large its headings and text print, how its questions print, how far in from each edge its pages print, the Paper Details its style may print, and, for each position, the Question it uses, the Section it is in, and that position's answer columns, answer order, Hidden Answers and Work Space. It never carries Question Content. It references Questions in Question Bank Records that travel beside it in the same [Test Parrot Package](test-parrot-package-0.1.0.md), and it is importable only inside one. See ADR-0022, ADR-0029, ADR-0038, ADR-0039, ADR-0041, ADR-0044 and ADR-0045.
+The **Exam Record** is the portable composition of one Exam: its name, its test-page header lines, its Question Sections in print order and how each one's heading reads, how large its headings and text print, how its questions print, how far in from each edge its pages print, and, for each position, the Question it uses, the Section it is in, and that position's answer columns, answer order, Hidden Answers and Work Space. It never carries Question Content. It references Questions in Question Bank Records that travel beside it in the same [Test Parrot Package](test-parrot-package-0.1.0.md), and it is importable only inside one. See ADR-0022, ADR-0029, ADR-0038, ADR-0039, ADR-0041, ADR-0044 and ADR-0045.
 
 ## Published contract
 
@@ -27,7 +27,6 @@ The schema is the structural contract; this document supplies the rules JSON Sch
 | `paperStyle` | Optional. `standard`, `classic`, `condensed` or `exam-board`: how the Exam's paper prints. Absent means `standard`. See below. |
 | `header`        | Optional. The Exam's own test-page header lines. See below. |
 | `margins`       | Optional. How far in from each edge of the sheet the Exam's pages print. See below. |
-| `paperDetails`  | Optional. Facts about the paper its Paper Style may print. See below. |
 | `positions`     | The Exam's positions, in print order. May be empty.      |
 
 Unknown optional members are ignored and are not preserved on import.
@@ -99,7 +98,7 @@ Sections print in the order `sections` lists them, and question numbering runs c
 - Under `condensed`, a Multiple Choice Question's or Part's answers are laid out in four, or else two, columns where every answer fits one line of a column; never in fewer columns than its `columns`.
 - The room a style rules applies to a Short Answer position, and to every Short Answer Part of a Multipart position, that has no `workSpace`. A `workSpace` always wins, including a zero-height one.
 - A `workSpace`'s rows keep their count under every style; `condensed` only sets them closer together on the page. A Matching position's `wordBankLayout` is where its Word Bank prints under every style.
-- Under `exam-board` (ADR-0045) the test prints on A4 rather than US Letter, numbers its questions `1` rather than `1.`, letters Parts `(a)` and Subparts `(i)`, rules every lined Work Space with dotted lines, prints an answer's Points as `[n]` against the right margin after it and a Multipart Question's total as `[Total: n]` after it, and opens with a Cover Page made from the `paperDetails`. Its pages carry the page number at the top, the paper code and "Turn over" at the foot, and no header line: the candidate fields are on the Cover Page. Its Answer Key is on A4 and is otherwise the same as under every style.
+- Under `exam-board` (ADR-0045) the test prints on A4 rather than US Letter, numbers its questions `1` rather than `1.`, letters Parts `(a)` and Subparts `(i)`, rules every lined Work Space with dotted lines, prints an answer's Points as `[n]` against the right margin after it and a Multipart Question's total as `[Total: n]` after it, and prints "The total mark for this paper is n." beneath the title when any Question has Points. Its test pages carry the `header` lines as under every style, with the page number centred above them, and "Turn over" at the foot of every test page another follows. It prints no page of its own. Its Answer Key is on A4 and is otherwise the same as under every style.
 - Changing an Exam's style never changes what the teacher set (ADR-0044). A `workSpace` is kept as it is. A Matching position whose `wordBankLayoutSet` is `true` keeps its `wordBankLayout`; every other Matching position is placed again by the new style, as in Defaults, so switching back gives the same layouts.
 
 ## Header
@@ -120,22 +119,6 @@ Every page is US Letter, or A4 under `exam-board`. By default it prints three qu
 - Every page of the test and of the Answer Key prints with the same margins; the header line, title and page number sit inside them.
 - Absent means `0.75` on every side. Producers write `margins` only when some side departs from that.
 
-## Paper Details
-
-`paperDetails` holds facts about this one paper that its Paper Style may print (ADR-0045). Every member is optional:
-
-| Member | Meaning |
-| ------ | ------- |
-| `subject` | The subject line printed under the title on a Cover Page. |
-| `duration` | How long the paper takes, as the teacher writes it. |
-| `paperCode` | A short code for the paper, printed at the foot of each test page by a style that prints one. |
-| `instructions` | The instructions a Cover Page lists, in order. Absent takes the style's own; an empty list prints none. |
-| `candidateFields` | Which boxes a Cover Page asks the candidate to fill in, each at most once, from `name`, `class`, `candidate-number`, `centre-number` and `date`. Absent takes the style's own; an empty list asks for none. |
-
-- A blank detail prints nothing; producers leave it out. Test Parrot trims each text and drops blank instruction lines on import.
-- The paper's total is never a Paper Detail: it is counted from the Questions' Points, and printed by a style that prints one only when some Question has Points.
-- Only `exam-board` prints them today. Under any other style they are kept and travel, but nothing prints them.
-
 ## Defaults
 
 - A Multiple Choice position without `columns` takes the answer columns of the Multiple Choice position before it, or one column if it is the first — the same rule that applies when a teacher adds a Question to an Exam.
@@ -147,20 +130,19 @@ Every page is US Letter, or A4 under `exam-board`. By default it prints three qu
 
 ## Producers
 
-Record `columns` only when the source layout makes them clear, and a Short Answer position's `workSpace` only when the source prints room to write below it — ruled lines counted, blank space in 32 px rows. Record `paperStyle` only when it is not `standard`, and `workSpace` wherever the teacher set it, a zero-height one included under any style: the room a style rules is not written out as a `workSpace`. Record `paperDetails` only for details the source paper prints: its subject line, duration, code, instructions and the boxes it asks a candidate to fill in. Record `wordBankLayout` when the source shows where a Word Bank prints; leave it out to let the importer choose. Record `wordBankLayoutSet` only for a layout the teacher chose.
+Record `columns` only when the source layout makes them clear, and a Short Answer position's `workSpace` only when the source prints room to write below it — ruled lines counted, blank space in 32 px rows. Record `paperStyle` only when it is not `standard`, and `workSpace` wherever the teacher set it, a zero-height one included under any style: the room a style rules is not written out as a `workSpace`. Record `wordBankLayout` when the source shows where a Word Bank prints; leave it out to let the importer choose. Record `wordBankLayoutSet` only for a layout the teacher chose.
 
 ## Changes from 0.3.0
 
-Six members are new, all optional:
+Five members are new, all optional:
 
 - `hiddenAnswers`, on a Multiple Choice position: an Exam may show fewer of a Question's incorrect answers than it has, never its correct answer or a Locked Answer (ADR-0038).
 - `wordBankLayout`, on a Matching position: where its Word Bank prints, beside or above its Items (ADR-0041).
 - `wordBankLayoutSet`, on a Matching position: whether the teacher chose that layout, so a change of style leaves it (ADR-0044).
 - `margins`: an Exam's Page Margins, one per side, in inches (ADR-0039).
-- `paperDetails`: facts about the paper its Paper Style may print (ADR-0045).
 - `paperStyle`: how every question on the Exam prints (ADR-0041, ADR-0044, ADR-0045). A Short Answer position's default Work Space now follows it. A zero-height `workSpace` was always conforming; it now means "no room" even where the style would rule lines.
 
-Nothing else changed, so a `0.3.0` record is a `0.4.0` record that hides nothing, has every Word Bank placed on import, keeps the default margins and prints in the `standard` style. Test Parrot writes `0.4.0` and still imports `0.3.0`, `0.2.0` and `0.1.0`, each that way; a `hiddenAnswers`, `wordBankLayout`, `wordBankLayoutSet`, `margins`, `paperStyle` or `paperDetails` in an older record is an unknown optional member and is ignored.
+Nothing else changed, so a `0.3.0` record is a `0.4.0` record that hides nothing, has every Word Bank placed on import, keeps the default margins and prints in the `standard` style. Test Parrot writes `0.4.0` and still imports `0.3.0`, `0.2.0` and `0.1.0`, each that way; a `hiddenAnswers`, `wordBankLayout`, `wordBankLayoutSet`, `margins` or `paperStyle` in an older record is an unknown optional member and is ignored.
 
 ## Changes in 0.3.0, from 0.2.0
 

@@ -30,11 +30,10 @@ import {
   answerKeyPointsText,
   answerKeyTotalText,
   type AnswerKeySectionItem,
-  COVER_INSTRUCTIONS_HEADING,
   printedLabel,
   printedNumberOf,
   type ChoiceGrid,
-  type CoverPageItem,
+  type PaperTotalItem,
   type MatchingSet,
   type PageFurniture,
   type PlannedBankAnswer,
@@ -503,41 +502,10 @@ export function QuestionContent({
   )
 }
 
-// A Cover Page (ADR-0045), alone on the test's first page: the title, the
-// Paper Details the teacher wrote, a labelled box for each candidate field,
-// the instructions as a list, and the paper's total.
-export function CoverPageContent({ item }: { item: CoverPageItem }) {
-  return (
-    <section className="cover-page">
-      {item.title && (
-        <h1
-          className="cover-title"
-          style={item.titleSize ? { fontSize: TITLE_PX[item.titleSize] } : undefined}
-        >
-          {item.title}
-        </h1>
-      )}
-      {item.subject && <p className="cover-subject">{item.subject}</p>}
-      {item.duration && <p className="cover-duration">{item.duration}</p>}
-      {item.candidateFields.length > 0 && (
-        <div className="cover-fields">
-          {item.candidateFields.map((field) => (
-            <div className="cover-field" key={field}>
-              <span className="cover-field-label">{field}</span>
-              <span className="cover-field-box" />
-            </div>
-          ))}
-        </div>
-      )}
-      {item.instructions && (
-        <>
-          <h2 className="cover-heading">{COVER_INSTRUCTIONS_HEADING}</h2>
-          <DocView className="cover-instructions" content={[item.instructions]} />
-        </>
-      )}
-      {item.total && <p className="cover-total">{item.total}</p>}
-    </section>
-  )
+// The paper's total, beneath the title on the test's first page, under a
+// Paper Style that prints it there (ADR-0045).
+export function PaperTotalContent({ item }: { item: PaperTotalItem }) {
+  return <p className="paper-total">{item.text}</p>
 }
 
 // A cleared part prints nothing — not an empty line — and a heading cleared of
@@ -732,21 +700,22 @@ export function PageHeaderContent({
   onTitleChange?: (title: string) => void
   titleDisabled?: boolean
 }) {
-  // A title that wraps grows its header by the lines the plan measured, which
-  // the stylesheet's fixed band per variant cannot know.
-  const height = furniture.titleLines && furniture.titleLines > 1
+  // A title that wraps, or a page number printed above the line, grows its
+  // header by what the plan measured, which the stylesheet's fixed band per
+  // variant cannot know.
+  const height = (furniture.titleLines && furniture.titleLines > 1) || furniture.pageNumberAt === 'top'
     ? { height: `${headerHeightOf(header, furniture)}px` }
     : undefined
   return (
     <header className={`page-header page-header--${header}`} style={height}>
+      {furniture.pageNumberAt === 'top' && (
+        <div className="page-running-head">{furniture.pageNumber}</div>
+      )}
       <div className="page-identity">
         {identityEditor ? (
           <EditableIdentityText editor={identityEditor} />
         ) : (
           <IdentityText furniture={furniture} />
-        )}
-        {furniture.pageNumberAt === 'top' && (
-          <span className="page-running-number">{furniture.pageNumber}</span>
         )}
         <span className="page-id">{furniture.arrangementLabel}</span>
       </div>
@@ -789,17 +758,14 @@ export function PageHeaderContent({
 }
 
 // The foot of a sheet: its page number, centred, on every style that prints
-// it there; and the paper code at the left and "Turn over" against the right
-// under a style that prints them (ADR-0045).
+// it there; and "Turn over" against the right under a style that prints it
+// (ADR-0045).
 export function PageFooterContent({ furniture }: { furniture: PageFurniture }) {
   return (
-    <footer
-      className={furniture.footLeft || furniture.footRight ? 'page-footer page-footer--running' : 'page-footer'}
-    >
+    <footer className={furniture.footRight ? 'page-footer page-footer--running' : 'page-footer'}>
       {furniture.pageNumberAt === undefined && (
         <span className="page-footer-number">{furniture.pageNumber}</span>
       )}
-      {furniture.footLeft && <span className="page-foot-left">{furniture.footLeft}</span>}
       {furniture.footRight && <span className="page-foot-right">{furniture.footRight}</span>}
     </footer>
   )
@@ -812,8 +778,8 @@ export function PageFooterContent({ furniture }: { furniture: PageFurniture }) {
 // until it has been given a way to be drawn, and therefore measured.
 export function PageItemMeasureView({ item }: { item: PageItem }) {
   switch (item.kind) {
-    case 'cover':
-      return <CoverPageContent item={item} />
+    case 'paper-total':
+      return <PaperTotalContent item={item} />
     case 'section-heading':
       return (
         <SectionHeadingContent item={item} />

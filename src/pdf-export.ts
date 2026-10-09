@@ -40,7 +40,6 @@ import {
   PART_INDENT,
   answerKeyPointsText,
   answerKeyTotalText,
-  COVER_INSTRUCTIONS_HEADING,
   printedLabel,
   printedNumberOf,
   partsOpenNumberLine,
@@ -51,12 +50,13 @@ import {
   MATCHING_INDENT,
   type AnswerKeyEntryItem,
   type ChoiceGrid,
-  type CoverPageItem,
   type LayoutPlan,
   type MatchingSet,
   type PlannedBankAnswer,
   type PageFurniture,
   type PageItem,
+  type PaperTotalItem,
+  RUNNING_HEAD_HEIGHT,
   type PlannedPart,
   type PlannedWorkSpace,
   type QuestionItem,
@@ -1060,66 +1060,17 @@ function drawQuestion(context: DrawContext, item: QuestionItem): void {
   context.y -= QUESTION_GAP
 }
 
-// A Cover Page (ADR-0045), as print sets `.cover-page` out: the title, the
-// Paper Details, each candidate field's label beside its box, the
-// instructions under their heading as a list, and the paper's total.
-const COVER_FIELD_LABEL = pt(160 + 12)
-const COVER_FIELD_BOX = pt(32)
-
-function drawCover(context: DrawContext, item: CoverPageItem): void {
-  context.y -= pt(24)
-  if (item.title) {
-    const size = titlePoints(item.titleSize)
-    drawInline(context, [{ text: item.title, font: 'bold', size }], { line: size * TITLE_LINE_HEIGHT })
-    context.y -= pt(18)
-  }
-  if (item.subject) {
-    drawTextLine(context, item.subject, { font: 'bold', size: pt(18), line: pt(18) * BODY_LINE_HEIGHT })
-    context.y -= pt(8)
-  }
-  if (item.duration) {
-    drawTextLine(context, item.duration)
-    context.y -= pt(8)
-  }
-  if (item.candidateFields.length > 0) context.y -= pt(28)
-  for (const [index, field] of item.candidateFields.entries()) {
-    if (index > 0) context.y -= pt(14)
-    ensureRoom(context, COVER_FIELD_BOX)
-    const top = context.y
-    assertSupported(field, context.fonts.regular)
-    context.page.drawText(field, {
-      x: context.x,
-      y: top - COVER_FIELD_BOX / 2 - BODY_SIZE * 0.35,
-      font: context.fonts.regular,
-      size: BODY_SIZE,
-      color: INK,
-    })
-    context.page.drawRectangle({
-      x: context.x + COVER_FIELD_LABEL,
-      y: top - COVER_FIELD_BOX,
-      width: context.width - COVER_FIELD_LABEL,
-      height: COVER_FIELD_BOX,
-      borderColor: INK,
-      borderWidth: 0.75,
-    })
-    context.y = top - COVER_FIELD_BOX
-  }
-  if (item.candidateFields.length > 0) context.y -= pt(32)
-  if (item.instructions) {
-    drawTextLine(context, COVER_INSTRUCTIONS_HEADING, { font: 'bold', size: HEADING_SIZE, line: HEADING_SIZE * HEADING_LINE_HEIGHT })
-    context.y -= pt(8)
-    drawBlocks(context, [item.instructions])
-  }
-  if (item.total) {
-    context.y -= pt(24)
-    drawTextLine(context, item.total, { font: 'bold' })
-  }
+// The paper's total beneath the title (ADR-0045), as print sets
+// `.paper-total`: a line of body text and its 12px below.
+function drawPaperTotal(context: DrawContext, item: PaperTotalItem): void {
+  drawTextLine(context, item.text)
+  context.y -= pt(12)
 }
 
 function drawItem(context: DrawContext, item: PageItem): void {
   switch (item.kind) {
-    case 'cover':
-      drawCover(context, item)
+    case 'paper-total':
+      drawPaperTotal(context, item)
       return
     case 'section-heading': {
       // A cleared part draws nothing, and a heading cleared of both draws
@@ -1301,22 +1252,11 @@ function drawAnswerKeyEntry(context: DrawContext, item: AnswerKeyEntryItem): voi
 // An Exam's own header line: its text from the left margin, the ID in bold
 // against the right, as print sets them. It is one line on every output, so
 // text too long for the room the ID leaves is cut short, as print cuts it.
-function drawIdentityLine(context: DrawContext, text: string, label: string, pageNumber?: string): void {
+function drawIdentityLine(context: DrawContext, text: string, label: string): void {
   const bold = context.fonts.bold
   const regular = context.fonts.regular
   const labelWidth = bold.widthOfTextAtSize(label, SHEET_BODY_SIZE)
   const y = context.y - SHEET_BODY_SIZE
-  // The page number, centred at the top under a style that prints it there.
-  if (pageNumber !== undefined) {
-    assertSupported(pageNumber, bold)
-    context.page.drawText(pageNumber, {
-      x: context.x + (context.width - bold.widthOfTextAtSize(pageNumber, SHEET_BODY_SIZE)) / 2,
-      y,
-      size: SHEET_BODY_SIZE,
-      font: bold,
-      color: INK,
-    })
-  }
   context.page.drawText(label, {
     x: context.x + context.width - labelWidth,
     y,
@@ -1340,13 +1280,24 @@ function drawFurniture(
   pageTop: number,
   headerBottom: number,
 ): void {
+  // The page number, centred at the top under a style that prints it there,
+  // on its own row above the header line, which moves down by that row.
+  const head = furniture.pageNumberAt === 'top' ? pt(RUNNING_HEAD_HEIGHT) : 0
+  if (head > 0) {
+    const number = String(furniture.pageNumber)
+    const bold = context.fonts.bold
+    assertSupported(number, bold)
+    context.page.drawText(number, {
+      x: context.x + (context.width - bold.widthOfTextAtSize(number, SHEET_BODY_SIZE)) / 2,
+      y: context.y - SHEET_BODY_SIZE,
+      size: SHEET_BODY_SIZE,
+      font: bold,
+      color: INK,
+    })
+    context.y -= head
+  }
   if (furniture.identityLine !== undefined) {
-    drawIdentityLine(
-      context,
-      furniture.identityLine,
-      furniture.arrangementLabel,
-      furniture.pageNumberAt === 'top' ? String(furniture.pageNumber) : undefined,
-    )
+    drawIdentityLine(context, furniture.identityLine, furniture.arrangementLabel)
   } else {
     const pieces: InlinePiece[] = []
     for (const field of furniture.identityFields) {
@@ -1356,7 +1307,7 @@ function drawFurniture(
     drawInline(context, pieces, { x: context.x, width: context.width, line: 13 })
   }
   if (furniture.title !== null) {
-    const titleContext = { ...context, y: pageTop - 36, bottom: headerBottom }
+    const titleContext = { ...context, y: pageTop - head - 36, bottom: headerBottom }
     drawInline(
       titleContext,
       [{ text: furniture.title, font: 'bold', size: titlePoints(furniture.titleSize) }],
@@ -1369,8 +1320,8 @@ function drawFurniture(
 const A4_POINTS = { width: 595.28, height: 841.89 }
 
 // The foot of a page: its number centred on the content box, as print centres
-// it between the margins — and, under a style that prints them, the paper
-// code at the left margin and "Turn over" against the right, in body type.
+// it between the margins — and, under a style that prints it, "Turn over"
+// against the right margin, in body type.
 function drawFoot(context: DrawContext, furniture: PageFurniture, y: number): void {
   const { page, fonts } = context
   if (furniture.pageNumberAt === undefined) {
@@ -1384,10 +1335,6 @@ function drawFoot(context: DrawContext, furniture: PageFurniture, y: number): vo
       font: fonts.regular,
       color: INK,
     })
-  }
-  if (furniture.footLeft) {
-    assertSupported(furniture.footLeft, fonts.regular)
-    page.drawText(furniture.footLeft, { x: context.x, y, size: SHEET_BODY_SIZE, font: fonts.regular, color: INK })
   }
   if (furniture.footRight) {
     assertSupported(furniture.footRight, fonts.bold)

@@ -5,8 +5,11 @@
 
 import { describe, expect, test } from 'bun:test'
 import {
+  HEADER_HEIGHT,
+  RUNNING_HEAD_HEIGHT,
   buildExportDocument,
   choiceAreaWidth,
+  headerHeightOf,
   isAnswerKeyHeader,
   pageSizeOf,
   planExport,
@@ -26,6 +29,7 @@ import {
   type Question,
 } from './exam'
 import type { ProseMirrorJSON } from './question-doc'
+import { DEFAULT_HEADER } from './page-header'
 import {
   ANSWER_BLANK,
   PAPER_STYLES,
@@ -581,8 +585,9 @@ describe('Exam Board', () => {
   })
 
   test('measures the Points it prints, so they move a question that no longer fits', () => {
-    // Two questions that fill an A4 page exactly, until each prints its [n].
-    const box = 1123 - 2 * 72 - 42 - 36
+    // Two questions that fill the first A4 page exactly — under its title,
+    // header line and page number — until each prints its [n].
+    const box = 1123 - 2 * 72 - 84 - 22 - 36
     const measure = (withPoints: boolean): Measure => ({
       itemHeight: (item) =>
         item.kind === 'question' ? box / 2 + (withPoints && item.pointsAfter ? 20 : 0) : 0,
@@ -593,70 +598,65 @@ describe('Exam Board', () => {
     const where = (withPoints: boolean) =>
       testPages(exam, measure(withPoints)).map((page) =>
         page.items.flatMap((item) => (item.kind === 'question' ? [item.question.id] : [])))
-    expect(where(false)).toEqual([[], ['one', 'two']])
-    expect(where(true)).toEqual([[], ['one'], ['two']])
+    expect(where(false)).toEqual([['one', 'two']])
+    expect(where(true)).toEqual([['one'], ['two']])
   })
 
-  test('opens the test with a Cover Page of its own, from the Paper Details, and never the key', () => {
-    const exam = examOf(WITH_POINTS, 'exam-board', {
-      title: 'Forces',
-      paperDetails: { subject: 'Physics', duration: '50 minutes', paperCode: 'PHY-3' },
-    })
-    const [cover, ...rest] = testPages(exam)
-    expect(cover!.header).toBe('cover')
-    expect(cover!.items).toEqual([
-      expect.objectContaining({
-        kind: 'cover',
-        title: 'Forces',
-        subject: 'Physics',
-        duration: '50 minutes',
-        candidateFields: ['Name', 'Class', 'Candidate number'],
-        total: 'The total mark for this paper is 12.',
-      }),
-    ])
-    // The candidate fields are on the cover, so later pages carry no Name line.
-    expect(rest.every((page) => page.header === 'later' && page.furniture.identityLine === '')).toBe(true)
-    expect(rest.every((page) => page.furniture.title === null)).toBe(true)
+  test('opens the test on its first question, under the title, the header line and the paper’s total', () => {
+    const exam = examOf(WITH_POINTS, 'exam-board', { title: 'Forces' })
+    const measure: Measure = { itemHeight: (item) => (item.kind === 'question' ? 700 : 20) }
+    const [first, ...rest] = testPages(exam, measure)
+    // Page 1 is a test page like every style's: no page of the style's own.
+    expect(first!.header).toBe('first')
+    expect(first!.furniture.title).toBe('Forces')
+    expect(first!.furniture.identityLine).toBe(DEFAULT_HEADER.first)
+    // The paper's total opens it, ahead of its first Section's heading.
+    expect(first!.items[0]).toEqual({ kind: 'paper-total', text: 'The total mark for this paper is 12.' })
+    expect(first!.items.slice(1).map((item) => item.kind)).toEqual(['section-heading', 'question'])
+    // Later pages carry the later line, as under every style.
+    expect(rest.length).toBeGreaterThan(0)
+    expect(rest.every((page) => page.header === 'later' && page.furniture.identityLine === DEFAULT_HEADER.later))
+      .toBe(true)
+    expect(rest.every((page) => page.items.every((item) => item.kind !== 'paper-total'))).toBe(true)
+    // The key prints its own total beside its heading, and no line of the test's.
     expect(plan(exam).pages.filter((page) => page.stream === 'answer-key')
-      .every((page) => page.items.every((item) => item.kind !== 'cover'))).toBe(true)
+      .every((page) => page.items.every((item) => item.kind !== 'paper-total'))).toBe(true)
+    // A reworded header prints as the teacher wrote it.
+    const worded = testPages(examOf(WITH_POINTS, 'exam-board', { header: { first: 'Student: ____', later: '' } }), measure)
+    expect(worded[0]!.furniture.identityLine).toBe('Student: ____')
+    expect(worded.slice(1).every((page) => page.furniture.identityLine === '')).toBe(true)
   })
 
-  test('prints nothing for a Paper Detail the teacher left blank, and none where they asked for none', () => {
-    const cover = (exam: Exam) => plan(exam).pages[0]!.items[0]
-    const blank = cover(examOf(EVERY_TYPE, 'exam-board'))
-    expect(blank).not.toHaveProperty('subject')
-    expect(blank).not.toHaveProperty('duration')
-    // Nothing has Points, so no total.
-    expect(blank).not.toHaveProperty('total')
-    expect(blank).toMatchObject({ candidateFields: ['Name', 'Class', 'Candidate number'] })
-    const none = cover(examOf(EVERY_TYPE, 'exam-board', { paperDetails: { instructions: [], candidateFields: [] } }))
-    expect(none).toMatchObject({ candidateFields: [], instructions: null })
-    const own = cover(examOf(EVERY_TYPE, 'exam-board', {
-      paperDetails: { instructions: ['Use black ink.'], candidateFields: ['centre-number', 'name'] },
-    }))
-    expect(own).toMatchObject({
-      candidateFields: ['Name', 'Centre number'],
-      instructions: { type: 'bullet_list', content: [expect.objectContaining({ type: 'list_item' })] },
-    })
+  test('prints no paper total where nothing has Points, and no other style prints one', () => {
+    expect(plan(examOf(EVERY_TYPE, 'exam-board')).pages
+      .every((page) => page.items.every((item) => item.kind !== 'paper-total'))).toBe(true)
+    for (const style of ['standard', 'classic', 'condensed'] as const) {
+      expect(plan(examOf(WITH_POINTS, style)).pages
+        .every((page) => page.items.every((item) => item.kind !== 'paper-total'))).toBe(true)
+    }
   })
 
-  test('numbers pages at the top, prints the paper code at the foot, and “Turn over” wherever the test goes on', () => {
-    const exam = examOf(WITH_POINTS, 'exam-board', { paperDetails: { paperCode: 'PHY-3' } })
+  test('numbers every test page at the top, page 1 too, and prints “Turn over” wherever the test goes on', () => {
+    const exam = examOf(WITH_POINTS, 'exam-board')
     const measure: Measure = { itemHeight: (item) => (item.kind === 'question' ? 700 : 0) }
     const pages = testPages(exam, measure)
-    expect(pages.length).toBe(6)
-    expect(pages.map((page) => page.furniture.pageNumberAt)).toEqual(['none', 'top', 'top', 'top', 'top', 'top'])
-    expect(pages.every((page) => page.furniture.footLeft === 'PHY-3')).toBe(true)
+    expect(pages.length).toBe(5)
+    expect(pages.map((page) => page.furniture.pageNumber)).toEqual([1, 2, 3, 4, 5])
+    expect(pages.every((page) => page.furniture.pageNumberAt === 'top')).toBe(true)
     expect(pages.map((page) => page.furniture.footRight)).toEqual([
-      'Turn over', 'Turn over', 'Turn over', 'Turn over', 'Turn over', undefined,
+      'Turn over', 'Turn over', 'Turn over', 'Turn over', undefined,
     ])
+    // The number takes a row of its own above the header line, and packing
+    // fills only what that row leaves.
+    expect(headerHeightOf('first', pages[0]!.furniture)).toBe(HEADER_HEIGHT.first + RUNNING_HEAD_HEIGHT)
+    expect(headerHeightOf('later', pages[1]!.furniture)).toBe(HEADER_HEIGHT.later + RUNNING_HEAD_HEIGHT)
     // The key keeps the sheet's own furniture.
     const key = plan(exam, measure).pages.filter((page) => page.stream === 'answer-key')
     expect(key.every((page) => page.furniture.pageNumberAt === undefined && page.furniture.footRight === undefined))
       .toBe(true)
     // No other style prints running furniture.
     expect(plan(examOf(WITH_POINTS, 'classic'), measure).pages.every((page) =>
-      page.furniture.pageNumberAt === undefined && page.furniture.footLeft === undefined)).toBe(true)
+      page.furniture.pageNumberAt === undefined && page.furniture.footRight === undefined)).toBe(true)
   })
 
   test('a Section total is a placement any style may take, printed after the Section’s last question', () => {

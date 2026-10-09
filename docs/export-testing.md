@@ -98,7 +98,6 @@ panel:<index>
 space:blank
 space:lines:<n>
 space:lines:<n>:dotted
-field:<label>
 ```
 
 A Blockquote prints boxed, so its border is content: `box` … `/box` wraps its
@@ -168,14 +167,16 @@ that ends a split question carries the question's own Points and closing
 lines. Packing measures them through the same `Measure`, since the print
 view the measure renders draws them: Points on a rule add no height.
 
-A Cover Page is the test's own first page, never the Answer Key's: its title
-as `heading:title`, each Paper Detail it prints as `para`, a `field:<label>`
-line per candidate box — one `CandidateField` table in DOCX, read back row by
-row — the instructions as `heading:2 Instructions` and a bulleted list, and
-the paper's total as `para`. A Paper Style's running furniture is in the page
-fingerprint too: the header line reads the page number when it prints at the
-top (`para 2`), and the footer reads its number when it prints there, then the
-paper code and "Turn over" (`para BIO-1 Turn over`).
+No Paper Style prints a page of its own (ADR-0045): page 1 is always a test
+page with its title and first-page header line. A style that prints the
+paper's total beneath the title (Exam Board) opens the test's content with
+it, `para The total mark for this paper is 16.`, measured and packed like
+any item and never part of the Answer Key. A Paper Style's running furniture
+is in the page fingerprint too: a page number printed at the top is a header
+line of its own before the header line, `para 2` then `para Name: ____ …`
+(`.page-running-head` in print, a centred header paragraph in DOCX, its own
+row in the PDF), and the footer reads its number when it prints there, then
+"Turn over" (`para Turn over`).
 
 Every page records its dimensions in CSS px. An A4 plan packs on 794×1123px
 and says `paper: 'a4'`, so each adapter cuts the sheet to A4 exactly —
@@ -214,8 +215,8 @@ The implementations are:
   the Work Space a style supplies and what overrides it, the question gap
   handed to `Measure`, and an Answer Key that never changes with the style;
   and Exam Board's A4, labels, dotted ruling, Points placements (measured,
-  and only on a split question's last piece), Cover Page and running
-  furniture.
+  and only on a split question's last piece), the paper's total beneath the
+  title, and running furniture.
 - `src/word-bank-layout.test.ts` — where a matching set's Word Bank prints:
   the layout a position takes when it arrives or the style changes (beside
   its Items wherever its widest answer fits, at every text size, margin and

@@ -83,10 +83,9 @@ import {
   answerKeyPointsText,
   answerKeyTotalText,
   CHOICE_INDENT,
-  COVER_INSTRUCTIONS_HEADING,
   printedLabel,
   printedNumberOf,
-  type CoverPageItem,
+  type PaperTotalItem,
   choiceAreaWidth,
   matchingAreaWidth,
   MATCHING_INDENT,
@@ -1258,90 +1257,10 @@ function answeringContent(
   ]
 }
 
-/** The table style that marks a Cover Page's candidate field, so the package
- *  reads back as a labelled box rather than as a table. */
-export const CANDIDATE_FIELD_TABLE_STYLE = 'CandidateField'
-
-const FIELD_BOX_BORDER = { style: BorderStyle.SINGLE, size: 6, color: '332A24' }
-/** `.cover-field`'s label column and gap in print. */
-const FIELD_LABEL_WIDTH = 160 + 12
-const FIELD_BOX_HEIGHT = 32
-/** `.cover-fields`' gap between two boxes in print. */
-const FIELD_GAP = 14
-
-// A Cover Page (ADR-0045), in print's order: the title in the Title style,
-// each Paper Detail it prints, the candidate fields as one table whose rows
-// are each a label and a bordered box — with a short borderless row between
-// two, so the boxes stand apart — the instructions under their heading as a
-// bulleted list, and the paper's total.
-function coverContent(item: CoverPageItem, build: BuildContext): (Paragraph | Table)[] {
-  const boxWidth = build.contentWidth - FIELD_LABEL_WIDTH
-  const fieldRow = (label: string) =>
-    new TableRow({
-      cantSplit: true,
-      height: { value: twips(FIELD_BOX_HEIGHT), rule: 'atLeast' },
-      children: [
-        new TableCell({
-          width: { size: twips(FIELD_LABEL_WIDTH), type: WidthType.DXA },
-          verticalAlign: VerticalAlignTable.CENTER,
-          borders: NO_BORDERS,
-          children: [new Paragraph({ children: [new TextRun({ text: label })] })],
-        }),
-        new TableCell({
-          width: { size: twips(boxWidth), type: WidthType.DXA },
-          borders: { top: FIELD_BOX_BORDER, bottom: FIELD_BOX_BORDER, left: FIELD_BOX_BORDER, right: FIELD_BOX_BORDER },
-          children: [new Paragraph({})],
-        }),
-      ],
-    })
-  const gapRow = () =>
-    new TableRow({
-      height: { value: twips(FIELD_GAP), rule: 'exact' },
-      children: [FIELD_LABEL_WIDTH, boxWidth].map((width) =>
-        new TableCell({
-          width: { size: twips(width), type: WidthType.DXA },
-          borders: NO_BORDERS,
-          children: [new Paragraph({})],
-        })),
-    })
-  const fields = item.candidateFields.length > 0
-    ? [new Table({
-        style: CANDIDATE_FIELD_TABLE_STYLE,
-        width: { size: twips(build.contentWidth), type: WidthType.DXA },
-        columnWidths: gridOf([FIELD_LABEL_WIDTH, boxWidth]),
-        borders: NO_BORDERS,
-        rows: item.candidateFields.flatMap((label, index) => [...(index > 0 ? [gapRow()] : []), fieldRow(label)]),
-      })]
-    : []
-  return [
-    ...(item.title
-      ? [new Paragraph({
-          ...(item.titleSize
-            ? { children: [new TextRun({ text: item.title, size: titleHalfPoints(item.titleSize) })] }
-            : { text: item.title }),
-          heading: HeadingLevel.TITLE,
-          spacing: { before: 360, after: 240, ...headingLine(titleHalfPoints(item.titleSize), TITLE_LINE_HEIGHT) },
-        })]
-      : []),
-    ...(item.subject
-      ? [new Paragraph({ children: [new TextRun({ text: item.subject, style: FURNITURE_BOLD_STYLE, size: 27 })], spacing: { after: 120 } })]
-      : []),
-    ...(item.duration ? [new Paragraph({ children: [new TextRun({ text: item.duration })], spacing: { after: 120 } })] : []),
-    ...fields,
-    ...(item.instructions
-      ? [
-          new Paragraph({
-            text: COVER_INSTRUCTIONS_HEADING,
-            heading: HeadingLevel.HEADING_2,
-            spacing: { before: 480, after: 120, ...headingLine(halfPointsOf('sectionTitle'), HEADING_LINE_HEIGHT) },
-          }),
-          ...blocks([item.instructions], { indent: 0 }, build),
-        ]
-      : []),
-    ...(item.total
-      ? [new Paragraph({ children: [new TextRun({ text: item.total, style: FURNITURE_BOLD_STYLE })], spacing: { before: 360 } })]
-      : []),
-  ]
+// The paper's total beneath the title (ADR-0045), as print sets
+// `.paper-total`: a line of body text and its 12px below.
+function paperTotalParagraph(item: PaperTotalItem): Paragraph {
+  return new Paragraph({ children: [new TextRun({ text: item.text })], spacing: { after: twips(12) } })
 }
 
 // The answer key, in Word.
@@ -1410,8 +1329,8 @@ function itemContent(
   build: BuildContext,
 ): (Paragraph | Table)[] {
   switch (item.kind) {
-    case 'cover':
-      return coverContent(item, build)
+    case 'paper-total':
+      return [paperTotalParagraph(item)]
     case 'section-heading': {
       // Heading 1 already is `'normal'`; any other size is stated on the runs,
       // from the same table print reads. The directions always state theirs:
@@ -1504,8 +1423,7 @@ function itemContent(
 const IDENTITY_GAP = 20
 const OUTPUT_ID_STYLE = 'OutputId'
 /** Bold by style, as print sets these by class: a Paper Style's running page
- *  number and "Turn over", and a Cover Page's subject line and total — page
- *  furniture, not an authored strong mark. */
+ *  number and "Turn over" — page furniture, not an authored strong mark. */
 const FURNITURE_BOLD_STYLE = 'FurnitureBold'
 /** Room kept for the bold output ID and the gap before it. */
 const IDENTITY_ID_RESERVE = 64
@@ -1519,25 +1437,14 @@ function identityLine(furniture: PageFurniture, contentWidth: number): Paragraph
     size: halfPointsOf('body'),
   })
   if (furniture.identityLine !== undefined) {
-    // An Exam's own line: its text, then — under a style that prints it there
-    // — the page number on a centre stop, then the ID against a right stop.
-    const top = furniture.pageNumberAt === 'top'
+    // An Exam's own line: its text, then the ID against a right stop.
     return new Paragraph({
       children: [
         new TextRun({ text: furniture.identityLine, size: halfPointsOf('body') }),
-        ...(top
-          ? [
-              new TextRun({ children: [new Tab()] }),
-              new TextRun({ text: String(furniture.pageNumber), style: FURNITURE_BOLD_STYLE, size: halfPointsOf('body') }),
-            ]
-          : []),
         new TextRun({ children: [new Tab()] }),
         id,
       ],
-      tabStops: [
-        ...(top ? [{ type: TabStopType.CENTER, position: twips(contentWidth / 2) }] : []),
-        { type: TabStopType.RIGHT, position: twips(contentWidth) },
-      ],
+      tabStops: [{ type: TabStopType.RIGHT, position: twips(contentWidth) }],
       spacing: { after: 60 },
     })
   }
@@ -1568,6 +1475,17 @@ function identityLine(furniture: PageFurniture, contentWidth: number): Paragraph
 
 function headerParagraphs(furniture: PageFurniture, contentWidth: number): Paragraph[] {
   return [
+    // The page number, centred on a row of its own above the header line,
+    // under a style that prints it at the top (ADR-0045).
+    ...(furniture.pageNumberAt === 'top'
+      ? [new Paragraph({
+          children: [
+            new TextRun({ text: String(furniture.pageNumber), style: FURNITURE_BOLD_STYLE, size: halfPointsOf('body') }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 60 },
+        })]
+      : []),
     identityLine(furniture, contentWidth),
     ...(furniture.title === null
       ? []
@@ -1595,7 +1513,7 @@ function headerParagraphs(furniture: PageFurniture, contentWidth: number): Parag
 // key — so the footer prints that number rather than asking Word for a field
 // whose count would be the whole document's.
 function footerParagraph(furniture: PageFurniture, contentWidth: number): Paragraph {
-  if (furniture.footLeft === undefined && furniture.footRight === undefined) {
+  if (furniture.footRight === undefined) {
     return new Paragraph({
       children: furniture.pageNumberAt === undefined
         ? [new TextRun({ text: String(furniture.pageNumber), size: halfPointsOf('small') })]
@@ -1603,14 +1521,13 @@ function footerParagraph(furniture: PageFurniture, contentWidth: number): Paragr
       alignment: AlignmentType.CENTER,
     })
   }
-  // A running foot (ADR-0045): the paper code at the left margin and "Turn
-  // over" against a right stop, in body type, as print sets them.
+  // A running foot (ADR-0045): "Turn over" against a right stop, in body
+  // type, as print sets it.
   return new Paragraph({
     children: [
       ...(furniture.pageNumberAt === undefined
         ? [new TextRun({ text: `${furniture.pageNumber} `, size: halfPointsOf('body') })]
         : []),
-      ...(furniture.footLeft ? [new TextRun({ text: furniture.footLeft, size: halfPointsOf('body') })] : []),
       ...(furniture.footRight
         ? [
             new TextRun({ children: [new Tab()] }),

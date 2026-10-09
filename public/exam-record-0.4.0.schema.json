@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://testparrot.com/formats/exam/0.4.0/schema.json",
   "title": "Test Parrot Exam Record 0.4.0",
-  "description": "The composition of one Exam: its name, its test-page header lines, its Question Sections in print order and how each reads, how large its headings and text print, how its questions print, how far in from each edge its pages print, the Paper Details its style may print, and its ordered positions, each placed in one of its Sections and referencing a Question in a Question Bank Record travelling in the same Test Parrot Package, with the incorrect answers a Multiple Choice position leaves off.",
+  "description": "The composition of one Exam: its name, its test-page header lines, its Question Sections in print order and how each reads, how large its headings and text print, how its questions print, how far in from each edge its pages print, and its ordered positions, each placed in one of its Sections and referencing a Question in a Question Bank Record travelling in the same Test Parrot Package, with the incorrect answers a Multiple Choice position leaves off.",
   "type": "object",
   "required": [
     "format",
@@ -45,7 +45,7 @@
       ]
     },
     "paperStyle": {
-      "description": "How every question on the Exam prints (ADR-0041). `standard` circles T or F and a capital letter and adds nothing. `classic` prints an answer blank before each Multiple Choice and True/False number, letters answers and the Word Bank in lower case with the Word Bank above its Items, and rules three answer lines below a Short Answer Question or Part with no `workSpace`. `condensed` stands questions closer together, lays Multiple Choice answers across the line where they fit, rules three answer lines below a Short Answer Question or Part with no `workSpace`, and sets every Work Space's rows closer together, keeping its count of rows. `exam-board` prints on A4 with a Cover Page from the `paperDetails`, labels questions `1`, Parts `(a)` and Subparts `(i)`, rules dotted answer lines (three below a Short Answer Question or Part with no `workSpace`), and prints each answer's Points as `[n]` at the right margin and each Multipart question's total beneath it (ADR-0045). Absent means standard.",
+      "description": "How every question on the Exam prints (ADR-0041). `standard` circles T or F and a capital letter and adds nothing. `classic` prints an answer blank before each Multiple Choice and True/False number, letters answers and the Word Bank in lower case with the Word Bank above its Items, and rules three answer lines below a Short Answer Question or Part with no `workSpace`. `condensed` stands questions closer together, lays Multiple Choice answers across the line where they fit, rules three answer lines below a Short Answer Question or Part with no `workSpace`, and sets every Work Space's rows closer together, keeping its count of rows. `exam-board` prints on A4, labels questions `1`, Parts `(a)` and Subparts `(i)`, rules dotted answer lines (three below a Short Answer Question or Part with no `workSpace`), and prints each answer's Points as `[n]` at the right margin and each Multipart question's total beneath it, with the paper's total beneath the title (ADR-0045). Absent means standard.",
       "enum": [
         "standard",
         "classic",
@@ -88,46 +88,6 @@
         },
         "left": {
           "$ref": "#/$defs/margin"
-        }
-      }
-    },
-    "paperDetails": {
-      "description": "Facts about this paper its Paper Style may print (ADR-0045): a subject line, a duration, a paper code, the instructions a Cover Page lists and which candidate fields it asks for. The paper's total is never written here: it is counted from the Points. Only what the teacher wrote is recorded; absent means none.",
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "subject": {
-          "description": "The subject line printed under the title on a Cover Page.",
-          "type": "string"
-        },
-        "duration": {
-          "description": "How long the paper takes, as the teacher writes it.",
-          "type": "string"
-        },
-        "paperCode": {
-          "description": "A short code identifying the paper, printed at the foot of each test page by a style that prints one.",
-          "type": "string"
-        },
-        "instructions": {
-          "description": "The instructions a Cover Page lists, in order. Absent takes the style's own; an empty list prints none.",
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "candidateFields": {
-          "description": "Which boxes a Cover Page asks a candidate to fill in. Absent takes the style's own; an empty list asks for none.",
-          "type": "array",
-          "uniqueItems": true,
-          "items": {
-            "enum": [
-              "name",
-              "class",
-              "candidate-number",
-              "centre-number",
-              "date"
-            ]
-          }
         }
       }
     },

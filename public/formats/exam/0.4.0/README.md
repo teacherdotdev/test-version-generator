@@ -15,9 +15,6 @@
   Space to none on purpose, so it prints no answer lines though the style would
   rule them there. `minimal.json` sets none of the new members, and prints
   today's margins in the Standard Paper Style with every answer shown.
-  `paper-details.json` prints in the Exam Board Paper Style, with a subject
-  line, a duration, a paper code, its own instructions and three candidate
-  fields for its Cover Page.
 - `hidden-answers.json` has a Multiple Choice position that shows its answers
   in a shuffled order and leaves one incorrect answer off.
 - Invalid counterexamples are with the package, in

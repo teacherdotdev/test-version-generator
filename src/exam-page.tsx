@@ -21,7 +21,7 @@ import {
   AnswerKeyEntry,
   AnswerKeyHeading,
   AnswerKeySection,
-  CoverPageContent,
+  PaperTotalContent,
   PageFooterContent,
   PageHeaderContent,
   PageItemMeasureView,
@@ -34,10 +34,10 @@ import {
 import { headerLineOf, type HeaderLine } from './page-header'
 import { pageContentStyle } from './export-typography'
 import { pageGeometry } from './page-geometry'
-import { paperStyleRules } from './paper-style'
 import {
   US_LETTER,
   maxWorkSpaceHeight,
+  runningHeadHeight,
   numberLabelOf,
   planExport,
   rowsOfPlanned,
@@ -1428,8 +1428,8 @@ function PageItemView({
   onDragEnd: () => void
 }) {
   switch (item.kind) {
-    case 'cover':
-      return <CoverPageContent item={item} />
+    case 'paper-total':
+      return <PaperTotalContent item={item} />
     case 'section-heading':
       return onSectionHeadingChange ? (
         <EditableSectionHeading
@@ -1486,8 +1486,8 @@ function PageItemView({
 
 function keyOf(item: PageItem): string {
   switch (item.kind) {
-    case 'cover':
-      return 'cover'
+    case 'paper-total':
+      return 'paper-total'
     case 'section-heading':
       return `heading-${item.sectionId}`
     case 'question':
@@ -2126,9 +2126,6 @@ export function ExamPage({
   // Every test page's header line can be typed on, and every later page shows
   // the one later line: they are the same words printed again.
   const identityEditorFor = (header: PageHeader): IdentityLineEditor | undefined => {
-    // A style with a Cover Page asks for the candidate's details there, and
-    // its pages print no header line to reword.
-    if (paperStyleRules(exam.paperStyle).coverPage) return undefined
     if (!onHeaderLineChange || (header !== 'first' && header !== 'later')) return undefined
     return {
       text: headerLineOf(exam.header, header),
@@ -2224,7 +2221,7 @@ export function ExamPage({
                 chrome: it appears only while the exam is empty, and it is
                 never part of the printed document. It lights up with the
                 pane, which is the drop target; it is not one of its own. */}
-            {blank && index === Math.max(0, pages.findIndex((candidate) => candidate.header !== 'cover')) && (
+            {blank && index === 0 && (
               <div
                 className="secondary-button empty-exam-button"
                 data-active={startsFirstSection ? 'true' : undefined}
@@ -2249,7 +2246,7 @@ export function ExamPage({
                 onOpenMenu={openMenu}
                 onSetWorkSpace={onSetWorkSpace}
                 onSetPoints={onSetPoints}
-                maxWorkSpace={maxWorkSpaceHeight(plan.pageSize)}
+                maxWorkSpace={maxWorkSpaceHeight(plan.pageSize, runningHeadHeight(plan.paperStyle))}
                 draggedQuestionIds={draggedQuestionIds}
                 droppedQuestionIds={droppedQuestionIds}
                 dropState={questionDropState}

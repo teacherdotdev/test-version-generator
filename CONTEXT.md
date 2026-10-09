@@ -37,7 +37,7 @@ The versioned, format-owned machine-readable representation of one Question Bank
 _Avoid_: PDF metadata, extracted questions
 
 **Exam Record**:
-The versioned, format-owned machine-readable composition of one Exam: its name and, for each position, the Question it references in a Question Bank Record travelling in the same Test Parrot Package, with that position's answer columns, answer order, Hidden Answers, Word Bank layout and Work Space, and the Question Section it is in, and the Exam's heading and text sizes, Paper Style and Page Margins. It carries the Exam's Sections in print order, each with its Section Heading and Section Directions, so a test an assistant converts keeps its own parts in its own order, and its Paper Details. It never references a Question outside its package.
+The versioned, format-owned machine-readable composition of one Exam: its name and, for each position, the Question it references in a Question Bank Record travelling in the same Test Parrot Package, with that position's answer columns, answer order, Hidden Answers, Word Bank layout and Work Space, and the Question Section it is in, and the Exam's heading and text sizes, Paper Style and Page Margins. It carries the Exam's Sections in print order, each with its Section Heading and Section Directions, so a test an assistant converts keeps its own parts in its own order. It never references a Question outside its package.
 _Avoid_: Exam layout, test JSON
 
 **Test Parrot Package**:
@@ -190,7 +190,7 @@ Room an Exam leaves below a Short Answer question or Short Answer Part for a stu
 _Avoid_: White space, answer box, response area
 
 **Page Header**:
-The line an Exam prints at the top of each test page, beside the paper's ID. By default it is Name, Class and Date blanks on the first page and a Name blank on later ones; an Exam may reword the first page's line and the later pages' line, as plain text in which underscores are the blanks, or clear either. The ID is the one value the header fills in for each paper and is never part of the line. The Exam's title prints on its own line under the first page's header, and Answer Key pages carry the ID alone. A Paper Style with a Cover Page asks for the candidate's details there instead, so its test pages print no header line.
+The line an Exam prints at the top of each test page, beside the paper's ID. By default it is Name, Class and Date blanks on the first page and a Name blank on later ones; an Exam may reword the first page's line and the later pages' line, as plain text in which underscores are the blanks, or clear either. The ID is the one value the header fills in for each paper and is never part of the line. The Exam's title prints on its own line under the first page's header, and Answer Key pages carry the ID alone. Every Paper Style prints it.
 _Avoid_: Letterhead, banner, identity line
 
 **Page Margins**:
@@ -198,16 +198,8 @@ How far in from each edge of the sheet an Exam's pages print, in inches: three q
 _Avoid_: Padding, page border, gutter
 
 **Paper Style**:
-How an Exam's paper is drawn, apart from what it asks and how its Questions are arranged: its paper size, fonts, how Questions, Parts and Subparts are labelled, how ruled Work Space looks, where Points and their totals print, its running header and footer, and its Cover Page. An Exam names one Paper Style — Standard, Classic, Condensed or Exam Board — chosen from the Format menu and never set per question; it decides what prints before a question's number, how answers and a Word Bank are lettered and laid out, how far apart questions stand, and what Work Space or Word Bank layout a question has when the teacher has set none. Standard is the sheet as it always printed, and switching between them never changes the Exam or its Questions, so switching back restores the same paper. A Paper Style is a description Test Parrot draws, never code of its own, and no Paper Style carries an exam board's name, marks or wording.
+How an Exam's paper is drawn, apart from what it asks and how its Questions are arranged: its paper size, fonts, how Questions, Parts and Subparts are labelled, how ruled Work Space looks, where Points and their totals print, and its running header and footer. An Exam names one Paper Style — Standard, Classic, Condensed or Exam Board — chosen from the Format menu and never set per question; it decides what prints before a question's number, how answers and a Word Bank are lettered and laid out, how far apart questions stand, and what Work Space or Word Bank layout a question has when the teacher has set none. Standard is the sheet as it always printed, and switching between them never changes the Exam or its Questions, so switching back restores the same paper. A Paper Style is a description Test Parrot draws, never code of its own, and no Paper Style carries an exam board's name, marks or wording. A Paper Style never adds a page of its own: every page it prints holds the Exam's own questions.
 _Avoid_: Question Style, template, theme, format, layout preset
-
-**Paper Details**:
-Facts about one Exam that its Paper Style may print — its subject line, duration, paper code, instructions and which candidate fields to ask for — written by the teacher for that Exam. The total of its Points is never a Paper Detail: it is always counted.
-_Avoid_: Exam metadata, cover fields
-
-**Cover Page**:
-A first page some Paper Styles put before the Questions, arranging the Exam's Paper Details, its candidate fields and its total Points. Whether there is one, and how it is set out, belongs to the Paper Style; what it says belongs to the Exam.
-_Avoid_: Title page, front page
 
 **Question Section**:
 An ordered group of Questions within an Exam, of any Question Type, fixed in the Exam and its exported output. An Exam's Sections print in whatever order the teacher arranges them, and every Question in an Exam belongs to exactly one Section. A Section has its own Section Heading and Section Directions, and an emptied Section stays, and prints its heading and directions, until the teacher deletes it or merges it with a neighbour — so the sheet and the paper always put every Question on the same page; deleting a Section Removes its Questions, while merging moves them into the neighbour, under its wording. Every heading on an Exam, its title included, prints at one of three sizes, and its questions and answers at one of three text sizes chosen apart from the headings. The Answer Key groups its entries by Section and uses the test's headings.

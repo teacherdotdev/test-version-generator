@@ -181,7 +181,7 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     }
   })
 
-  test('carries an Exam Board paper: its Cover Page, labels, dotted lines and Points, on A4', async () => {
+  test('carries an Exam Board paper: its paper total, labels, dotted lines and Points, on A4', async () => {
     const fixture = FIXTURES.find((item) => item.name === 'a paper with points in the exam board paper style')!
     const plans = planOf(fixture)
     const [test, key] = plans
@@ -192,22 +192,20 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     // A4, every page of the test and the key.
     for (const page of planned.pages) expect([page.width, page.height]).toEqual([794, 1123])
 
-    // The Cover Page is the test's own first page, alone, from the Paper Details.
-    expect(testPages[0]!.content).toEqual([
+    // Page 1 is a test page as every style prints one: the page number above
+    // the header line, the title, then the paper's total opening the content,
+    // ahead of its first Section's heading. No page is the style's own.
+    expect(testPages[0]!.header).toEqual([
+      'para 1',
+      'para Name: __________________ Class: ___________ Date: ___________',
       'heading:title Plant Biology',
-      'para Biology: Paper 1',
-      'para 1 hour',
-      'field:Name',
-      'field:Class',
-      'field:Candidate number',
-      'heading:2 Instructions',
-      'list:bullet:0 Answer every question.',
-      'list:bullet:0 Write each answer in the space below its question.',
-      'list:bullet:0 The marks for each answer are shown in brackets [ ] at the right-hand margin.',
-      'para The total mark for this paper is 16.',
     ])
+    expect(testPages[0]!.content[0]).toBe('para The total mark for this paper is 16.')
+    expect(testPages[0]!.content[1]).toBe('heading:1 Multiple Choice')
+    expect(lines.filter((line) => line.startsWith('para The total mark'))).toHaveLength(1)
     // …and never part of the Answer Key.
-    expect(layoutFingerprint([key!]).pages.flatMap((page) => page.content)).not.toContain('field:Name')
+    expect(layoutFingerprint([key!]).pages.flatMap((page) => page.content))
+      .not.toContain('para The total mark for this paper is 16.')
 
     // `1` before the stem, `A` before an answer, `(a)` and `(i)` before Parts
     // and Subparts, the Points after each answer and the Multipart total.
@@ -231,13 +229,12 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     expect(lines).toContain('para [1]')
     expect(lines.indexOf('para [2]')).toBeGreaterThan(lines.findIndex((line) => line.includes('Receives pollen')))
 
-    // The page number at the top, centred; the paper code at the foot; and
-    // "Turn over" on every test page another test page follows.
-    expect(testPages[0]!.header).toEqual(['para'])
-    expect(testPages[1]!.header).toEqual(['para 2'])
+    // The page number at the top, centred, above the later pages' Name line;
+    // and "Turn over" on every test page another test page follows.
+    expect(testPages[1]!.header).toEqual(['para 2', 'para Name: __________________'])
     expect(testPages.map((page) => page.footer[0])).toEqual([
-      ...Array.from({ length: testPages.length - 1 }, () => 'para BIO-1 Turn over'),
-      'para BIO-1',
+      ...Array.from({ length: testPages.length - 1 }, () => 'para Turn over'),
+      'para',
     ])
     // The Answer Key keeps the sheet's own furniture.
     expect(layoutFingerprint([key!]).pages[0]!.footer).toEqual(['para 1'])
@@ -461,7 +458,7 @@ describe('the supported document vocabulary', () => {
         ),
       ),
     )
-    expect([...headers].sort()).toEqual(['answer-key', 'answer-key-later', 'cover', 'first', 'later'])
+    expect([...headers].sort()).toEqual(['answer-key', 'answer-key-later', 'first', 'later'])
   })
 })
 

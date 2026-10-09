@@ -1277,6 +1277,22 @@ describe('the dirty flag and persistence', () => {
     expect(store.getState().workingCopy).not.toHaveProperty('questionStyle')
   })
 
+  test('a Working Copy stored with the withdrawn Paper Details loads without them', async () => {
+    const stored = createAuthoringState()
+    const withDetails = {
+      ...stored,
+      workingCopy: {
+        ...stored.workingCopy,
+        paperStyle: 'exam-board',
+        paperDetails: { subject: 'Biology', paperCode: 'BIO-1', candidateFields: ['name'] },
+      },
+    } as unknown as AuthoringState
+    const store = await loadExamStore(memory(withDetails), createMemoryBackend<SavedState>())
+    expect(store.getState().workingCopy.paperStyle).toBe('exam-board')
+    expect(store.getState().workingCopy).not.toHaveProperty('paperDetails')
+    expect(store.selectedExam().exam).not.toHaveProperty('paperDetails')
+  })
+
   test('header lines are saved Exam presentation, and the default stores nothing', async () => {
     const { store } = await withExamWorkingCopy(1)
     await store.save()
@@ -1312,30 +1328,6 @@ describe('the dirty flag and persistence', () => {
 
     store.undo()
     expect(store.selectedExam().exam.margins).toEqual({ top: 1, right: 1, bottom: 1, left: 1.25 })
-  })
-
-  test('Paper Details are saved Exam presentation, blank ones stored as nothing, and undone in one step', async () => {
-    const { store } = await withExamWorkingCopy(1)
-    await store.save()
-
-    store.setPaperDetails({ subject: '  Chemistry  ', duration: '', paperCode: 'CH-1', instructions: ['Answer all.', ' '] })
-    expect(store.getState().dirty).toBe(true)
-    expect(store.selectedExam().exam.paperDetails).toEqual({
-      subject: 'Chemistry',
-      paperCode: 'CH-1',
-      instructions: ['Answer all.'],
-    })
-
-    // Setting the same details again is no step at all.
-    store.setPaperDetails({ subject: 'Chemistry', paperCode: 'CH-1', instructions: ['Answer all.'] })
-    store.undo()
-    expect(store.selectedExam().exam.paperDetails).toBeUndefined()
-    expect(store.getState().dirty).toBe(false)
-
-    store.redo()
-    store.setPaperDetails({ subject: ' ' })
-    expect(store.getState().workingCopy.paperDetails).toBeUndefined()
-    expect(store.selectedExam().exam.paperDetails).toBeUndefined()
   })
 
   test('one scrub of a margin field is one undo step', async () => {

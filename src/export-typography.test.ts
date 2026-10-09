@@ -13,7 +13,7 @@ import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs'
 import { createExamDocx } from './docx-export'
 import { EMPTY_EXPORT_HISTORY, plansOf, prepareExport } from './export-preparation'
 import { FIXTURES } from './export-fixtures'
-import { CHOICE_INDENT, PAGE_CONTENT_WIDTH, questionIndentOf } from './export-plan'
+import { CHOICE_INDENT, PAGE_CONTENT_WIDTH, RUNNING_HEAD_HEIGHT, questionIndentOf } from './export-plan'
 import { ANSWER_BLANK, PAPER_STYLE_RULES } from './paper-style'
 import {
   BODY_LINE_HEIGHT,
@@ -103,6 +103,10 @@ describe('print’s stylesheet is the table', () => {
     // Tighter than they were, and a heading never looser than its body.
     expect(BODY_LINE_HEIGHT).toBeLessThan(1.3)
     expect(TITLE_LINE_HEIGHT).toBeLessThanOrEqual(HEADING_LINE_HEIGHT)
+  })
+
+  test('a page number printed at the top takes the row the plan packs around', async () => {
+    expect(await rule('.page-running-head')).toContain(`height: ${RUNNING_HEAD_HEIGHT}px;`)
   })
 
   test('“Answer Section” is never broken across lines', async () => {

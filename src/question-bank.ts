@@ -64,8 +64,6 @@ export type ExamWorkingCopy = {
   header?: import('./page-header').ExamHeader
   /** This Exam's Page Margins, in inches; absent means the default. */
   margins?: import('./page-margins').PageMargins
-  /** This Exam's Paper Details (ADR-0045); absent means none written. */
-  paperDetails?: import('./paper-details').PaperDetails
 }
 
 export function createQuestionBank(): QuestionBank {

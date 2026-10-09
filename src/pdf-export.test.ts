@@ -245,10 +245,12 @@ describe('PDF Export Adapter', () => {
     const { plans } = plansOf('a multipart with no stem, and a part with no lead-in')
     const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const document = await getDocument({ data: bytes, disableWorker: true }).promise
-    // The Cover Page is page 1; the question opens page 2.
-    const items = (await (await document.getPage(2)).getTextContent()).items.flatMap((item) =>
+    // The question opens page 1, under its header.
+    const items = (await (await document.getPage(1)).getTextContent()).items.flatMap((item) =>
       'str' in item && item.str.trim() ? [{ text: item.str.trim(), x: item.transform[4] as number, y: item.transform[5] as number }] : [])
-    const at = (text: string) => items.find((item) => item.text.startsWith(text))!
+    // The page number at the top is a `1` too; the question's is the last.
+    const at = (text: string) =>
+      text === '1' ? items.filter((item) => item.text === '1').at(-1)! : items.find((item) => item.text.startsWith(text))!
     expect(at('(a)').y).toBeCloseTo(at('1').y, 1)
     expect(at('Fig. 1.1').y).toBeCloseTo(at('1').y, 1)
     expect(at('(a)').x).toBeGreaterThan(at('1').x)
@@ -260,7 +262,7 @@ describe('PDF Export Adapter', () => {
     expect(at('(ii)').y).toBeLessThan(at('(i)').y)
   })
 
-  test('draws an Exam Board paper on A4: its Cover Page, labels, Points at the right margin and running furniture', async () => {
+  test('draws an Exam Board paper on A4: its paper total, labels, Points at the right margin and running furniture', async () => {
     const { plans } = plansOf('a paper with points in the exam board paper style')
     const { bytes } = await createPublicationPdf(plans, noImages, fonts)
     const pdf = await PDFDocument.load(bytes)
@@ -277,30 +279,30 @@ describe('PDF Export Adapter', () => {
     const pages = await Promise.all(Array.from({ length: document.numPages }, (_, index) => items(index + 1)))
     const textOf = (page: number) => pages[page]!.map((item) => item.text).join(' ')
 
-    // The Cover Page: title, Paper Details, candidate fields, instructions, total.
-    const cover = textOf(0)
-    for (const text of ['Plant Biology', 'Biology: Paper 1', '1 hour', 'Name', 'Candidate number', 'Instructions',
-      'Answer every question.', 'The total mark for this paper is 16.']) {
-      expect(cover).toContain(text)
-    }
+    // Page 1: its number at the top, the header line, the title, and the
+    // paper's total beneath it, then the first question. No cover.
+    const first = pages[0]!.map((item) => item.text)
+    expect(first.slice(0, 2)).toEqual(['1', 'Name: __________________ Class: ___________ Date: ___________'])
+    expect(first.indexOf('Plant Biology')).toBeLessThan(first.indexOf('The total mark for this paper is 16.'))
+    expect(first.indexOf('The total mark for this paper is 16.')).toBeLessThan(first.indexOf('Multiple Choice'))
     // Labels and Points on the question pages, each `[n]` at the right margin.
-    const test = pages.slice(1, testPageCount).flat()
+    const test = pages.slice(0, testPageCount).flat()
     const texts = test.map((item) => item.text)
     for (const text of ['(a)', '(b)', '(i)', '(ii)', '[1]', '[2]', '[3]', '[6]', '[Total: 9]']) expect(texts).toContain(text)
     const right = test.find((item) => item.text === '[Total: 9]')!.x
     const left = test.find((item) => item.text === '(a)')!.x
     expect(right).toBeGreaterThan(left + 300)
-    // "Turn over" on every test page but the last, the paper code on each,
-    // and the page number at the top of every page after the cover.
+    // "Turn over" on every test page but the last, and the page number at
+    // the top of every one, above its header line.
     for (let page = 0; page < testPageCount; page += 1) {
-      expect(textOf(page)).toContain('BIO-1')
       expect(textOf(page).includes('Turn over')).toBe(page < testPageCount - 1)
     }
-    expect(pages[1]![0]!.text).toBe('2')
-    // The Answer Key keeps the sheet's own: no Cover Page, no Turn over.
+    expect(pages[1]!.slice(0, 2).map((item) => item.text)).toEqual(['2', 'Name: __________________'])
+    // The Answer Key keeps the sheet's own: no Turn over, and no total but
+    // its own.
     const key = pages.slice(testPageCount).map((page) => page.map((item) => item.text).join(' ')).join(' ')
     expect(key).not.toContain('Turn over')
-    expect(key).not.toContain('Candidate number')
+    expect(key).not.toContain('The total mark for this paper')
   })
 
   test('draws a boxed passage inside a black border around its text', async () => {
@@ -506,9 +508,9 @@ describe('PDF Export Adapter', () => {
     const textOf = async (page: number) =>
       (await (await document.getPage(page)).getTextContent()).items
         .map((item) => ('str' in item ? item.str : '')).join(' ')
-    // Cover, then Part (a) from its letter to Fig. 1.2, then on from Fig. 1.3
-    // without its letter again, ending with its room and [4].
-    const [second, third] = [await textOf(2), await textOf(3)]
+    // Part (a) from its letter to Fig. 1.2, then on from Fig. 1.3 without its
+    // letter again, ending with its room and [4].
+    const [second, third] = [await textOf(1), await textOf(2)]
     expect(second).toContain('(a)')
     expect(second).toContain('Fig. 1.2')
     expect(third).toContain('Fig. 1.3')
@@ -536,15 +538,16 @@ describe('PDF Export Adapter', () => {
     const { plans } = plansOf('a wrapping table under a picture in an exam board part')
     const test = plans[0]!
     expect(test.pageSize.paper).toBe('a4')
-    // The Cover Page, then the question with its table.
-    expect(test.pages.map((page) => page.items.map((item) => item.kind))).toEqual([['cover'], ['section-heading', 'question']])
+    // The paper's total, then the question with its table, on page 1.
+    expect(test.pages.map((page) => page.items.map((item) => item.kind)))
+      .toEqual([['paper-total', 'section-heading', 'question']])
 
     const { bytes, pagesPastMargin } = await createPublicationPdf(plans, pixel, fonts)
 
     expect(pagesPastMargin).toEqual([])
     const document = await getDocument({ data: bytes.slice(), disableWorker: true }).promise
     expect(document.numPages).toBe(plans.reduce((sum, plan) => sum + plan.pages.length, 0))
-    const page = await document.getPage(2)
+    const page = await document.getPage(1)
     const lines = new Set((await page.getTextContent()).items
       .filter((item) => 'str' in item && /tenth|second|Record|nearest/.test(item.str))
       .map((item) => ('transform' in item ? Math.round(item.transform[5] as number) : 0)))

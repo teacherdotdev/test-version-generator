@@ -1672,18 +1672,17 @@ export const FIXTURES: readonly Fixture[] = [
     },
   ),
 
-  // The Exam Board Paper Style (ADR-0045) over a paper with points: a Cover Page
-  // from the Exam's Paper Details on A4, `1`, `(a)`, `(i)` and `A` labels,
-  // dotted lines where the teacher set no Work Space, each answer's
-  // `[n]` at the right margin, the Multipart question's `[Total: 9]`, and the
-  // paper code and "Turn over" at the foot of every test page but the last.
-  // One question to a page, so the test runs over several.
+  // The Exam Board Paper Style (ADR-0045) over a paper with points: on A4,
+  // the paper's total beneath the title, `1`, `(a)`, `(i)` and `A` labels,
+  // dotted lines where the teacher set no Work Space, each answer's `[n]` at
+  // the right margin, the Multipart question's `[Total: 9]`, the page number
+  // above the header line and "Turn over" at the foot of every test page but
+  // the last. One question to a page, so the test runs over several.
   fixture(
     'a paper with points in the exam board paper style',
     {
       title: 'Plant Biology',
       paperStyle: 'exam-board',
-      paperDetails: { subject: 'Biology: Paper 1', duration: '1 hour', paperCode: 'BIO-1' },
       questions: [
         {
           ...multipleChoice(
@@ -1945,9 +1944,8 @@ export const FIXTURES: readonly Fixture[] = [
   // Each Paper Style over every Question Type, so every adapter prints its
   // blanks, its letters, its Word Bank and its default Work Space the way the
   // plan resolved them. Two questions to a page, so the PDF has room to draw
-  // them; Condensed's measure fits every answer four across. Unpointed, and
-  // with no Paper Details, an Exam Board Cover Page prints the title, the
-  // style's own candidate fields and instructions, and no total.
+  // them; Condensed's measure fits every answer four across. Unpointed, so
+  // Exam Board prints no paper total beneath the title.
   ...(['classic', 'condensed', 'exam-board'] as const).map((paperStyle) =>
     fixture(
       `every question type in the ${paperStyle} paper style`,

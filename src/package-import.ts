@@ -3,7 +3,6 @@ import type { ColumnSetting, WordBankLayout, WorkSpace } from './exam'
 import type { HeadingSize, SectionHeadings, TextSize } from './section-headings'
 import type { ExamHeader } from './page-header'
 import type { PageMargins } from './page-margins'
-import { normalizedPaperDetails, type PaperDetails } from './paper-details'
 import type { PaperStyle } from './paper-style'
 import examSchema010 from './exam-record-0.1.0.schema.json'
 import examSchema020 from './exam-record-0.2.0.schema.json'
@@ -136,8 +135,6 @@ export type ExamRecord = {
   /** From 0.4.0: the Exam's Page Margins in inches, every side; only when they
    *  depart from the default. */
   margins?: PageMargins
-  /** From 0.4.0: the Exam's Paper Details (ADR-0045); only the ones written. */
-  paperDetails?: PaperDetails
   positions: ExamRecordPosition[]
 }
 
@@ -184,7 +181,6 @@ export type ProposedExam = {
   paperStyle?: PaperStyle
   header?: ExamHeader
   margins?: PageMargins
-  paperDetails?: PaperDetails
   /** Positions regrouped Section by Section — in `sections` order, or for an
    *  older record in Test Parrot's fixed type order — keeping only the order
    *  within each Section. */
@@ -272,7 +268,6 @@ function localHeadingsOf(
   paperStyle?: PaperStyle
   header?: ExamHeader
   margins?: PageMargins
-  paperDetails?: PaperDetails
 } {
   const entries = Object.entries(exam.sectionHeadings ?? {}) as [
     QuestionBankRecordQuestionType,
@@ -293,7 +288,6 @@ function localHeadingsOf(
       : {}),
     ...(exam.header && Object.keys(exam.header).length > 0 ? { header: { ...exam.header } } : {}),
     ...(exam.margins ? { margins: { ...exam.margins } } : {}),
-    ...(exam.paperDetails ? { paperDetails: structuredClone(exam.paperDetails) } : {}),
   }
 }
 
@@ -363,8 +357,8 @@ const examParser030: ExamParser = sectionedParser(validateExam030, '0.3.0')
 // 0.4.0 adds to 0.3.0 a Multiple Choice position's `hiddenAnswers`, the
 // incorrect answers it leaves off (ADR-0038); a Matching position's
 // `wordBankLayout`, and whether the teacher chose it (`wordBankLayoutSet`,
-// ADR-0044); the Exam's Page Margins (ADR-0039); its `paperStyle`
-// (ADR-0041); and its `paperDetails` (ADR-0045) — and nothing else. A record without them hides nothing, prints
+// ADR-0044); the Exam's Page Margins (ADR-0039); and its `paperStyle`
+// (ADR-0041) — and nothing else. A record without them hides nothing, prints
 // today's margins and prints in the standard style; a Matching position
 // without a `wordBankLayout` takes one on import, from its style and the fit
 // rule (`planImport`), and is not the teacher's choice.
@@ -378,22 +372,12 @@ const sectionedParser040: ExamParser = sectionedParser(validateExam040, '0.4.0',
 
 const examParser040: ExamParser = (value) => {
   const parsed = sectionedParser040(value)
-  const { paperStyle, margins, paperDetails } = value as ExamRecord
+  const { paperStyle, margins } = value as ExamRecord
   const { top, right, bottom, left } = margins ?? {}
-  // Only what the record writes: blank details are left out, as storage
-  // leaves them out.
-  const details = normalizedPaperDetails(paperDetails && {
-    ...(paperDetails.subject !== undefined ? { subject: paperDetails.subject } : {}),
-    ...(paperDetails.duration !== undefined ? { duration: paperDetails.duration } : {}),
-    ...(paperDetails.paperCode !== undefined ? { paperCode: paperDetails.paperCode } : {}),
-    ...(paperDetails.instructions !== undefined ? { instructions: [...paperDetails.instructions] } : {}),
-    ...(paperDetails.candidateFields !== undefined ? { candidateFields: [...paperDetails.candidateFields] } : {}),
-  })
   return {
     ...parsed,
     ...(paperStyle ? { paperStyle } : {}),
     ...(margins ? { margins: { top: top!, right: right!, bottom: bottom!, left: left! } } : {}),
-    ...(details ? { paperDetails: details } : {}),
   }
 }
 
