@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { join } from 'node:path'
+import { EXAM_FORMAT_VERSION } from './package-import'
 import { QUESTION_BANK_FORMAT, QUESTION_BANK_FORMAT_VERSION } from './question-bank-export'
 import { inspectQuestionBankRecordValue } from './question-bank-import'
 
@@ -87,6 +88,20 @@ describe('the JSON examples in the conversion instructions', () => {
     expect(centred).toContain('"type":"table","align":"center"')
     // Nothing teaches an alignment Test Parrot does not have.
     expect(JSON.stringify(examples)).not.toMatch(/"align":"(?!center")/)
+  })
+
+  test('name the current Exam Record version wherever they name one', () => {
+    const versions = examples.flatMap((example) => ((example.exams ?? []) as Json[]).map((exam) => exam.formatVersion))
+    expect(versions.length).toBeGreaterThanOrEqual(1)
+    expect(new Set(versions)).toEqual(new Set([EXAM_FORMAT_VERSION]))
+  })
+
+  test('ask for the Exam Board style on an exam-board paper, so its Points print', async () => {
+    expect(instructions).toContain('Record `"paperStyle": "exam-board"` when the source is an exam-board paper')
+    const example = './formats/package/0.1.0/examples/exam-board-paper.json'
+    expect(instructions).toContain(example)
+    const paper = await Bun.file(join(import.meta.dir, '..', 'public', example)).json() as { exams: Json[] }
+    expect(paper.exams[0]!.paperStyle).toBe('exam-board')
   })
 
   test('show Points on what a student answers and a Part holding Subparts', () => {

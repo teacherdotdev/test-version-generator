@@ -13,6 +13,7 @@ import applicationExamSchema040 from './exam-record-0.4.0.schema.json'
 import publicPackageSchema from '../public/formats/package/0.1.0/schema.json'
 import applicationPackageSchema from './test-parrot-package-0.1.0.schema.json'
 import publicQuestionBankSchema from '../public/formats/question-bank/0.3.0/schema.json'
+import publicQuestionBankSchema090 from '../public/formats/question-bank/0.9.0/schema.json'
 import { QuestionBankImportError } from './question-bank-import'
 import {
   EXAM_FORMAT_VERSION,
@@ -339,17 +340,23 @@ describe('public Test Parrot Package 0.1.0 contract', () => {
     const validateExam: Record<string, ReturnType<ReturnType<typeof strict>['compile']>> = {
       '0.1.0': strict().compile(publicExamSchema),
       '0.3.0': strict().compile(publicExamSchema030),
+      '0.4.0': strict().compile(publicExamSchema040),
     }
-    const validateBank = new Ajv2020({ allErrors: true, strict: false }).compile(publicQuestionBankSchema)
+    const validateBank: Record<string, ReturnType<Ajv2020['compile']>> = {
+      '0.3.0': new Ajv2020({ allErrors: true, strict: false }).compile(publicQuestionBankSchema),
+      '0.9.0': new Ajv2020({ allErrors: true, strict: false }).compile(publicQuestionBankSchema090),
+    }
     const names = await filesIn(join(packageRoot, 'examples'))
     expect(names).toEqual([
-      'bank-and-exam.json', 'bank-only.json', 'printed-test.json', 'several-banks.json', 'two-versions.json',
+      'bank-and-exam.json', 'bank-only.json', 'exam-board-paper.json', 'printed-test.json', 'several-banks.json',
+      'two-versions.json',
     ])
     for (const name of names) {
       const testParrotPackage = await read(join(packageRoot, 'examples'), name)
       expect(validatePackage(testParrotPackage), `${name}: ${JSON.stringify(validatePackage.errors)}`).toBe(true)
-      for (const { record } of testParrotPackage.questionBanks as { record: unknown }[]) {
-        expect(validateBank(record), `${name}: ${JSON.stringify(validateBank.errors)}`).toBe(true)
+      for (const { record } of testParrotPackage.questionBanks as { record: { formatVersion: string } }[]) {
+        const validate = validateBank[record.formatVersion]!
+        expect(validate(record), `${name}: ${JSON.stringify(validate.errors)}`).toBe(true)
       }
       for (const exam of testParrotPackage.exams as { formatVersion: string }[]) {
         const validate = validateExam[exam.formatVersion]!
@@ -381,6 +388,10 @@ describe('public Test Parrot Package 0.1.0 contract', () => {
     ])
     expect(printed.positions.map(({ question, section }) => `${section}:${question.question}`))
       .toEqual(['0:q3', '0:q1', '1:q4', '2:q5', '2:q2'])
+
+    // An exam-board paper arrives in the Exam Board style, so its Points print.
+    const examBoard = await inspect('exam-board-paper.json')
+    expect(examBoard.exams[0]!.paperStyle).toBe('exam-board')
 
     expect((await inspect('bank-only.json')).exams).toEqual([])
     expect((await inspect('two-versions.json')).banks[0]!.exams).toEqual(['exam-1', 'exam-2'])

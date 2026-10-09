@@ -12,7 +12,7 @@ Always create one complete UTF-8 JSON file using the **Test Parrot Package `0.1.
 
 A package always holds exactly one Question Bank Record `0.9.0` with every converted Question. What else goes in it depends on the source, so triage it first:
 
-- **The source is a test** — an exam, quiz, worksheet or any paper a student sits, with its questions in a printed order: also add one Exam Record `0.3.0` that lays the Questions out as the test does, in its printed order and under its own section headings (see [Tests](#tests)).
+- **The source is a test** — an exam, quiz, worksheet or any paper a student sits, with its questions in a printed order: also add one Exam Record `0.4.0` that lays the Questions out as the test does, in its printed order and under its own section headings (see [Tests](#tests)).
 - **The source is only questions** — a question pool, a study list, a bank exported from elsewhere, anything not laid out as one paper: add no Exam. `exams` is an empty array.
 
 When it is unclear whether the source is a test, ask the user; if you cannot ask, add no Exam and say so in the report. Never invent an Exam the source does not show. Everything below about Questions applies either way: the package's bank is an ordinary Question Bank Record.
@@ -42,8 +42,9 @@ Use these resources as the source of truth:
 - [Provenance and links example](./formats/question-bank/0.9.0/examples/provenance-and-links.json)
 - [Pending Images example](./formats/question-bank/0.9.0/examples/pending-images.json)
 - [Side-by-side example](./formats/question-bank/0.9.0/examples/side-by-side.json)
-- [Test Parrot Package JSON Schema](./formats/package/0.1.0/schema.json) and [Exam Record JSON Schema](./formats/exam/0.3.0/schema.json)
+- [Test Parrot Package JSON Schema](./formats/package/0.1.0/schema.json) and [Exam Record JSON Schema](./formats/exam/0.4.0/schema.json)
 - [Package example: a test, with its bank and its Exam's sections as printed](./formats/package/0.1.0/examples/printed-test.json)
+- [Package example: an exam-board paper, with Points, Subparts and the Exam Board style](./formats/package/0.1.0/examples/exam-board-paper.json)
 - [Package example: questions only, with a bank and no Exam](./formats/package/0.1.0/examples/bank-only.json)
 
 The Question Bank Record inside the package has this top-level shape:
@@ -86,7 +87,7 @@ The file itself is the package, with the Question Bank Record under `questionBan
   "exams": [
     {
       "format": "test-parrot/exam",
-      "formatVersion": "0.3.0",
+      "formatVersion": "0.4.0",
       "name": "The test's title",
       "sections": [
         { "title": "Part I: Vocabulary", "instructions": "Circle the letter of the best answer." },
@@ -112,7 +113,9 @@ When triage says the source is a test:
 - Write every Question's choices and Word Bank answers into the bank in the order the test prints them. That records the test's answer order, so leave out `answerOrder`: answers print in the order the bank records them, and the answer key's letters stay right.
 - Record `columns` (`1`, `2` or `4`) on a Multiple Choice position whenever the source layout shows how many columns its answers are printed in: count the answers side by side on one line. Four answers across one line is `4`. Answers printed as a grid of two across — (A) beside (B), (C) beside (D), a 2 × 2 grid — are `2`. Answers printed one under another are `1`. Answers that are pictures, such as four graphs to choose from, are nearly always printed as a grid: look at the page and record it, since a picture answer with no `columns` prints as wide as the whole question. Leave `columns` out only when the layout truly cannot be read, such as answers split across a page break. Never put `columns` on any other Question Type.
 - Record `workSpace` on a Short Answer position whenever the source prints room to write its answer below it, so the test arrives with the room it printed: `{ "height": <lines × 32>, "style": "lines", "fill": false }` when the room is ruled, counting the printed lines (three lines is `96`); and `{ "height": <rows × 32>, "style": "blank", "fill": false }` when it is empty space, as many 32-pixel rows as the space is tall at 96 pixels to the inch (about one row per third of an inch, never fewer than one). Leave `workSpace` out when the source prints the answer on the same line, leaves no room, or its room cannot be read, such as an answer split across a page break. Never put `workSpace` on any other Question Type, nor on a Multipart question: its Short Answer Parts take Test Parrot's defaults.
-- Do not add `headingSize`, `textSize`, `header`, point values, or any other member. The teacher sets how the test prints in Test Parrot. A question's points are not the Exam's: they go on the Question itself in the bank, as `points` (see [Points](#points)).
+- Record `"paperStyle": "exam-board"` when the source is an exam-board paper: a structured paper such as an IGCSE, GCSE or A-level paper, which prints each answer's marks as `[2]` against the right margin, a question's total as `[Total: 9]`, and parts as `(a)` and `(i)`, usually on A4 with “Turn over” at the foot of its pages. That style prints the `points` you record as the paper does, with each question's and the paper's totals, so the teacher sees the marks they gave. Leave `paperStyle` out for any other test: never write `standard`, `classic` or `condensed`, which are the teacher's choice.
+- Record `wordBankLayout` on a Matching position when the source shows where its Word Bank prints: `beside` its items, or `above` them. Leave it out when the layout cannot be read.
+- Do not add `headingSize`, `textSize`, `header`, `margins`, `hiddenAnswers`, `wordBankLayoutSet`, point values, or any other member. The teacher sets how the test prints in Test Parrot. A question's points are not the Exam's: they go on the Question itself in the bank, as `points` (see [Points](#points)).
 
 Test Parrot prints the Exam exactly in the order you record: its sections in the order `sections` lists them, and the questions in each in the order of their positions. It never sorts them by Question Type, so the order you write is the order the teacher gets. Reproduce the test as printed, question by question.
 
@@ -180,6 +183,7 @@ Perform a second pass against the original source and verify all of the followin
 - every question printed under one number with lettered parts is one Multipart Question, each lettered part a Part and each `(i)`, `(ii)`, … beneath a part a Subpart of it, in printed order, with no label left in a stem;
 - every Part that holds Subparts has its lead-in as its `stem` and its `subparts`, and no `type`, `choices`, `suggestedAnswer` or `points`;
 - every mark the source prints for a question, Part or Subpart is that one's `points`, a positive whole number; no `[2]`, `(2 marks)` or `[Total: 9]` is left in a stem, choice or Suggested Answer; no Multipart Question carries `points`; and no total was stored;
+- an exam-board paper's Exam has `"paperStyle": "exam-board"`, and no other test has a `paperStyle`;
 - all Question, choice, item, word bank, Part, Part choice, Subpart and Subpart choice IDs are unique and sequential;
 - every meaningful image, including an image used as an answer choice, matching item or word bank answer, is a Pending Image;
 - every picture has its own Pending Image, with pictures printed side by side split rather than merged — one per `panel` of a `side-by-side`;
@@ -795,6 +799,7 @@ Many tests print what each question is worth beside it: `[2]`, `(2 marks)`, `(3 
 - Write only points the source prints. Never guess a mark for a question that has none, and never give the rest of a test's questions a mark because some have one.
 - When a mark is not a positive whole number — `[½]`, `(0 marks)`, `[1–2]` — or you cannot tell which question it belongs to, leave `points` out and say so in the report.
 - A section heading keeps its point value as printed, such as “Part B – Short Answer (10 points)” (see [Sections](#sections)): the heading is text, not points.
+- Points print on the test only under the Exam Board style. When the source is an exam-board paper, give its Exam `"paperStyle": "exam-board"` (see [Tests](#tests)), or the teacher opens a test that shows none of the marks you recorded.
 
 ```text
 7   Name the gas that plants give off in sunlight.   ........................   [1]
@@ -1107,7 +1112,7 @@ Include only information explicitly present in the source or supplied by the use
 
 ## Final validation and delivery
 
-Validate the package against the [package schema](./formats/package/0.1.0/schema.json), its Question Bank Record against the [Question Bank Record schema](./formats/question-bank/0.9.0/schema.json), and any Exam against the [Exam Record schema](./formats/exam/0.3.0/schema.json). Schema validation alone is not sufficient: also verify Question cardinality, unique IDs, that every matching `answer` names an ID in the same Question's `wordBank`, that every Multipart Part is Multiple Choice with at least two choices, Short Answer with none, or holds at least one Subpart and no `type`, `choices`, `suggestedAnswer` or `points`, that every Subpart is Multiple Choice or Short Answer in the same way, that every `points` is a positive whole number on a Question that is not Multipart, a Part that answers, or a Subpart, that every `side-by-side` has two or three panels and stands directly in a stem, safe links, and that every Pending Image follows the rules above.
+Validate the package against the [package schema](./formats/package/0.1.0/schema.json), its Question Bank Record against the [Question Bank Record schema](./formats/question-bank/0.9.0/schema.json), and any Exam against the [Exam Record schema](./formats/exam/0.4.0/schema.json). Schema validation alone is not sufficient: also verify Question cardinality, unique IDs, that every matching `answer` names an ID in the same Question's `wordBank`, that every Multipart Part is Multiple Choice with at least two choices, Short Answer with none, or holds at least one Subpart and no `type`, `choices`, `suggestedAnswer` or `points`, that every Subpart is Multiple Choice or Short Answer in the same way, that every `points` is a positive whole number on a Question that is not Multipart, a Part that answers, or a Subpart, that every `side-by-side` has two or three panels and stands directly in a stem, safe links, and that every Pending Image follows the rules above.
 
 Relevant import limits include:
 
