@@ -40,6 +40,12 @@ function sheetMarkup(item: QuestionItem): string {
       onSetWorkSpace: noop,
       onSetPoints: noop,
       maxWorkSpace: 600,
+      workSpaceSizing: {
+        shownHeight: () => null,
+        isSizing: () => false,
+        onPreview: noop,
+        onRelease: noop,
+      },
       dragging: false,
       dropped: false,
       dropState: null,
