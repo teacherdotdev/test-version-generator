@@ -153,6 +153,7 @@ import {
   Save,
   SaveAll,
   Tags,
+  TextCursorInput,
   Trash2,
   TriangleAlert,
   Type as TypeIcon,
@@ -219,6 +220,7 @@ import {
   multipartSubpartsSchema,
   multipartSubpartsView,
 } from './multipart'
+import { blankIcon, blankSchema, isInBlank, toggleBlank } from './blank-editor'
 import {
   keepSuggestedAnswer,
   suggestedAnswerMode,
@@ -232,6 +234,7 @@ const QUESTION_TYPE_ICONS: Record<QuestionType, ReactNode> = {
   'multiple-choice': <ListChecks />,
   'true-false': <ToggleLeft />,
   matching: <Link2 />,
+  'fill-in-the-blank': <TextCursorInput />,
   open: <AlignLeft />,
   multipart: <BookOpenText />,
 }
@@ -484,6 +487,7 @@ function CrepeQuestion({
   fixedChoices = false,
   matching = false,
   multipart = false,
+  blanks = false,
 }: {
   value: ProseMirrorJSON
   onChange: (doc: ProseMirrorJSON) => void
@@ -498,6 +502,9 @@ function CrepeQuestion({
   /** Whether the question is a Multipart question, whose Parts box is kept on the page
    *  the way a matching set is. */
   multipart?: boolean
+  /** Whether the question is Fill in the Blank, whose toolbar and slash menu
+   *  make Blanks (see `blank-editor.ts`). */
+  blanks?: boolean
 }) {
   useEditor((root) => {
     const safeValue = cleanDocument(value)
@@ -522,6 +529,19 @@ function CrepeQuestion({
                 insertSideBySide(ctx.get(editorViewCtx))
               },
             })
+            // An empty Blank, with the caret in it to type its answer.
+            if (blanks) {
+              builder.getGroup('advanced').addItem('blank', {
+                label: 'Blank',
+                icon: blankIcon,
+                onRun: (ctx: Ctx) => {
+                  ctx.get(commandsCtx).call(clearTextInCurrentBlockCommand.key)
+                  const view = ctx.get(editorViewCtx)
+                  toggleBlank(view.state, view.dispatch)
+                  view.focus()
+                },
+              })
+            }
           },
           // Crepe only flips the slash menu above or below the caret; it never
           // shrinks it. In a short editor neither side has the menu's full
@@ -552,7 +572,9 @@ function CrepeQuestion({
         [Crepe.Feature.Placeholder]: {
           text: multipart
             ? 'Write the shared material: a passage, quote, image or table…'
-            : 'Write the question…',
+            : blanks
+              ? 'Write the sentence, then select a word and make it a Blank…'
+              : 'Write the question…',
         },
         [Crepe.Feature.Toolbar]: {
           buildToolbar: (builder) => {
@@ -589,6 +611,22 @@ function CrepeQuestion({
                 active: (ctx: Ctx) => isCentreActive(ctx),
                 onRun: (ctx: Ctx) => toggleCentre(ctx),
               })
+            // The selected words become a Blank, and its answer; inside a
+            // Blank, it turns back into text.
+            if (blanks) {
+              builder
+                .getGroup('formatting')
+                .addItem('blank', {
+                  icon: blankIcon,
+                  label: 'Blank',
+                  active: (ctx: Ctx) => isInBlank(ctx.get(editorViewCtx).state),
+                  onRun: (ctx: Ctx) => {
+                    const view = ctx.get(editorViewCtx)
+                    toggleBlank(view.state, view.dispatch)
+                    view.focus()
+                  },
+                })
+            }
           },
         },
       },
@@ -641,6 +679,7 @@ function CrepeQuestion({
       .use(sideBySideView)
       .use(sideBySidePanelView)
       .use(keepSideBySidesInStems)
+      .use(blankSchema)
       .use(centringDecorations)
       .use(centringKeymap)
     // Make the whole multiple-choice block — or matching set — the drag target
@@ -1009,6 +1048,7 @@ function QuestionDialog({
             fixedChoices={type === 'true-false'}
             matching={type === 'matching'}
             multipart={type === 'multipart'}
+            blanks={type === 'fill-in-the-blank'}
             onReady={(readDocument) => {
               readEditorDocument.current = readDocument
             }}

@@ -46,6 +46,7 @@ export type QuestionType =
   | 'multiple-choice'
   | 'true-false'
   | 'matching'
+  | 'fill-in-the-blank'
   | 'open'
   | 'multipart'
 
@@ -95,6 +96,7 @@ export const SECTION_LABELS: Record<QuestionType, string> = {
   'multiple-choice': 'Multiple choice',
   'true-false': 'True/False',
   matching: 'Matching',
+  'fill-in-the-blank': 'Fill in the blank',
   open: 'Short answer',
   multipart: 'Multipart',
 }
@@ -395,6 +397,7 @@ export const SECTION_ORDER: readonly QuestionType[] = [
   'multiple-choice',
   'true-false',
   'matching',
+  'fill-in-the-blank',
   'open',
   'multipart',
 ]
@@ -402,7 +405,7 @@ export const SECTION_ORDER: readonly QuestionType[] = [
 export const DEFAULT_EXAM_TITLE = 'Untitled Exam'
 
 function newQuestionDoc(type: QuestionType): ProseMirrorJSON {
-  if (type === 'open') return structuredClone(emptyDoc)
+  if (type === 'open' || type === 'fill-in-the-blank') return structuredClone(emptyDoc)
   if (type === 'multipart') {
     return { type: 'doc', content: [{ type: 'paragraph' }, newMultipartPartsNode()] }
   }

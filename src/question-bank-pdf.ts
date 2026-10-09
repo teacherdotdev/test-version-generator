@@ -25,8 +25,10 @@ import {
   QUESTION_BANK_FORMAT_VERSION,
   RECORD_PART_TYPE_LABELS,
   RECORD_TYPE_LABELS,
+  SUPPORTED_BLANK_NODE_TYPE,
   holdsSubparts,
   partLetter,
+  recordBlankAnswers,
   wordBankLettersOf,
   type PreparedQuestionBankExport,
   type QuestionBankRecordPart,
@@ -43,6 +45,7 @@ import {
   type QuestionBankFileOutline,
 } from './question-bank-file-outline'
 import { subpartLabelAt } from './export-plan'
+import { BLANK_LINE } from './blank'
 import { PACKAGE_FORMAT, PACKAGE_FORMAT_VERSION, type TestParrotPackage } from './package-import'
 import {
   PACKAGE_ZIP_ATTACHMENT_NAME,
@@ -432,6 +435,9 @@ function inlinePieces(nodes: readonly SemanticNode[]): Piece[] {
       pieces.push({ text: '\n', font: 'regular', size: BODY_SIZE })
     } else if (node.type === 'inline-math') {
       pieces.push({ text: node.source ?? '', font: 'italic', size: BODY_SIZE, math: node.source ?? '' })
+    } else if (node.type === SUPPORTED_BLANK_NODE_TYPE) {
+      // A Blank prints its line; its answer prints under Answers.
+      pieces.push({ text: BLANK_LINE, font: 'regular', size: BODY_SIZE })
     } else if (node.content) {
       pieces.push(...inlinePieces(node.content))
     }
@@ -1079,6 +1085,12 @@ function drawQuestion(context: Context, question: QuestionBankRecordQuestion, nu
     context.y -= 3
     drawText(context, 'Suggested Answer', { font: 'bold', size: 12 })
     drawDocument(context, question.suggestedAnswer)
+  }
+  const blankAnswers = question.type === 'fill-in-the-blank' ? recordBlankAnswers(question.stem) : null
+  if (blankAnswers) {
+    context.y -= 3
+    drawText(context, 'Answers', { font: 'bold', size: 12 })
+    drawDocument(context, blankAnswers)
   }
   context.y -= 14
 }

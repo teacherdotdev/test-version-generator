@@ -217,11 +217,12 @@ describe('question ordering', () => {
     expect(ids(orderedQuestions(exam, arrangementOf(['o1', 'q1'])))).toEqual(['q1', 'o1'])
   })
 
-  test('matching prints after true/false and before short answer, and a multipart prints last', () => {
+  test('matching prints after true/false, then fill in the blank before short answer, and a multipart prints last', () => {
     expect(SECTION_ORDER).toEqual([
       'multiple-choice',
       'true-false',
       'matching',
+      'fill-in-the-blank',
       'open',
       'multipart',
     ])

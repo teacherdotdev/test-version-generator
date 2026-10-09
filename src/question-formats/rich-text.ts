@@ -1,5 +1,5 @@
 import type { SemanticMark, SemanticNode } from '../question-bank-export'
-import type { Blocks } from './types'
+import { BLANK_MARK, type Blocks } from './types'
 import { isElement, parseXml, type XmlElement, type XmlNode } from './xml'
 
 /**
@@ -30,7 +30,8 @@ export function plainBlocks(text: string): Blocks {
 /** The plain text of blocks, for messages and comparisons. */
 export function blocksText(blocks: Blocks): string {
   const walk = (node: SemanticNode): string => {
-    if (node.type === 'text') return node.text ?? ''
+    if (node.type === 'text') return (node.text ?? '').replaceAll(BLANK_MARK, '_____')
+    if (node.type === 'blank') return '_____'
     if (node.type === 'hard-break') return '\n'
     if (node.type === 'inline-math' || node.type === 'display-math') return node.source ?? ''
     if (node.type === 'code-block') return node.text ?? ''
@@ -318,4 +319,49 @@ function trimInline(nodes: SemanticNode[]): SemanticNode[] {
   // A paragraph of nothing but no-break spaces is an empty line in HTML.
   if (kept.every((node) => node.type === 'text' && /^[\s\u00A0]*$/.test(node.text!))) return []
   return kept
+}
+
+/**
+ * A stem whose `[name]` placeholders — the way Canvas, Blackboard and
+ * Respondus write a named blank in the question text — are blank marks, and
+ * the names' places in the order they stand. Each name is marked once, where
+ * it first stands; a name the text never mentions is left for `record.ts` to
+ * place after it.
+ */
+export function markNamedBlanks(blocks: Blocks, names: readonly string[]): { stem: Blocks; order: number[] } {
+  const order: number[] = []
+  const wanted = names.map((name) => name.trim()).filter(Boolean)
+  if (!wanted.length) return { stem: blocks, order }
+  const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const pattern = new RegExp(`\\[(${wanted.map(escape).join('|')})\\]`, 'g')
+  const rewrite = (nodes: SemanticNode[]): SemanticNode[] =>
+    nodes.map((node) => {
+      if (node.type === 'text') {
+        const text = (node.text ?? '').replace(pattern, (whole, name: string) => {
+          const index = names.findIndex((each) => each.trim() === name)
+          if (index === -1 || order.includes(index)) return whole
+          order.push(index)
+          return BLANK_MARK
+        })
+        return { ...node, text }
+      }
+      return node.content ? { ...node, content: rewrite(node.content) } : node
+    })
+  return { stem: rewrite(blocks), order }
+}
+
+/** `items` in the order `order` gives, then the rest in their own order. */
+export function inMarkedOrder<T>(items: readonly T[], order: readonly number[]): T[] {
+  return [...order.map((index) => items[index]!), ...items.filter((_, index) => !order.includes(index))]
+}
+
+/** Each Blank's answer in blocks, as plain text, in the order they stand. */
+export function blankAnswers(blocks: Blocks): string[] {
+  const answers: string[] = []
+  const visit = (node: SemanticNode) => {
+    if (node.type === 'blank') answers.push(blocksText([{ type: 'paragraph', content: node.content ?? [] }]))
+    else node.content?.forEach(visit)
+  }
+  blocks.forEach(visit)
+  return answers
 }

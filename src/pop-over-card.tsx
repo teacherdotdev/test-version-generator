@@ -178,6 +178,9 @@ function body(question: Question, format: CopyFormat, onFormat: (format: CopyFor
           : <>{bank}{items}</>,
       }
     }
+    case 'fill-in-the-blank':
+      // The sentence is the whole question, its Blanks drawn as lines.
+      return { controls: null, stem, answers: null }
     case 'open':
       return {
         controls: <FormatSelect label="Answer lines" value={format.lines ?? 0} options={LINE_OPTIONS} onChange={(value) => onFormat({ ...format, lines: value })} />,

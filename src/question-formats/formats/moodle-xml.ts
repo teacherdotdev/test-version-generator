@@ -1,6 +1,6 @@
 import { htmlBlocks, plainBlocks, richBlocks, type HtmlOptions } from '../rich-text'
 import { excerpt, pointsIn } from '../text'
-import type { Blocks, ForeignChoice, ForeignImage, ForeignQuestion, FormatInput, FormatSpec, ImportIssue, ParseResult } from '../types'
+import { BLANK_MARK, type Blocks, type ForeignBlank, type ForeignChoice, type ForeignImage, type ForeignQuestion, type FormatInput, type FormatSpec, type ImportIssue, type ParseResult } from '../types'
 import {
   attributeOf,
   childOf,
@@ -28,7 +28,9 @@ import {
  *   come across as those kinds.
  * - Cloze (“embedded answers”) writes its blanks in the question text, such
  *   as `{1:MULTICHOICE:=Paris~London}` or `{:NUMERICAL:=3.14:0.01}`; each
- *   becomes a blank `_____`, numbered in order, with its accepted answers.
+ *   becomes a Blank where it stands, with its accepted answers — a
+ *   drop-down's being its right choices. A short answer question's Blank
+ *   follows its text.
  * - A `category` pseudo-question names the category the questions after it
  *   belong to, such as `$course$/top/Chapter 1`; its last real part becomes
  *   their topic, as each question's own `<tags>` do.
@@ -171,7 +173,6 @@ function questionLines(text: string): number[] {
 
 // ——— Cloze ———
 
-type Blank = { name: string; accepted: string[] }
 
 /** One cloze answer: `=Paris#Right!`, `%50%Lyon`, `~London`. */
 function clozeAnswers(body: string): { text: string; weight: number }[] {
@@ -203,13 +204,16 @@ function clozeAnswers(body: string): { text: string; weight: number }[] {
 const CLOZE = /\{(\d*):([A-Za-z_]+):((?:\\.|[^\\}])*)\}/g
 
 /** A cloze question's text with each embedded answer made a blank. */
-function readCloze(html: string): { html: string; blanks: Blank[]; unknown: string[] } {
-  const blanks: Blank[] = []
+function readCloze(html: string): { html: string; blanks: ForeignBlank[]; unknown: string[] } {
+  const blanks: ForeignBlank[] = []
   const unknown: string[] = []
   const replaced = html.replace(CLOZE, (whole, _weight: string, type: string, body: string) => {
     const kind = type.toUpperCase()
     const answers = clozeAnswers(body)
     let accepted: string[]
+    // A multiple choice or multiple response embedded answer is picked from
+    // a list; the others are typed.
+    const dropdown = /^(MULTICHOICE|MULTIRESPONSE)(_[A-Z]+)?$|^(MC|MR)[A-Z]{0,2}$/.test(kind)
     if (/^(NUMERICAL|NM)$/.test(kind)) {
       accepted = answers.filter(({ weight }) => weight > 0).map(({ text }) => {
         const [value, tolerance] = text.split(':')
@@ -221,8 +225,8 @@ function readCloze(html: string): { html: string; blanks: Blank[]; unknown: stri
       unknown.push(type)
       return whole
     }
-    blanks.push({ name: String(blanks.length + 1), accepted })
-    return '_____'
+    blanks.push({ name: String(blanks.length + 1), accepted, ...(dropdown ? { dropdown: true } : {}) })
+    return BLANK_MARK
   })
   return { html: replaced, blanks, unknown }
 }

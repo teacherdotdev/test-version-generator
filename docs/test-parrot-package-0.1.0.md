@@ -19,7 +19,7 @@ A **Test Parrot Package** carries one or more Question Bank Records and any numb
 | `formatVersion`    | Exactly `0.1.0`. |
 | `generator`        | `{ name, version }` of the software that wrote the package. Informational. |
 | `requiredFeatures` | Features a reader must understand. Test Parrot 0.1.0 defines none, so a non-empty list is rejected. |
-| `questionBanks`    | At least one `{ "id", "record" }`. `id` is a package-local bank id, unique within the package. `record` is a complete [Question Bank Record](question-bank-record-0.9.0.md) of any version Test Parrot reads, validated by that version's own schema and rules. |
+| `questionBanks`    | At least one `{ "id", "record" }`. `id` is a package-local bank id, unique within the package. `record` is a complete [Question Bank Record](question-bank-record-0.10.0.md) of any version Test Parrot reads, validated by that version's own schema and rules. |
 | `exams`            | Zero or more complete Exam Records, each validated by its own version's schema and rules. |
 
 A bare Question Bank Record file remains importable and reads as a package with one bank and no Exams. An Exam Record on its own is not importable.
@@ -47,7 +47,7 @@ Every Question Bank Record limit applies to each bank. The Question count and to
 Test Parrot writes every package as a zip:
 
 - `parrot.json` at the zip's root is the package, UTF-8 JSON;
-- `media/` holds each picture a Media Asset of a [Question Bank Record](question-bank-record-0.9.0.md), from `0.8.0`, names in its `file`, named by its SHA-256 digest and MIME type, such as `media/sha256-<64 hex digits>.png`, `.jpg` or `.webp`.
+- `media/` holds each picture a Media Asset of a [Question Bank Record](question-bank-record-0.10.0.md), from `0.8.0`, names in its `file`, named by its SHA-256 digest and MIME type, such as `media/sha256-<64 hex digits>.png`, `.jpg` or `.webp`.
 
 Nothing about the zip is in the package: a Media Asset's `file` says only where its bytes are found. The importer reads a zip file directly, or takes one out of a PDF, then reads it one way. A zip with no `parrot.json`, a `0.8.0` Media Asset whose file is not in the zip, and a file under `media/` that no Media Asset names each reject the whole zip. Any other file in the zip is ignored.
 

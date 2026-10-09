@@ -5,6 +5,7 @@
 
 import { isCentred, UNCENTRED_CONTAINERS } from './centring'
 import { isLocked, type AnswerLock } from './locked-answers'
+import { cleanBlankContent } from './blank'
 
 export type ProseMirrorJSON = Record<string, unknown>
 
@@ -39,6 +40,7 @@ export const SUPPORTED_NODES = [
   'image',
   'image-block',
   'math_inline',
+  'blank',
   'hardbreak',
   'text',
   'sideBySide',
@@ -204,6 +206,14 @@ export function cleanDocument(value: ProseMirrorJSON): ProseMirrorJSON {
         columns: attrs.columns === 1 || attrs.columns === 4 ? attrs.columns : 2,
         ...(points !== undefined && answers ? { points } : {}),
       }
+    } else if (node.type === 'blank') {
+      // A Blank's answer holds text and inline mathematics only, and a Blank
+      // carries no attributes of its own.
+      delete clean.attrs
+      clean.content = cleanBlankContent(
+        Array.isArray(clean.content) ? (clean.content as ProseMirrorJSON[]) : [],
+      )
+      if ((clean.content as ProseMirrorJSON[]).length === 0) delete clean.content
     } else if (node.type === 'multipartSubparts') {
       clean.content = (Array.isArray(clean.content)
         ? (clean.content as ProseMirrorJSON[])

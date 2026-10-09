@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { inspectImportValue } from '../../package-import'
 import { readQuestionFile } from '..'
-import { blocksText } from '../rich-text'
+import { blankAnswers, blocksText } from '../rich-text'
 import { categoryTopic, moodleXml } from './moodle-xml'
 
 const fixture = (path: string) => new Uint8Array(readFileSync(new URL(`../fixtures/${path}`, import.meta.url)))
@@ -28,7 +28,7 @@ describe('Moodle XML', () => {
     expect(reading.found).toBe(10)
     expect(questions.map((question) => question.type)).toEqual([
       'multiple-choice', 'multiple-choice', 'true-false', 'short-answer', 'matching',
-      'short-answer', 'short-answer', 'short-answer', 'short-answer',
+      'short-answer', 'short-answer', 'fill-in-the-blank', 'short-answer',
     ])
 
     const [cell, primes, sun, capital, matching, essay, pi, cloze, ordering] = questions
@@ -54,7 +54,10 @@ describe('Moodle XML', () => {
     expect(essay!.topics).toEqual(['Chapter 2'])
     expect(text(pi!.suggestedAnswer)).toBe('3.14 (± 0.01)')
     expect(text(cloze!.stem)).toBe('The capital of France is _____, of Italy _____, and pi is _____.')
-    expect(text(cloze!.suggestedAnswer)).toBe('1: Paris\n2: Rome / Roma\n3: 3.14 (± 0.01)')
+    // Each embedded answer is a Blank where it stood; the drop-down holds its
+    // right choice, and the teacher is told.
+    expect(blankAnswers(cloze!.stem.content)).toEqual(['Paris', 'Rome / Roma', '3.14 (± 0.01)'])
+    expect(reading.issues.find((issue) => issue.code === 'dropdown-blank')?.message).toMatch(/^Question \d+ \(line \d+\): Test Parrot has no drop-down blanks/)
     expect(text(ordering!.suggestedAnswer).split(/\n+/)).toEqual(['Mercury', 'Venus', 'Earth'])
 
     const codes = reading.issues.map((issue) => [issue.severity, issue.code])

@@ -77,6 +77,7 @@ import {
   titlePoints,
 } from './export-typography'
 import type { ProseMirrorJSON } from './question-doc'
+import { BLANK_LINE } from './blank'
 import { STANDARD_QUESTION_GAP, paperStyleRules } from './paper-style'
 import { MATH_SIZE, drawTypesetMath, mathTypesetter } from './pdf-math-draw'
 import {
@@ -314,6 +315,11 @@ function textPieces(node: ProseMirrorJSON): InlinePiece[] {
     }
     if (current.type === 'math_inline') {
       pieces.push({ text: '', font: 'regular', size: BODY_SIZE, math: stringOf(attrsOf(current).value) })
+      return
+    }
+    // A Blank prints its line, and its answer only in the Answer Key.
+    if (current.type === 'blank') {
+      pieces.push({ text: BLANK_LINE, font: 'regular', size: BODY_SIZE })
       return
     }
     if (current.type === 'image') {

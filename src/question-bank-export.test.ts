@@ -428,7 +428,7 @@ describe('Question Bank exchange export seam', () => {
   test('writes a Multipart question as its material and lettered Parts, each under a package-local id', async () => {
     const { record } = await prepareQuestionBankExport(bank([multipart, emptyMultipart]))
 
-    expect(record.formatVersion).toBe('0.9.0')
+    expect(record.formatVersion).toBe('0.10.0')
     expect(record.bank.questions[0]).toEqual({
       id: 'q1',
       type: 'multipart',
@@ -920,7 +920,7 @@ describe('a Question Bank with Pending Images', () => {
     const prepared = await prepareQuestionBankExport(bank([pictured]), async () => {
       throw new Error('a Pending Image has no media to load')
     })
-    expect(prepared.record.formatVersion).toBe('0.9.0')
+    expect(prepared.record.formatVersion).toBe('0.10.0')
     expect(prepared.record.media).toEqual([])
     expect(prepared.record.bank.questions[0]!.stem.content[1]).toEqual({
       type: 'block-image',

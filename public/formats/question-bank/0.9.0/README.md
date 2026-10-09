@@ -1,5 +1,8 @@
 # Question Bank Record 0.9.0 fixtures
 
+Superseded by [`../0.10.0/`](../0.10.0/). Test Parrot no longer writes `0.9.0`
+records; these fixtures stay so the tests can prove it still reads them.
+
 - [`schema.json`](schema.json) is a version-pinned copy of the public schema whose
   stable identifier is `https://testparrot.com/formats/question-bank/0.9.0/schema.json`.
 - [`examples/`](examples/) contains the fifteen canonical conforming records.

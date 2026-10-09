@@ -1,6 +1,6 @@
-import { blocksText, htmlBlocks, looksLikeHtml, plainBlocks } from '../rich-text'
+import { blocksText, htmlBlocks, inMarkedOrder, looksLikeHtml, markNamedBlanks, plainBlocks } from '../rich-text'
 import { decodeText, excerpt, pointsIn } from '../text'
-import type { Blocks, ForeignImage, ForeignQuestion, FormatInput, FormatSpec, ImportIssue, ParseResult, ZipFiles } from '../types'
+import { BLANK_MARK, type Blocks, type ForeignImage, type ForeignQuestion, type FormatInput, type FormatSpec, type ImportIssue, type ParseResult, type ZipFiles } from '../types'
 import {
   attributeOf,
   childOf,
@@ -535,9 +535,12 @@ function readQti12Question(item: XmlElement, html: (source: string) => Blocks): 
           ? (kind === 'fill-in-blanks' && !values.length ? [...labels.values()] : values.map((value) => labels.get(value) ?? value))
           : values
         const name = plainOf(response.promptHtml) || response.ident.replace(/^response_/, '')
-        return { name, accepted: accepted.filter(Boolean) }
+        return { name, accepted: accepted.filter(Boolean), ...(kind === 'dropdowns' ? { dropdown: true } : {}) }
       })
-      return { question: { ...base, kind: 'fill-in-blanks', blanks } }
+      // Canvas and Blackboard write each blank in the text as `[name]`,
+      // named by its response.
+      const marked = markNamedBlanks(stem, responses.map((response) => response.ident.replace(/^response_/, '')))
+      return { question: { ...base, stem: marked.stem, kind: 'fill-in-blanks', blanks: inMarkedOrder(blanks, marked.order) } }
     }
     case 'numeric': {
       const answers: { value: string; tolerance?: string }[] = []
@@ -710,13 +713,14 @@ function readQti2Question(item: XmlElement, html: (source: string) => Blocks): R
   const blanks = interactions.filter((interaction) => BLANK_INTERACTIONS.has(nameOf(interaction)))
   const others = interactions.filter((interaction) => !BLANK_INTERACTIONS.has(nameOf(interaction)))
   const blankName = (interaction: XmlElement) => (blanks.length > 1 ? `Blank ${blanks.indexOf(interaction) + 1}` : '')
+  const dropdown = (interaction: XmlElement) => nameOf(interaction) === 'inlineChoiceInteraction'
   const choiceText = (choice: XmlElement) => blocksText(html(bodyHtml(choice, () => null)))
 
   let singleInline: XmlElement | null = null
   if (!others.length && blanks.length === 1 && nameOf(blanks[0]!) === 'inlineChoiceInteraction') singleInline = blanks[0]!
   const stem = html(bodyHtml(body, (element) => {
     const name = nameOf(element)
-    if (BLANK_INTERACTIONS.has(name)) return blankName(element) ? `[${blankName(element)}]` : '_____'
+    if (BLANK_INTERACTIONS.has(name)) return BLANK_MARK
     if (INTERACTION.test(name)) {
       const prompt = kid(element, 'prompt')
       return prompt ? `<div>${bodyHtml(prompt, () => null)}</div>` : ''
@@ -752,10 +756,18 @@ function readQti2Question(item: XmlElement, html: (source: string) => Blocks): R
       if (declaration && /float|integer/.test(declaration.baseType)) {
         return { question: { ...base, kind: 'numeric', answers: read[0]!.map((value) => ({ value })) } }
       }
-      return { question: { ...base, kind: 'fill-in-blank', accepted: read[0]! } }
+      return { question: { ...base, kind: 'fill-in-blank', accepted: read[0]!, ...(dropdown(blanks[0]!) ? { dropdown: true } : {}) } }
     }
     return {
-      question: { ...base, kind: 'fill-in-blanks', blanks: blanks.map((interaction, index) => ({ name: blankName(interaction), accepted: read[index]! })) },
+      question: {
+        ...base,
+        kind: 'fill-in-blanks',
+        blanks: blanks.map((interaction, index) => ({
+          name: blankName(interaction),
+          accepted: read[index]!,
+          ...(dropdown(interaction) ? { dropdown: true } : {}),
+        })),
+      },
     }
   }
 

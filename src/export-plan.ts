@@ -55,6 +55,7 @@ import {
   type WorkSpaceStyle,
 } from './exam'
 import { stemNodesOf, type ProseMirrorJSON } from './question-doc'
+import { blankAnswerBlocks } from './blank'
 import { pointsOfQuestion, sumOfPoints } from './points'
 import { answerVisibilityOf, shownChoices, type AnswerVisibility } from './hidden-answers'
 import { headerLineOf, type ExamHeader, type HeaderLine } from './page-header'
@@ -1317,6 +1318,11 @@ function deriveQuestion(
     ...(answerVisibility ? { answerVisibility } : {}),
     ...(question.type === 'open' && suggestedAnswerOf(question).length > 0
       ? { suggestedAnswer: suggestedAnswerOf(question) }
+      : {}),
+    // A Fill in the Blank question's answers are its Blanks', which the key
+    // prints on one line where a Suggested Answer goes (ADR-0049).
+    ...(question.type === 'fill-in-the-blank' && blankAnswerBlocks(question.doc).length > 0
+      ? { suggestedAnswer: blankAnswerBlocks(question.doc) }
       : {}),
     parts: multipart ? deriveParts(exam, question, arrangement) : null,
     ...(totalPoints !== undefined ? { totalPoints } : {}),

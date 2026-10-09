@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { inspectImportValue } from '../../package-import'
 import { readQuestionFile } from '..'
-import { blocksText } from '../rich-text'
+import { blankAnswers, blocksText } from '../rich-text'
 
 const fixture = (path: string) => new Uint8Array(readFileSync(new URL(`../fixtures/${path}`, import.meta.url)))
 const encode = (text: string) => new TextEncoder().encode(text)
@@ -56,8 +56,18 @@ describe('Flashcards', () => {
       content: [{ text: 'The ' }, { text: 'powerhouse', marks: [{ type: 'strong' }] }, { text: ' of the cell' }],
     })
     expect(questions[0]!.topics).toEqual(['cells', 'energy'])
+    expect(questions[1]!.type).toBe('fill-in-the-blank')
     expect(text(questions[1]!.stem)).toBe('The _____ holds the cell\'s DNA.')
-    expect(text(questions[1]!.suggestedAnswer)).toBe('nucleus')
+    expect(blankAnswers(questions[1]!.stem.content)).toEqual(['nucleus'])
+  })
+
+  test('an Anki cloze note with several clozes is one Fill in the Blank question, its Blanks in order', async () => {
+    const deck = '#separator:tab\n#html:false\nA {{c1::comet}} has a tail and an {{c2::asteroid}} does not.\t\n'
+    const { questions } = await read('deck.txt', encode(deck))
+    expect(questions).toHaveLength(1)
+    expect(questions[0]!.type).toBe('fill-in-the-blank')
+    expect(text(questions[0]!.stem)).toBe('A _____ has a tail and an _____ does not.')
+    expect(blankAnswers(questions[0]!.stem.content)).toEqual(['comet', 'asteroid'])
   })
 
   test('says which line is not a card', async () => {

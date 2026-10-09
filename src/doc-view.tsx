@@ -12,6 +12,7 @@ import { isCentred } from './centring'
 import { pendingImageOf, type PendingImageReference, type ProseMirrorJSON } from './question-doc'
 import { keptAspect, legacyRatioOf, pictureCropOf, pictureSizeOf, type PictureCrop } from './picture-geometry'
 import { PictureSlotContext } from './picture-slot'
+import { BLANK_LINE } from './blank'
 
 function attrsOf(node: ProseMirrorJSON): Record<string, unknown> {
   const attrs = node.attrs
@@ -180,6 +181,9 @@ function renderNode(node: ProseMirrorJSON, key: number): ReactNode {
     }
     case 'math_inline':
       return <Tex key={key} value={text(attrs.value)} display={false} />
+    // A Blank prints as its line, never its answer (see `blank.ts`).
+    case 'blank':
+      return <span key={key} className="doc-blank">{BLANK_LINE}</span>
     case 'hr':
       return <hr key={key} />
     case 'image': {

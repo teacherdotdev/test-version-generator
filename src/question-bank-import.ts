@@ -11,12 +11,15 @@ import questionBankSchema060 from './question-bank-record-0.6.0.schema.json'
 import questionBankSchema070 from './question-bank-record-0.7.0.schema.json'
 import questionBankSchema080 from './question-bank-record-0.8.0.schema.json'
 import questionBankSchema090 from './question-bank-record-0.9.0.schema.json'
+import questionBankSchema0100 from './question-bank-record-0.10.0.schema.json'
 import {
   QUESTION_BANK_ATTACHMENT_DESCRIPTION,
   QUESTION_BANK_FORMAT,
   QUESTION_BANK_FORMAT_VERSION,
   RECORD_PART_TYPE_LABELS,
   RECORD_TYPE_LABELS,
+  SUPPORTED_BLANK_CONTENT_TYPES,
+  SUPPORTED_BLANK_NODE_TYPE,
   holdsSubparts,
   partLetter,
   recordDocumentToEditorNodes,
@@ -173,6 +176,7 @@ export const LOCAL_TYPES: Record<QuestionBankRecordQuestionType, QuestionType> =
   'multiple-choice': 'multiple-choice',
   'true-false': 'true-false',
   matching: 'matching',
+  'fill-in-the-blank': 'fill-in-the-blank',
   'short-answer': 'open',
   multipart: 'multipart',
 }
@@ -384,6 +388,7 @@ const validate060 = ajv.compile(questionBankSchema060)
 const validate070 = ajv.compile(questionBankSchema070)
 const validate080 = ajv.compile(questionBankSchema080)
 const validate090 = ajv.compile(questionBankSchema090)
+const validate0100 = ajv.compile(questionBankSchema0100)
 
 function schemaMessage(errors: ErrorObject[] | null | undefined): string {
   const first = errors?.[0]
@@ -419,19 +424,22 @@ type CopyContext = {
 
 /** The versions whose `authoredSize` is a share of the picture's container,
  *  and which know the Picture Crop — both added in 0.7.0. */
-const SHARE_SIZE_VERSIONS: ReadonlySet<string> = new Set(['0.7.0', '0.8.0', '0.9.0'])
+const SHARE_SIZE_VERSIONS: ReadonlySet<string> = new Set(['0.7.0', '0.8.0', '0.9.0', '0.10.0'])
 
 /** The versions that know the Locked Answer, added in 0.9.0. */
-const LOCKED_ANSWER_VERSIONS: ReadonlySet<string> = new Set(['0.9.0'])
+const LOCKED_ANSWER_VERSIONS: ReadonlySet<string> = new Set(['0.9.0', '0.10.0'])
 
 /** The versions that let a Part hold Subparts, added in 0.9.0. */
-const SUBPART_VERSIONS: ReadonlySet<string> = new Set(['0.9.0'])
+const SUBPART_VERSIONS: ReadonlySet<string> = new Set(['0.9.0', '0.10.0'])
 
 /** The versions that know Points, added in 0.9.0. */
-const POINTS_VERSIONS: ReadonlySet<string> = new Set(['0.9.0'])
+const POINTS_VERSIONS: ReadonlySet<string> = new Set(['0.9.0', '0.10.0'])
 
 /** The versions that know a Centred block, added in 0.9.0. */
-const ALIGN_VERSIONS: ReadonlySet<string> = new Set(['0.9.0'])
+const ALIGN_VERSIONS: ReadonlySet<string> = new Set(['0.9.0', '0.10.0'])
+
+/** The versions that know Fill in the Blank and its Blanks, added in 0.10.0. */
+const BLANK_VERSIONS: ReadonlySet<string> = new Set(['0.10.0'])
 
 /** The record nodes that may be centred. */
 const CENTRABLE_RECORD_NODES: ReadonlySet<string> = new Set(['paragraph', 'block-image', 'table'])
@@ -616,10 +624,10 @@ function misplacedContent(value: unknown): string | undefined {
 }
 
 /** The versions that know the Pending Image, added in 0.5.0. */
-const PENDING_IMAGE_VERSIONS: ReadonlySet<string> = new Set(['0.5.0', '0.6.0', '0.7.0', '0.8.0', '0.9.0'])
+const PENDING_IMAGE_VERSIONS: ReadonlySet<string> = new Set(['0.5.0', '0.6.0', '0.7.0', '0.8.0', '0.9.0', '0.10.0'])
 
 /** The versions that know the Side-by-Side, added in 0.6.0. */
-const SIDE_BY_SIDE_VERSIONS: ReadonlySet<string> = new Set(['0.6.0', '0.7.0', '0.8.0', '0.9.0'])
+const SIDE_BY_SIDE_VERSIONS: ReadonlySet<string> = new Set(['0.6.0', '0.7.0', '0.8.0', '0.9.0', '0.10.0'])
 
 /** Where a Side-by-Side may stand: a top-level block of a Question's stem or
  *  of a Multipart Part's stem, and nowhere else. */
@@ -820,6 +828,65 @@ function multipartWithPoints(value: unknown, sourceVersion: string): string | un
   return undefined
 }
 
+/** The record nodes whose inline content a Blank may stand among. */
+const BLANK_HOSTS: ReadonlySet<string> = new Set(['paragraph', 'heading'])
+
+/**
+ * A Blank that stands where the format does not allow it, named before the
+ * schema would: an assistant converting a test is likely to put one in an
+ * answer, or in another type's stem, and the message should say where a Blank
+ * may go rather than name a JSON pointer (ADR-0049). A Blank belongs only
+ * among the text of a paragraph or heading of a Fill in the Blank Question's
+ * stem, holds only text and inline mathematics, and never holds another.
+ */
+function misplacedBlank(value: unknown, sourceVersion: string): string | undefined {
+  const questions = valueAt(value, 'bank/questions')
+  if (!Array.isArray(questions)) return undefined
+  for (const question of questions) {
+    if (typeof question !== 'object' || question === null) continue
+    const { id, type, stem } = question as { id?: unknown; type?: unknown; stem?: unknown }
+    const named = typeof id === 'string' ? `Question “${id}”` : 'A Question'
+    let found: string | undefined
+    const visit = (node: unknown, parent: string | undefined, inStem: boolean) => {
+      if (found || !isTypedObject(node)) return
+      const content = (node as { content?: unknown }).content
+      if (node.type === SUPPORTED_BLANK_NODE_TYPE) {
+        if (!BLANK_VERSIONS.has(sourceVersion)) {
+          found = `Blanks need Question Bank Record 0.10.0 or later; this record declares ${sourceVersion}.`
+        } else if (parent === SUPPORTED_BLANK_NODE_TYPE) {
+          found = `${named} has a Blank inside another Blank. A Blank’s answer holds only text and inline mathematics.`
+        } else if (!inStem) {
+          found = `${named} has a Blank outside the stem of a Fill in the Blank Question. A Blank may appear only there — not in another type’s stem, an answer, a matching item, a Word Bank answer, a Part or a Suggested Answer.`
+        } else if (parent === undefined || !BLANK_HOSTS.has(parent)) {
+          found = `${named} has a Blank that stands as a block of its own. A Blank stands among the text of a paragraph or heading of its stem.`
+        } else if (
+          Array.isArray(content) &&
+          content.some((child) => isTypedObject(child) && child.type !== SUPPORTED_BLANK_NODE_TYPE &&
+            !(SUPPORTED_BLANK_CONTENT_TYPES as readonly string[]).includes(child.type))
+        ) {
+          found = `${named} has a Blank whose answer holds something other than text and inline mathematics.`
+        }
+      }
+      if (Array.isArray(content)) content.forEach((child) => visit(child, node.type, inStem))
+    }
+    // Every document the Question holds — stem, answers, Items, Word Bank,
+    // Parts, Suggested Answer — wherever it sits in the Question.
+    const visitQuestion = (part: unknown) => {
+      if (found || typeof part !== 'object' || part === null) return
+      if (isTypedObject(part) && part.type === 'document') {
+        const inStem = part === stem && type === 'fill-in-the-blank'
+        const blocks = (part as { content?: unknown }).content
+        if (Array.isArray(blocks)) blocks.forEach((block) => visit(block, undefined, inStem))
+        return
+      }
+      Object.values(part).forEach(visitQuestion)
+    }
+    visitQuestion(question)
+    if (found) return found
+  }
+  return undefined
+}
+
 function parseWith(
   validate: SchemaValidator & { errors?: ErrorObject[] | null },
   sourceVersion: string,
@@ -827,6 +894,8 @@ function parseWith(
 ): DeclaredRecord {
   const misplaced = misplacedContent(value)
   if (misplaced) throw new QuestionBankImportError('invalid-question', misplaced)
+  const blank = misplacedBlank(value, sourceVersion)
+  if (blank) throw new QuestionBankImportError('invalid-structure', blank)
   const doubled = partWithSubpartsAndAnswers(value, sourceVersion)
   if (doubled) throw new QuestionBankImportError('invalid-question', doubled)
   const summed = multipartWithPoints(value, sourceVersion)
@@ -916,6 +985,8 @@ function parseWith(
  * choice's optional `locked` (ADR-0038); a choice of an older record has none,
  * and is locked by its wording once imported, as an undecided one is. 0.9.0
  * also let a Part hold `subparts` (ADR-0043); an older record's Parts all answer.
+ * 0.10.0 added `fill-in-the-blank` and its Blanks (ADR-0049), which no older
+ * record can carry.
  * 0.7.0 is the one version that changed something an older record already
  * says: its `authoredSize` is a share of the picture's container, where
  * 0.1.0–0.6.0's was Crepe's ratio against the size the picture fit at. An
@@ -941,6 +1012,8 @@ const parser080: Parser = (value) => parseWith(validate080, '0.8.0', value)
 
 const parser090: Parser = (value) => parseWith(validate090, '0.9.0', value)
 
+const parser0100: Parser = (value) => parseWith(validate0100, '0.10.0', value)
+
 /** Exact versions only: adding compatibility requires adding an explicit parser or migration. */
 export const SUPPORTED_QUESTION_BANK_VERSIONS: Readonly<Record<string, Parser>> =
   Object.freeze({
@@ -953,6 +1026,7 @@ export const SUPPORTED_QUESTION_BANK_VERSIONS: Readonly<Record<string, Parser>> 
     '0.7.0': parser070,
     '0.8.0': parser080,
     '0.9.0': parser090,
+    '0.10.0': parser0100,
   })
 
 const utf8 = new TextDecoder('utf-8', { fatal: true })
@@ -1029,6 +1103,13 @@ type DocumentStats = {
   depth: number
   mediaReferences: Set<string>
   externalLinks: boolean
+}
+
+/** Whether a document holds a Blank anywhere. */
+function holdsBlank(document: SemanticDocument): boolean {
+  const visit = (node: SemanticNode): boolean =>
+    node.type === SUPPORTED_BLANK_NODE_TYPE || (node.content ?? []).some(visit)
+  return document.content.some(visit)
 }
 
 function inspectDocument(document: SemanticDocument): DocumentStats {
@@ -1203,6 +1284,7 @@ async function validateSemantics(
     'multiple-choice': 0,
     'true-false': 0,
     matching: 0,
+    'fill-in-the-blank': 0,
     'short-answer': 0,
     multipart: 0,
   }
@@ -1293,6 +1375,16 @@ async function validateSemantics(
         }
       })
       if (incomplete) questionsWithoutCorrectAnswer += 1
+    } else if (question.type === 'fill-in-the-blank') {
+      // It answers with the Blanks in its stem, and nothing else. A stem with
+      // no Blank is incomplete — conforming, but reported.
+      if (question.choices !== undefined || question.suggestedAnswer !== undefined) {
+        throw new QuestionBankImportError(
+          'invalid-question',
+          `Fill in the Blank Question “${question.id}” cannot contain choices or a Suggested Answer; its Blanks hold its answers.`,
+        )
+      }
+      if (!holdsBlank(question.stem)) questionsWithoutCorrectAnswer += 1
     } else if (question.type === 'short-answer') {
       if (question.choices !== undefined) {
         throw new QuestionBankImportError(

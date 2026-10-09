@@ -1569,6 +1569,8 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
    it out; left to size itself it shrinks to its shortest content. */
 :is(.question-reading, .pop-over-card) .doc-table { width: 100%; table-layout: fixed; }
 .doc-math--block { display: block; margin: 6px 0; text-align: center; }
+/* A Blank prints as one unbroken line, the same length whatever its answer. */
+.doc-blank { white-space: nowrap; }
 /* A Blockquote prints boxed: a quoted source passage set apart from the stem. */
 .doc-content blockquote { margin: 8px 0; padding: 6px 10px; border: 1px solid #000; }
 .doc-content blockquote > :first-child { margin-top: 0; }
@@ -1901,6 +1903,14 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
   line-height: 1.4; user-select: none;
 }
 .sa-body { position: relative; flex: 1 1 auto; min-width: 0; outline: none; }
+/* A Blank in the question editor: its answer on a tinted chip, underlined
+   where the student's line will be, wide enough to click into when empty. */
+.milkdown .ProseMirror .blank-chip {
+  display: inline-block; min-width: 3em; padding: 0 6px;
+  background: var(--paper-accent-wash);
+  border-bottom: 2px solid var(--paper-accent); border-radius: 4px 4px 0 0;
+  color: var(--paper-accent); font-weight: 600;
+}
 .milkdown .ProseMirror .sa-body > :first-child { margin-top: 0; padding-top: 0; }
 .milkdown .ProseMirror .sa-body > :last-child { margin-bottom: 0; padding-bottom: 0; }
 .milkdown .sa-body .crepe-placeholder::before { content: none; }

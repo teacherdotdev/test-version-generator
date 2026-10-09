@@ -39,6 +39,7 @@ import {
 import { centredKind } from './centring'
 import { arrangementRange } from './export-preparation'
 import type { ProseMirrorJSON } from './question-doc'
+import { BLANK_LINE } from './blank'
 import { MARGIN_SIDES, type MarginSide } from './page-margins'
 
 /** A page's margins in CSS px, every side. */
@@ -263,6 +264,10 @@ function inlineSegments(
         break
       case 'math_inline':
         segments.push({ kind: 'math', source: stringOf(attrsOf(child).value) })
+        break
+      // A Blank prints its line, and its answer only in the Answer Key.
+      case 'blank':
+        segments.push({ kind: 'text', text: BLANK_LINE, marks: [] })
         break
       case 'image':
         segments.push({

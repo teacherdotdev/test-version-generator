@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 import JSZip from 'jszip'
 import { inspectImportValue } from '../../package-import'
 import { readQuestionFile } from '..'
-import { blocksText } from '../rich-text'
+import { blankAnswers, blocksText } from '../rich-text'
 
 const fixtures = fileURLToPath(new URL('../fixtures/qti/', import.meta.url))
 const fixture = (path: string) => new Uint8Array(readFileSync(join(fixtures, path)))
@@ -54,7 +54,7 @@ describe('Canvas classic quiz export', () => {
     // Eleven questions and a text-only passage; the non_cc copy is not read again.
     expect(reading.found).toBe(11)
     expect(questions.map((question) => question.type)).toEqual([
-      'multiple-choice', 'true-false', 'short-answer', 'short-answer', 'multiple-choice', 'short-answer',
+      'multiple-choice', 'true-false', 'short-answer', 'fill-in-the-blank', 'multiple-choice', 'fill-in-the-blank',
       'matching', 'short-answer', 'short-answer', 'short-answer',
     ])
     const [choice, trueFalse, shortAnswer, blanks, multiple, dropdowns, matching, numeric, essay, upload] = questions
@@ -69,12 +69,18 @@ describe('Canvas classic quiz export', () => {
     expect(reading.record.media.map((asset) => asset.id)).toEqual([picture.asset])
 
     expect(trueFalse!.choices!.map((each) => each.correct)).toEqual([false, true])
+    // A short answer has no place for a blank; each `[name]` is its blank's.
     expect(text(shortAnswer!.suggestedAnswer)).toBe('Au / au')
-    expect(text(blanks!.stem)).toBe('Roses are [color1], violets are [color2].')
-    expect(text(blanks!.suggestedAnswer)).toBe('color1: red / crimson\ncolor2: blue')
+    expect(text(blanks!.stem)).toBe('Roses are _____, violets are _____.')
+    expect(blankAnswers(blanks!.stem.content)).toEqual(['red / crimson', 'blue'])
     expect(multiple!.choices!.map((each) => text(each.content))).toEqual(['Whale', 'Shark', 'Bat'])
     expect(reading.issues.find((issue) => issue.code === 'multiple-answer')?.message).toContain('(a, c)')
-    expect(text(dropdowns!.suggestedAnswer)).toBe('temp: 100')
+    // A drop-down holds its right choice, and the teacher is told.
+    expect(text(dropdowns!.stem)).toBe('Water boils at _____ degrees Celsius.')
+    expect(blankAnswers(dropdowns!.stem.content)).toEqual(['100'])
+    expect(reading.issues.find((issue) => issue.code === 'dropdown-blank')?.message).toBe(
+      'Question 6: Test Parrot has no drop-down blanks, so each came in as a Blank holding its correct choice.',
+    )
 
     expect(matching!.prompts!.map((prompt) => text(prompt.content))).toEqual(['France', 'Japan'])
     const answerOf = (index: number) =>
@@ -129,7 +135,8 @@ describe('QTI 2.1 and 2.2 items', () => {
 
     const entry = await read('entry.xml', fixture('qti21-text-entry.xml'))
     expect(text(entry.questions[0]!.stem)).toBe('The capital of Canada is _____.')
-    expect(text(entry.questions[0]!.suggestedAnswer)).toBe('Ottawa')
+    expect(entry.questions[0]!.type).toBe('fill-in-the-blank')
+    expect(blankAnswers(entry.questions[0]!.stem.content)).toEqual(['Ottawa'])
 
     const order = await read('order.xml', fixture('qti21-order.xml'))
     expect(order.questions[0]!.type).toBe('short-answer')
@@ -248,8 +255,10 @@ describe('QTI 3.0 items', () => {
   test('a text entry and a drop-down in one sentence', async () => {
     const { reading, questions } = await read('rivers.xml', fixture('qti30-text-entry.xml'))
     expect(reading.format).toBe('qti')
-    expect(text(questions[0]!.stem)).toBe('London stands on the [Blank 1], and Paris on the [Blank 2].')
-    expect(text(questions[0]!.suggestedAnswer)).toBe('Blank 1: Thames / River Thames\nBlank 2: Seine')
+    expect(questions[0]!.type).toBe('fill-in-the-blank')
+    expect(text(questions[0]!.stem)).toBe('London stands on the _____, and Paris on the _____.')
+    expect(blankAnswers(questions[0]!.stem.content)).toEqual(['Thames / River Thames', 'Seine'])
+    expect(reading.issues.map((issue) => issue.code)).toContain('dropdown-blank')
   })
 })
 

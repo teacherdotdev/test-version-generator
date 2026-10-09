@@ -107,6 +107,12 @@ function previewOf(blocks: readonly ProseMirrorJSON[]): StemPreview {
       parts.push(' ')
       return
     }
+    // A Blank reads as a short line: its answer stays behind the popup, as
+    // a choice's correctness does.
+    if (type === 'blank') {
+      parts.push('____')
+      return
+    }
     if (!PROSE_BLOCKS.has(type)) return
     // A block boundary is a space; the normalisation below makes it at most one.
     parts.push(' ')

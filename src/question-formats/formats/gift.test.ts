@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { inspectImportValue } from '../../package-import'
 import { readQuestionFile } from '..'
-import { blocksText } from '../rich-text'
+import { blankAnswers, blocksText } from '../rich-text'
 import { gift } from './gift'
 
 const fixture = (path: string) => new Uint8Array(readFileSync(new URL(`../fixtures/${path}`, import.meta.url)))
@@ -45,9 +45,11 @@ describe('Moodle GIFT', () => {
       ['Grant', true], ['No one', false], ['Napoleon', false], ['Churchill', false], ['Mother Teresa', false],
     ])
 
-    // Fill in the blank and short answer.
+    // Fill in the blank: a missing word's Blank stands where its braces did.
+    // A short answer has no place in its sentence for one, so it stays one.
+    expect(questions[2]!.type).toBe('fill-in-the-blank')
     expect(text(questions[2]!.stem)).toBe('Two plus _____ equals four.')
-    expect(text(questions[2]!.suggestedAnswer)).toBe('two / 2')
+    expect(blankAnswers(questions[2]!.stem.content)).toEqual(['two / 2'])
     expect(text(byStem("Who's buried in Grant's tomb?").find((question) => question.type === 'short-answer')!.suggestedAnswer))
       .toBe('Grant / Ulysses S. Grant / Ulysses Grant')
 
@@ -115,6 +117,25 @@ describe('Moodle GIFT', () => {
       'Question 1 (line 1): its answers start with “{” but never end with “}”.',
       'Question 2 (line 3): its numerical answer “two” is not a number, a number:tolerance, or a range such as 1..5.',
     ])
+  })
+
+  test('a missing word is a Blank where its braces stood, holding every accepted answer', async () => {
+    const { reading, questions } = await read('q.gift', encode(
+      '::A:: A spider has {=eight =8} legs.\n\n'
+      + '::B:: The planet nearest the sun is {=Mercury ~Venus ~Mars}.\n\n'
+      + '::C:: Lightning is a form of {} energy.\n',
+    ))
+    const [legs, planet, empty] = questions
+    expect(legs!.type).toBe('fill-in-the-blank')
+    expect(text(legs!.stem)).toBe('A spider has _____ legs.')
+    expect(blankAnswers(legs!.stem.content)).toEqual(['eight / 8'])
+    // Wrong choices make it Multiple Choice, its blank a line.
+    expect(planet!.type).toBe('multiple-choice')
+    expect(text(planet!.stem)).toBe('The planet nearest the sun is _____.')
+    expect(JSON.stringify(planet!.stem)).not.toContain('"blank"')
+    // Empty braces are an essay, never a Blank.
+    expect(empty!.type).toBe('short-answer')
+    expect(reading.issues.filter((issue) => issue.code === 'no-accepted-answer')).toEqual([])
   })
 
   test('LaTeX and code braces are not GIFT', () => {
