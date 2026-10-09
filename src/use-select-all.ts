@@ -29,6 +29,18 @@ function isTyping(element: Element | null): boolean {
   return element.isContentEditable || element.closest('input, textarea, select') !== null
 }
 
+/** Whether a key press, or a copy or paste it makes, belongs to this pane's
+ *  Questions: the pane the rule in `select-all.ts` picks, with nothing being
+ *  typed into, the pane not inert and no dialog open over it. The one test,
+ *  so Cmd-A, Cmd-C and Cmd-V always agree on which pane they act in. */
+export function paneTakesKeys(pane: SelectAllPane, element: HTMLElement | null, target: EventTarget | null): boolean {
+  if (selectAllPane(mounted, lastTouched) !== pane) return false
+  if (isTyping(target as Element | null) || isTyping(document.activeElement)) return false
+  if (!element || element.closest('[inert]')) return false
+  const modals = [...document.querySelectorAll('[aria-modal="true"]')]
+  return !modals.some((modal) => !modal.contains(element))
+}
+
 /** Spread onto the pane's root element. */
 export function selectAllPaneProps(pane: SelectAllPane) {
   return { [PANE_ATTRIBUTE]: pane }
@@ -54,12 +66,7 @@ export function useSelectAll(
     }
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || !isSelectAllKey(event)) return
-      if (selectAllPane(mounted, lastTouched) !== pane) return
-      if (isTyping(event.target as Element | null) || isTyping(document.activeElement)) return
-      const element = root.current
-      if (!element || element.closest('[inert]')) return
-      const modals = [...document.querySelectorAll('[aria-modal="true"]')]
-      if (modals.some((modal) => !modal.contains(element))) return
+      if (!paneTakesKeys(pane, root.current, event.target)) return
       // Taken even with nothing to select: the browser's own select-all would
       // highlight the page chrome, which is never what was meant here.
       event.preventDefault()

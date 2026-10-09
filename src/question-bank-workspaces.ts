@@ -157,6 +157,9 @@ export type BankChange =
   | { kind: 'create-question'; question: Question }
   | { kind: 'update-question'; question: Question }
   | { kind: 'duplicate-question'; questionId: string }
+  /** New Questions added at the end of the bank, in order, as one change —
+   *  what a paste of copied Questions brings in. */
+  | { kind: 'create-questions'; questions: readonly Question[] }
 
 /** A Question as the bank's store holds it, read into the shape the app
  *  uses. Exported for its tests. */
@@ -604,6 +607,20 @@ export function createQuestionBankWorkspaceService(
       await completionOf(transaction)
       return stored ? readBank(database, stored.bankId) : null
     },
+    /** The Questions these ids name, wherever they live, each with the bank
+     *  that owns it, in the order asked for. An id nothing owns any more is
+     *  left out. */
+    async locateQuestions(questionIds: readonly string[]): Promise<{ bankId: string; question: Question }[]> {
+      const database = await registry
+      const transaction = database.transaction(CANONICAL_QUESTION_STORE, 'readonly')
+      const store = transaction.objectStore(CANONICAL_QUESTION_STORE)
+      const stored = await Promise.all(
+        questionIds.map((id) => requestOf(store.get(id)) as Promise<StoredQuestion | undefined>),
+      )
+      await completionOf(transaction)
+      return stored.flatMap((question) =>
+        question ? [{ bankId: question.bankId, question: questionOf(question) }] : [])
+    },
     async open(id: string): Promise<QuestionBankResource | null> {
       const bank = await readBank(await registry, id)
       if (!bank) return null
@@ -749,6 +766,21 @@ export function createQuestionBankWorkspaceService(
             }
             if (JSON.stringify(next) === JSON.stringify(bank)) return
             banks.put({ ...next, lastUpdatedAt: timestamp })
+            return
+          }
+
+          if (change.kind === 'create-questions') {
+            for (const question of change.questions) {
+              const existing = await requestOf(questions.get(question.id)) as StoredQuestion | undefined
+              if (existing) throw new Error('That Question already belongs to a Question Bank.')
+              questions.add({ ...question, bankId: id } satisfies StoredQuestion)
+            }
+            if (change.questions.length === 0) return
+            banks.put({
+              ...bank,
+              questionIds: [...bank.questionIds, ...change.questions.map(({ id }) => id)],
+              lastUpdatedAt: timestamp,
+            })
             return
           }
 

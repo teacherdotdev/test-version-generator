@@ -47,6 +47,7 @@ import { DIFFICULTY_OPTIONS, SORT_OPTIONS, TYPE_OPTIONS, type FilterOption } fro
 import { CopyQuestionButton } from './question-copy-feedback'
 import { useQuestionCopy } from './use-question-copy'
 import { selectAllPaneProps, useSelectAll } from './use-select-all'
+import { useQuestionClipboard } from './use-question-clipboard'
 import {
   NO_FILTER,
   browseQuestionBank,
@@ -230,6 +231,7 @@ export function QuestionBankPane({
   onAddToWorkingCopy,
   onAddManyToWorkingCopy,
   onRemoveFromWorkingCopy,
+  onPasteQuestions,
   drag,
 }: {
   bank: QuestionBank
@@ -271,6 +273,9 @@ export function QuestionBankPane({
   onAddManyToWorkingCopy?: (questionIds: readonly string[]) => void
   /** Takes the question back off the Working Copy, leaving its bank record be. */
   onRemoveFromWorkingCopy?: (questionId: string) => void
+  /** Cmd/Ctrl-V of copied Questions: the Questions the paste names, in the
+   *  order they were copied (see `question-clipboard.ts`). */
+  onPasteQuestions?: (questionIds: string[]) => void
   /** The gesture in flight. A row that is not already on the Working Copy is a
    *  drag source for it; a row that is offers no gesture at all, because a
    *  reference occurs at most once and refusing a drop after the fact would be
@@ -283,6 +288,14 @@ export function QuestionBankPane({
   const orderedIds = questions.map(({ id }) => id)
   const root = useRef<HTMLElement>(null)
   useSelectAll('question-bank', root, orderedIds, onSelectAll)
+  // Cmd/Ctrl-C copies the selected Questions, in the bank's order; Cmd/Ctrl-V
+  // brings copied ones in.
+  useQuestionClipboard(
+    'question-bank',
+    root,
+    bank.questions.filter(({ id }) => selectedQuestionIds.has(id)),
+    (questionIds) => onPasteQuestions?.(questionIds),
+  )
   const addableQuestions = questions.filter(({ id }) => !workingCopyIds.has(id))
   const filtered = isFilterActive(filter)
   // A gesture that has not yet moved far enough to be a drag. One pointer
@@ -515,10 +528,22 @@ export function QuestionBankPane({
                   className="question-reading question-bank-reading-item"
                   key={question.id}
                   data-question-id={question.id}
+                  aria-current={selectedQuestionIds.has(question.id) ? 'true' : undefined}
                   tabIndex={0}
-                  // The whole Question is the target: reading it and opening
-                  // it to change it are the only two things done here.
-                  onClick={() => onEdit(question.id)}
+                  // The whole Question is the target: a click opens it to
+                  // change it. Cmd/Ctrl- or Shift-click selects instead, as a
+                  // row does beside an Exam, for Cmd/Ctrl-C to copy.
+                  onClick={(event: ReactMouseEvent<HTMLElement>) => {
+                    if (event.metaKey || event.ctrlKey || event.shiftKey) {
+                      onSelect(question.id, orderedIds, {
+                        shiftKey: event.shiftKey,
+                        metaKey: event.metaKey,
+                        ctrlKey: event.ctrlKey,
+                      })
+                      return
+                    }
+                    onEdit(question.id)
+                  }}
                   onKeyDown={(event) => {
                     if (event.key !== 'Enter' || event.target !== event.currentTarget) return
                     event.preventDefault()
@@ -699,7 +724,7 @@ export function QuestionBankPane({
       data-scrolled={scrolled ? 'true' : undefined}
       onClick={(event) => {
         const target = event.target as HTMLElement
-        if (!target.closest('.question-bank-row, button, input, select, a')) {
+        if (!target.closest('.question-bank-row, .question-bank-reading-item, button, input, select, a')) {
           onClearSelection()
         }
       }}

@@ -76,6 +76,7 @@ import {
   SECTION_LABELS,
   SECTION_ORDER,
   createQuestion,
+  duplicateQuestion,
   topicsOf,
   withTopicAdded,
 } from './exam'
@@ -221,6 +222,7 @@ import {
   multipartSubpartsView,
 } from './multipart'
 import { blankIcon, blankSchema, isInBlank, toggleBlank } from './blank-editor'
+import { pastedSummary, questionsToAdd } from './question-clipboard'
 import {
   keepSuggestedAnswer,
   suggestedAnswerMode,
@@ -1383,6 +1385,16 @@ function QuestionBankWorkspace({
           }
         : undefined}
       onRemoveFromWorkingCopy={onRemoveFromExam}
+      onPasteQuestions={(questionIds) => void (async () => {
+        // A paste into a bank makes new Questions like the copied ones, as
+        // Duplicate does — into their own bank or any other — and selects
+        // them. Copies of Questions this browser no longer holds are skipped.
+        const located = await service.locateQuestions(questionIds)
+        if (located.length === 0) return
+        const copies = located.map(({ question }) => duplicateQuestion(question))
+        onBankChange(await service.commit(bank.id, { kind: 'create-questions', questions: copies }))
+        selection.selectAll(copies.map(({ id }) => id))
+      })()}
     />
     {exporting && <QuestionBankExportDialog bank={bank} onClose={() => setExporting(false)} />}
     {choosingType && <ContextMenu
@@ -2170,6 +2182,21 @@ function ExamEditor({
     store.addManyToWorkingCopy(questions, target)
     selectAndReveal(questions.at(-1)!.id)
   }
+  // A paste onto the sheet adds the copied Questions themselves, as a bank's
+  // Add does, after the last selected question or at the end; one already on
+  // the Exam is skipped. Their banks open as tabs, so they can be found again.
+  const pasteQuestions = async (questionIds: string[], after: string | null) => {
+    const located = await bankWorkspaces.locateQuestions(questionIds)
+    const adding = questionsToAdd(located.map(({ question }) => question), new Set(workingCopyIds))
+    const skipped = located.length - adding.length
+    if (adding.length > 0) {
+      const banks = [...new Set(located.filter(({ question }) => adding.includes(question)).map(({ bankId }) => bankId))]
+      for (const bankId of banks) await bankWorkspaces.openTab({ examId }, bankId)
+      if (banks.length > 0) setBankRevision((revision) => revision + 1)
+      addManyToWorkingCopy(adding, after ? { kind: 'question', questionId: after, placement: 'after' } : null)
+    }
+    setVarySummary(pastedSummary(adding.length, skipped, questionIds.length))
+  }
   const shuffleSelectedQuestions = (questionIds: readonly string[]) => {
     store.shuffleSelectedQuestions(questionIds)
     setVarySummary('Shuffled question order.')
@@ -2897,6 +2924,7 @@ function ExamEditor({
             exam={exam}
             arrangement={arrangement}
             selection={selection}
+            onPasteQuestions={(questionIds, after) => void pasteQuestions(questionIds, after)}
             drag={drag}
             revealQuestionId={revealQuestionId}
             onRevealed={clearReveal}

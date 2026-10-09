@@ -606,6 +606,10 @@ button { cursor: pointer; }
   border-color: #cdb9a6; box-shadow: 0 2px 8px rgb(91 68 47 / 12%);
 }
 .question-bank-reading-item:focus-visible { outline: 2px solid #8a6a4c; outline-offset: 2px; }
+/* Selected with Cmd/Ctrl- or Shift-click, or Cmd/Ctrl-A, for Cmd/Ctrl-C. */
+.question-bank-reading-item[aria-current="true"] {
+  border-color: var(--paper-accent); background: var(--paper-accent-wash);
+}
 /* The pencil says what a click does, and Copy sits beside it; both wait at
    the end of the head row until the Question is pointed at or focused. A
    Copy that has just run stays up long enough to be read. */

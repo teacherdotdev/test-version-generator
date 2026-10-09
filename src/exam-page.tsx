@@ -77,6 +77,8 @@ import {
 } from './exam'
 import type { Selection } from './use-selection'
 import { selectAllPaneProps, useSelectAll } from './use-select-all'
+import { distinctIds } from './select-all'
+import { useQuestionClipboard } from './use-question-clipboard'
 import { answerVisibilityNote } from './hidden-answers'
 import { pointsLabel, parsePointsInput } from './points'
 import { shownIncorrectChoices, shownIncorrectMenuOf, type ShownIncorrectMenu } from './question-menu'
@@ -1761,6 +1763,7 @@ export function ExamPage({
   titleDisabled = false,
   unsavedDraft = false,
   contentSelection = { test: true, answerKey: true },
+  onPasteQuestions,
 }: {
   exam: Exam
   arrangement: Arrangement
@@ -1810,6 +1813,10 @@ export function ExamPage({
   titleDisabled?: boolean
   unsavedDraft?: boolean
   contentSelection?: ExportContentSelection
+  /** Cmd/Ctrl-V of copied Questions: the Questions the paste names, in the
+   *  order they were copied, and the selected question they go after — the
+   *  last one on the page — or `null` for the end of the Exam. */
+  onPasteQuestions?: (questionIds: string[], after: string | null) => void
 }) {
   const workspace = useRef<HTMLElement | null>(null)
   const blank = exam.questions.length === 0
@@ -1821,6 +1828,15 @@ export function ExamPage({
   const clearOnBackground = clearOnBackgroundClick(selection)
   // Every Question on the draft, a Multipart or Matching Question being one.
   useSelectAll('exam-draft', workspace, orderedIds, selection.selectAll)
+  // Cmd/Ctrl-C copies the selected Questions in page order; Cmd/Ctrl-V adds
+  // copied ones after the last of them.
+  const selectedInOrder = distinctIds(orderedIds).filter((id) => selection.isSelected(id))
+  useQuestionClipboard(
+    'exam-draft',
+    workspace,
+    selectedInOrder.flatMap((id) => exam.questions.filter((question) => question.id === id)),
+    (questionIds) => onPasteQuestions?.(questionIds, selectedInOrder.at(-1) ?? null),
+  )
   // Dragging is coordinated above this pane, because one gesture spans both of
   // them: a Question Bank question composed onto the Working Copy starts in the
   // other pane entirely. What stays here is what only this pane knows — which
