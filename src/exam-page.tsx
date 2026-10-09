@@ -1893,13 +1893,26 @@ export function ExamPage({
       document.removeEventListener('keydown', escape)
     }
   }, [])
-  const pieces = useMemo<SheetPieces>(() => ({
-    selected: piece,
-    select: setPiece,
-    ...(onSetPictureSize ? { onResizePicture: onSetPictureSize } : {}),
-  }), [piece, onSetPictureSize])
+  // A released corner drag's size, held until the sheet is planned with it —
+  // as a Work Space drag's height is (`work-space-preview.ts`).
+  const [pictureHolds, setPictureHolds] = useState(NO_WORK_SPACE_PREVIEWS)
+
   const blank = exam.questions.length === 0
   const { plan, plannedFrom } = usePaginatedExam(exam, arrangement, workspace, contentSelection)
+  useEffect(() => {
+    setPictureHolds((current) => settled(current, { exam, plannedFrom }))
+  }, [exam, plannedFrom])
+  const pieces = useMemo<SheetPieces>(() => {
+    const sheet = { exam, plannedFrom }
+    return {
+      selected: piece,
+      select: setPiece,
+      ...(onSetPictureSize ? { onResizePicture: onSetPictureSize } : {}),
+      heldPictureSize: (held, planned) => shownHeight(pictureHolds, held, { height: planned ?? -1 }, sheet),
+      holdPictureSize: (held, size) =>
+        setPictureHolds((current) => released(dragged(current, held, size), held, true, sheet)),
+    }
+  }, [piece, onSetPictureSize, pictureHolds, exam, plannedFrom])
   const workSpaceSizing = useWorkSpaceSizing(exam, plannedFrom)
   const pages = plan.pages
   const orderedIds = orderedQuestionIds(pages)

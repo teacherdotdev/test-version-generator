@@ -17,6 +17,12 @@ export type SheetPieces = {
   /** Sets how wide this Exam prints one of a question's pictures, as a share
    *  of its container. */
   onResizePicture?: (questionId: string, picture: string, size: number) => void
+  /** The size a released corner drag still draws a picture at, until the
+   *  sheet has been planned with it, or `null` for the size it is planned at
+   *  (`work-space-preview.ts`). */
+  heldPictureSize?: (piece: SheetPiece, planned: number | null) => number | null
+  /** Holds a released drag's size for a picture whose size was just set. */
+  holdPictureSize?: (piece: SheetPiece, size: number) => void
 }
 
 export const SheetPiecesContext = createContext<SheetPieces | null>(null)

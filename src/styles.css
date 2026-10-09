@@ -1292,21 +1292,22 @@ button { cursor: pointer; }
 .work-space[data-ruling='dotted'] .work-space-rule { border-bottom: 1.5px dotted #4a4038; }
 .work-space-points { flex: none; white-space: nowrap; }
 
-/* On the sheet a teacher edits, blank space is otherwise invisible. Like a
-   design tool (ADR-0050), a Work Space shows its extent while pointed at, and
-   holds it once selected — its bar then shows at its bottom edge. The outline
-   paints over the box and takes no height. */
-.exam-question .work-space:hover,
+/* On the sheet a teacher edits, blank space is otherwise invisible. Exactly
+   as a picture is (ADR-0050), a Work Space is outlined while pointed at, and
+   outlined more strongly once selected, when its one handle shows at the
+   middle of its bottom edge. The outline paints over the box and takes no
+   height. */
+.exam-question .work-space:hover { outline: 1px solid var(--paper-accent); outline-offset: -1px; }
 .exam-question:has(> .work-space-handle[data-selected]) .work-space:not(.part-work-space .work-space),
 .part-work-space:has(> .work-space-handle[data-selected]) > .work-space {
-  outline: 1px dashed #b89a80; outline-offset: -1px;
+  outline: 2px solid var(--paper-accent); outline-offset: -2px;
 }
 
 /* A Short Answer Part's space carries its own bar, in the gap below the Part
    rather than below the whole Multipart question. The wrapper takes no height of its
    own, so the Part measures as it prints. */
 .part-work-space { position: relative; }
-.part-work-space > .work-space-handle { left: 0; bottom: -16px; }
+.part-work-space > .work-space-handle { left: 0; bottom: -7px; }
 
 /* How many incorrect answers a question shows, when it hides some (ADR-0038):
    a quiet line in the gap below its answers, over the body column, taking none
@@ -1326,14 +1327,20 @@ button { cursor: pointer; }
 
 /* The bar that drags a work space open: in the gap below the question, over
    the body column, taking none of the question's measured height. */
+/* The strip a Work Space's handle lives in, centred on its bottom edge and
+   across the body column. Only the handle itself — styled as a picture's
+   corner handle — takes the pointer. */
 .work-space-handle {
-  position: absolute; left: 40px; right: 0; bottom: -17px; z-index: 2;
+  position: absolute; left: 40px; right: 0; bottom: -7px; z-index: 3;
   display: flex; align-items: center; justify-content: center;
-  height: 14px; border-radius: 7px; cursor: ns-resize; touch-action: none;
-  opacity: 0; transition: opacity 90ms ease-in;
+  height: 14px; pointer-events: none; touch-action: none;
+  opacity: 0;
 }
 .work-space-grip {
-  width: 44px; height: 4px; border-radius: 2px; background: #b3a498;
+  width: 10px; height: 10px; box-sizing: border-box; flex: none;
+  border: 1.5px solid #fff; border-radius: 2px; background: var(--paper-accent);
+  box-shadow: 0 0 0 1px rgb(58 42 30 / 30%);
+  pointer-events: auto; cursor: ns-resize;
 }
 /* The bar shows on its selected Work Space, and on an empty one — a thin
    strip there is nothing else to point at — under a selected question. */
@@ -1341,10 +1348,13 @@ button { cursor: pointer; }
 .exam-question--selected .work-space-handle[data-empty],
 .work-space-handle:active,
 .work-space-handle:focus-visible { opacity: 1; }
-.work-space-handle[data-empty] { border: 1px dashed #d4c3ae; background: rgb(255 253 248 / 85%); }
-.work-space-handle:hover .work-space-grip,
-.exam-question--sizing .work-space-grip { background: #9f5037; }
-.work-space-handle:focus-visible { outline: 2px solid #9f5037; outline-offset: 1px; }
+/* An empty one is a line where its bottom edge would be. */
+.work-space-handle[data-empty]::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%;
+  border-top: 2px solid var(--paper-accent);
+}
+.work-space-handle:focus-visible { outline: none; }
+.work-space-handle:focus-visible .work-space-grip { outline: 2px solid var(--paper-accent); outline-offset: 2px; }
 .exam-question--sizing, .exam-question--sizing * { cursor: ns-resize !important; }
 /* The note and the bar start where the body does: past the number column and
    its 6px gap, however wide the Paper Style makes that column. Condensed's

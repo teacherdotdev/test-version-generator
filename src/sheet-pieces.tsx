@@ -17,7 +17,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
-import { MIN_SIZE } from './picture-geometry'
+import { clampSize, MIN_SIZE } from './picture-geometry'
 import { picturePieceOf, SheetPiecesContext, SheetQuestionContext } from './sheet-pieces-context'
 
 const CORNERS = ['nw', 'ne', 'sw', 'se'] as const
@@ -35,13 +35,23 @@ function boxOf(picture: HTMLElement): Box {
  * outline while pointed at and corner handles once selected. Outside the
  * editor's sheet — a preview, a measurement — it is the picture alone.
  */
-export function SheetPicture({ pictureKey, children }: { pictureKey: string; children: ReactNode }) {
+export function SheetPicture({ pictureKey, plannedSize, render }: {
+  pictureKey: string
+  /** The size the picture is planned at, `null` for one never sized. */
+  plannedSize: number | null
+  /** The picture as it prints, at `size` when one is given. */
+  render: (size: number | null) => ReactNode
+}) {
   const pieces = useContext(SheetPiecesContext)
   const questionId = useContext(SheetQuestionContext)
   const anchor = useRef<HTMLSpanElement | null>(null)
   const [hovered, setHovered] = useState(false)
   const [box, setBox] = useState<Box | null>(null)
   const piece = questionId ? picturePieceOf(questionId, pictureKey) : null
+  // A released drag keeps its size until the sheet is planned with it, so the
+  // picture never snaps back to where the drag began first.
+  const held = piece ? pieces?.heldPictureSize?.(piece, plannedSize) ?? null : null
+  const children = render(held)
   const selected = piece !== null && pieces?.selected === piece
   const shown = Boolean(pieces?.onResizePicture) && (hovered || selected)
 
@@ -113,12 +123,18 @@ export function SheetPicture({ pictureKey, children }: { pictureKey: string; chi
       handle.removeEventListener('pointermove', move)
       handle.removeEventListener('pointerup', up)
       handle.removeEventListener('pointercancel', up)
-      // The page draws the size it is given; nothing of the drag stays behind.
-      picture.style.width = before.width
-      picture.style.zoom = before.zoom
       picture.style.maxWidth = before.maxWidth
-      if (event.type === 'pointercancel' || Math.abs(width - startWidth) < 1) return
-      pieces.onResizePicture?.(questionId, pictureKey, width / column)
+      if (event.type === 'pointercancel' || Math.abs(width - startWidth) < 1) {
+        // Nothing was set: the picture goes back as it was.
+        picture.style.width = before.width
+        picture.style.zoom = before.zoom
+        return
+      }
+      // The width stays as dragged; the held size draws it from here, and the
+      // plan once it has caught up.
+      const size = clampSize(width / column)
+      pieces.onResizePicture?.(questionId, pictureKey, size)
+      if (piece) pieces.holdPictureSize?.(piece, size)
     }
     handle.addEventListener('pointermove', move)
     handle.addEventListener('pointerup', up)

@@ -1,6 +1,7 @@
 // The heights Work Space handles' drags show on the sheet before the Exam's
 // own plan draws them, by the position each sizes: a Short Answer question's
-// id, or a Part's or Subpart's.
+// id, or a Part's or Subpart's. A picture's corner drag is held the same way,
+// its width as a share of its column standing in for a height (ADR-0050).
 //
 // A drag previews locally and commits once, on release (see `WorkSpaceHandle`
 // in `exam-page.tsx`). The commit changes the Exam at once, but the sheet
@@ -73,7 +74,7 @@ function caughtUp(release: SheetState, sheet: SheetState): boolean {
 export function shownHeight(
   previews: WorkSpacePreviews,
   positionId: string,
-  planned: PlannedWorkSpace,
+  planned: Pick<PlannedWorkSpace, 'height'>,
   sheet: SheetState,
 ): number | null {
   const preview = previews.get(positionId)

@@ -205,7 +205,11 @@ function renderNode(node: ProseMirrorJSON, key: number): ReactNode {
           <Slot pictureKey={attrs.pictureKey}>
             {pending
               ? <PictureNeeded pending={pending} />
-              : <SheetPicture pictureKey={pictureKeyOf(attrs)}>{blockPicture(attrs, caption)}</SheetPicture>}
+              : <SheetPicture
+                  pictureKey={pictureKeyOf(attrs)}
+                  plannedSize={pictureSizeOf(attrs)}
+                  render={(size) => blockPicture(size === null ? attrs : { ...attrs, size }, caption)}
+                />}
           </Slot>
           {caption && <figcaption>{caption}</figcaption>}
         </figure>

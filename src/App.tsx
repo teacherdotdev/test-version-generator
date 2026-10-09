@@ -2620,11 +2620,14 @@ function ExamEditor({
           >
             <History aria-hidden="true" />
           </button>
+          {/* Save and Export stay available while a change is still being
+              backed up — both wait for it — so they never flicker off and on
+              with every edit; only a failed backup holds them. */}
           <button
             type="button"
             className="primary-button"
             aria-label="Save"
-            disabled={isHistoricalBrowsing || !state.dirty || backupStatus !== 'ready'}
+            disabled={isHistoricalBrowsing || !state.dirty || backupStatus === 'failed'}
             onClick={() => void store.save()}
           >
             Save
@@ -2633,7 +2636,7 @@ function ExamEditor({
             ref={exportButton}
             type="button"
             className="secondary-button"
-            disabled={backupStatus !== 'ready' || isHistoricalBrowsing}
+            disabled={backupStatus === 'failed' || isHistoricalBrowsing}
             aria-haspopup="dialog"
             aria-expanded={exportDialog !== null}
             onClick={() => openExport()}
@@ -2714,7 +2717,7 @@ function ExamEditor({
             kind: 'action',
             label: 'Save',
             icon: <Save />,
-            disabled: isHistoricalBrowsing || !state.dirty || backupStatus !== 'ready',
+            disabled: isHistoricalBrowsing || !state.dirty || backupStatus === 'failed',
             onSelect: () => { void store.save() },
           },
           {
@@ -2736,7 +2739,7 @@ function ExamEditor({
             kind: 'action',
             label: 'Export',
             icon: <FileType2 />,
-            disabled: backupStatus !== 'ready' || isHistoricalBrowsing,
+            disabled: backupStatus === 'failed' || isHistoricalBrowsing,
             onSelect: openExport,
           },
           {
