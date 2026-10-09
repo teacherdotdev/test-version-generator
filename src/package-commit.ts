@@ -10,7 +10,7 @@ import {
 import type { SavedState } from './exam-store'
 import { wordBankLayoutFor, type BankAnswerWidth } from './export-plan'
 import type { ImportSelection } from './import-selection'
-import { positionColumns, type ExamRecordPosition, type ImportProposal } from './package-import'
+import { blockPictureKeysOf, positionColumns, type ExamRecordPosition, type ImportProposal } from './package-import'
 import { withResolvedImages, type PendingImageResolution } from './pending-images'
 import { createWorkingCopy } from './question-bank'
 import { UNTITLED_QUESTION_BANK } from './question-bank-workspaces'
@@ -115,6 +115,7 @@ export function planImport(
     const workSpace: Record<string, WorkSpace> = {}
     const wordBankLayout: Record<string, WordBankLayout> = {}
     const wordBankLayoutSet: Record<string, true> = {}
+    const pictureSizes: Record<string, Record<string, number>> = {}
     const identityOf = (position: ExamRecordPosition) =>
       identities.get(position.question.bank)!.get(position.question.question)!
     const layout = positionColumns(
@@ -144,6 +145,18 @@ export function planImport(
         if (position.wordBankLayout !== undefined && position.wordBankLayoutSet === true) {
           wordBankLayoutSet[question.id] = true
         }
+      }
+      // An Exam Picture Size names its picture by its place among the
+      // Question's block pictures, which the imported Question holds in the
+      // record's order; one still a Pending Image has nothing to size yet.
+      if (position.pictureSizes) {
+        const keys = blockPictureKeysOf(question)
+        const sizes: Record<string, number> = {}
+        for (const { picture, size } of position.pictureSizes) {
+          const key = keys[picture - 1]
+          if (key) sizes[key] = size
+        }
+        if (Object.keys(sizes).length > 0) pictureSizes[question.id] = sizes
       }
       if (position.workSpace) {
         workSpace[question.id] = {
@@ -177,6 +190,7 @@ export function planImport(
       ...(Object.keys(workSpace).length > 0 ? { workSpace } : {}),
       ...(Object.keys(wordBankLayout).length > 0 ? { wordBankLayout } : {}),
       ...(Object.keys(wordBankLayoutSet).length > 0 ? { wordBankLayoutSet } : {}),
+      ...(Object.keys(pictureSizes).length > 0 ? { pictureSizes } : {}),
       ...(sections ? { sections, sectionOf } : {}),
       ...(exam.sectionHeadings ? { sectionHeadings: exam.sectionHeadings } : {}),
       ...(exam.headingSize ? { headingSize: exam.headingSize } : {}),

@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { inspectImportValue } from '../../package-import'
 import { readQuestionFile } from '..'
-import { blocksText } from '../rich-text'
+import { blankAnswers, blocksText } from '../rich-text'
 
 const fixture = (path: string) => new Uint8Array(readFileSync(new URL(`../fixtures/${path}`, import.meta.url)))
 const encode = (text: string) => new TextEncoder().encode(text)
@@ -24,7 +24,7 @@ describe('Respondus Standard Format', () => {
     expect(reading.found).toBe(10)
     expect(questions.map((question) => question.type)).toEqual([
       'multiple-choice', 'true-false', 'short-answer', 'short-answer', 'matching', 'short-answer',
-      'multiple-choice', 'short-answer', 'multiple-choice',
+      'multiple-choice', 'fill-in-the-blank', 'multiple-choice',
     ])
     const [speed, trueFalse, essay, blank, matching, order, several, blanks, planet] = questions
 
@@ -40,6 +40,7 @@ describe('Respondus Standard Format', () => {
 
     expect(text(essay!.stem)).toBe('How is the Michelson-Morely experiment related to Albert\nEinstein\'s theory of relativity?')
     expect(text(essay!.suggestedAnswer)).toStartWith('In 1887, Albert Michelson and Edward Morely carried out experiments')
+    // Its sentence has no place for a blank, so it stays Short Answer.
     expect(text(blank!.suggestedAnswer)).toBe('Zworykin / Vladimir Zworykin / Vladimir Kosma Zworykin')
 
     expect(matching!.prompts!.map((prompt) => text(prompt.content))).toEqual(['Michelson-Morely', 'Einstein', 'Marconi'])
@@ -52,7 +53,7 @@ describe('Respondus Standard Format', () => {
     expect(reading.issues.find((issue) => issue.code === 'multiple-answer')?.message).toContain('(b, d)')
 
     expect(text(blanks!.stem)).toBe('A _____ by any other _____ would smell as\n_____.')
-    expect(text(blanks!.suggestedAnswer)).toBe('Blank 1: rose / red flower\nBlank 2: name\nBlank 3: sweet / good')
+    expect(blankAnswers(blanks!.stem.content)).toEqual(['rose / red flower', 'name', 'sweet / good'])
 
     // A picture Respondus reads from a folder is left out, and said so.
     expect(text(planet!.stem)).toBe('Which planet is shown?')

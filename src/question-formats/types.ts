@@ -60,16 +60,33 @@ export type ForeignQuestion = {
   | { kind: 'matching'; pairs: { left: Blocks | null; right: Blocks | null }[] }
   /** An essay or short answer, with its model answer if the source gave one. */
   | { kind: 'short-answer'; suggestedAnswer?: Blocks }
-  /** Every accepted answer to a fill-in-the-blank or short-answer question. */
-  | { kind: 'fill-in-blank'; accepted: string[] }
-  /** Several named blanks, each with its accepted answers. */
-  | { kind: 'fill-in-blanks'; blanks: { name: string; accepted: string[] }[] }
+  /** Every accepted answer to a fill-in-the-blank or short-answer question.
+   *  Its stem marks where the blank goes with `BLANK_MARK`, when the source
+   *  says; `dropdown` is a blank a student picked from a list, whose
+   *  `accepted` is its correct choice. */
+  | { kind: 'fill-in-blank'; accepted: string[]; dropdown?: boolean }
+  /** Several named blanks, each with its accepted answers, in the order the
+   *  stem's `BLANK_MARK`s stand. */
+  | { kind: 'fill-in-blanks'; blanks: ForeignBlank[] }
   | { kind: 'numeric'; answers: { value: string; tolerance?: string }[] }
   /** Items in their correct order. */
   | { kind: 'ordering'; items: Blocks[] }
 )
 
 export type ForeignChoice = { content: Blocks; correct: boolean }
+
+/** One blank of a several-blank question. `dropdown` is one a student picked
+ *  from a list, whose `accepted` is its correct choice. */
+export type ForeignBlank = { name: string; accepted: string[]; dropdown?: boolean }
+
+/**
+ * Where a blank stands in a parser's stem text: one per blank, in order.
+ * `record.ts` turns each into a Blank holding that blank's answers, so a
+ * teacher's own underscores are never mistaken for one. A Unicode
+ * noncharacter, which no file means as text; a question that ends up some
+ * other kind prints it as `_____`.
+ */
+export const BLANK_MARK = '\uFDD0'
 
 export type IssueSeverity = 'error' | 'warning' | 'info'
 

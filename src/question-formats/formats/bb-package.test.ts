@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import JSZip from 'jszip'
 import { inspectImportValue } from '../../package-import'
 import { readQuestionFile } from '..'
-import { blocksText } from '../rich-text'
+import { blankAnswers, blocksText } from '../rich-text'
 
 const fixture = (path: string) => new Uint8Array(readFileSync(new URL(`../fixtures/${path}`, import.meta.url)))
 const encode = (text: string) => new TextEncoder().encode(text)
@@ -42,7 +42,7 @@ describe('Blackboard Test Generator pool download', () => {
     expect(reading.found).toBe(6)
     expect(reading.record.bank.name).toBe('test quiz')
     expect(questions.map((question) => question.type)).toEqual([
-      'multiple-choice', 'multiple-choice', 'true-false', 'short-answer', 'short-answer', 'matching',
+      'multiple-choice', 'multiple-choice', 'true-false', 'short-answer', 'fill-in-the-blank', 'matching',
     ])
     expect(questions.map((question) => text(question.stem))).toEqual([
       'Which of the following is a prime number?',
@@ -60,7 +60,7 @@ describe('Blackboard Test Generator pool download', () => {
       ['4', false], ['5', true], ['6', false],
     ])
     expect(questions[2]!.choices!.map((choice) => choice.correct)).toEqual([true, false])
-    expect(text(questions[4]!.suggestedAnswer)).toBe('four / 4')
+    expect(blankAnswers(questions[4]!.stem.content)).toEqual(['four / 4'])
     const matching = questions[5]!
     expect(matching.prompts!.map((prompt) => text(prompt.content))).toEqual(['12', '1', '3', '4'])
     const answerOf = (index: number) =>
@@ -109,7 +109,7 @@ describe('Blackboard QTI pool and test export', () => {
     expect(reading.found).toBe(10)
     expect(questions.map((question) => question.type)).toEqual([
       'multiple-choice', 'multiple-choice', 'true-false', 'short-answer', 'matching',
-      'short-answer', 'short-answer', 'short-answer', 'short-answer',
+      'fill-in-the-blank', 'short-answer', 'short-answer', 'fill-in-the-blank',
     ])
 
     const [choice, multiple, trueFalse, essay, matching, blank, numeric, ordering, blanks] = questions
@@ -137,10 +137,14 @@ describe('Blackboard QTI pool and test export', () => {
     expect([answerOf(0), answerOf(1)]).toEqual(['Paris', 'Tokyo'])
     expect(matching!.wordBank!.map((answer) => text(answer.content))).toContain('Lima')
 
-    expect(text(blank!.suggestedAnswer)).toBe('oxygen / O')
+    // The question's own underscores are where its Blank goes.
+    expect(text(blank!.stem)).toBe('Water is made of hydrogen and _____.')
+    expect(blankAnswers(blank!.stem.content)).toEqual(['oxygen / O'])
     expect(text(numeric!.suggestedAnswer)).toBe('3.14 (± 0.01)')
     expect(text(ordering!.suggestedAnswer).split(/\n+/)).toEqual(['Mercury', 'Earth', 'Mars'])
-    expect(text(blanks!.suggestedAnswer)).toBe('red: red / crimson\nblue: blue')
+    // Each `[name]` in the text is its blank's place.
+    expect(text(blanks!.stem)).toBe('Roses are _____ and violets are _____.')
+    expect(blankAnswers(blanks!.stem.content)).toEqual(['red / crimson', 'blue'])
 
     // The Hot Spot question is left out, and says why.
     const hotSpot = reading.issues.find((issue) => issue.code === 'unsupported-type')

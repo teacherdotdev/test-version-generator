@@ -46,6 +46,7 @@ export type QuestionType =
   | 'multiple-choice'
   | 'true-false'
   | 'matching'
+  | 'fill-in-the-blank'
   | 'open'
   | 'multipart'
 
@@ -95,6 +96,7 @@ export const SECTION_LABELS: Record<QuestionType, string> = {
   'multiple-choice': 'Multiple choice',
   'true-false': 'True/False',
   matching: 'Matching',
+  'fill-in-the-blank': 'Fill in the blank',
   open: 'Short answer',
   multipart: 'Multipart',
 }
@@ -145,6 +147,12 @@ export type Exam = {
    *  question id. A change of Paper Style places every other one again and
    *  never these (ADR-0044). Absent means the teacher chose none. */
   wordBankLayoutSet?: Record<string, true>
+  /** How wide this Exam prints a question's block pictures, keyed by question
+   *  id and then by picture (`pictureKey`): an Exam Picture Size, set on the
+   *  sheet, which wins over the picture's Authored Image Size on this Exam
+   *  alone and never changes the Question. Absent means each prints as
+   *  authored. */
+  pictureSizes?: Record<string, Record<string, number>>
   /** This Exam's Question Sections, in the order they print. Absent on an Exam
    *  written before Sections were stored: its Sections are then derived, one
    *  per Question Type (see `sectionsOf`). */
@@ -395,6 +403,7 @@ export const SECTION_ORDER: readonly QuestionType[] = [
   'multiple-choice',
   'true-false',
   'matching',
+  'fill-in-the-blank',
   'open',
   'multipart',
 ]
@@ -402,7 +411,7 @@ export const SECTION_ORDER: readonly QuestionType[] = [
 export const DEFAULT_EXAM_TITLE = 'Untitled Exam'
 
 function newQuestionDoc(type: QuestionType): ProseMirrorJSON {
-  if (type === 'open') return structuredClone(emptyDoc)
+  if (type === 'open' || type === 'fill-in-the-blank') return structuredClone(emptyDoc)
   if (type === 'multipart') {
     return { type: 'doc', content: [{ type: 'paragraph' }, newMultipartPartsNode()] }
   }

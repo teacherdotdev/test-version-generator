@@ -114,6 +114,7 @@ import {
 } from './export-plan'
 import { DIFFICULTY_LABELS } from './exam'
 import type { ProseMirrorJSON } from './question-doc'
+import { BLANK_LINE } from './blank'
 import { pictureKey, printedPictureWidth } from './picture-geometry'
 
 const DOCX_MIME =
@@ -325,6 +326,10 @@ function inlineChildren(
         break
       case 'math_inline':
         result.push(mathRun(stringOf(attrsOf(child).value)))
+        break
+      // A Blank prints its line, and its answer only in the Answer Key.
+      case 'blank':
+        result.push(new TextRun({ text: BLANK_LINE }))
         break
       case 'image': {
         const attrs = attrsOf(child)

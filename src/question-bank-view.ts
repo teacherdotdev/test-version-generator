@@ -110,8 +110,9 @@ const TYPE_RANK: Record<QuestionType, number> = {
   'multiple-choice': 0,
   'true-false': 1,
   matching: 2,
-  open: 3,
-  multipart: 4,
+  'fill-in-the-blank': 3,
+  open: 4,
+  multipart: 5,
 }
 
 const DIFFICULTY_RANK: Record<DifficultyFilter, number> = {

@@ -10,8 +10,10 @@ import { useContext, type CSSProperties, type ReactNode } from 'react'
 import katex from 'katex'
 import { isCentred } from './centring'
 import { pendingImageOf, type PendingImageReference, type ProseMirrorJSON } from './question-doc'
-import { keptAspect, legacyRatioOf, pictureCropOf, pictureSizeOf, type PictureCrop } from './picture-geometry'
+import { keptAspect, legacyRatioOf, pictureCropOf, pictureKey as pictureKeyOf, pictureSizeOf, type PictureCrop } from './picture-geometry'
+import { SheetPicture } from './sheet-pieces'
 import { PictureSlotContext } from './picture-slot'
+import { BLANK_LINE } from './blank'
 
 function attrsOf(node: ProseMirrorJSON): Record<string, unknown> {
   const attrs = node.attrs
@@ -180,6 +182,9 @@ function renderNode(node: ProseMirrorJSON, key: number): ReactNode {
     }
     case 'math_inline':
       return <Tex key={key} value={text(attrs.value)} display={false} />
+    // A Blank prints as its line, never its answer (see `blank.ts`).
+    case 'blank':
+      return <span key={key} className="doc-blank">{BLANK_LINE}</span>
     case 'hr':
       return <hr key={key} />
     case 'image': {
@@ -200,7 +205,11 @@ function renderNode(node: ProseMirrorJSON, key: number): ReactNode {
           <Slot pictureKey={attrs.pictureKey}>
             {pending
               ? <PictureNeeded pending={pending} />
-              : blockPicture(attrs, caption)}
+              : <SheetPicture
+                  pictureKey={pictureKeyOf(attrs)}
+                  plannedSize={pictureSizeOf(attrs)}
+                  render={(size) => blockPicture(size === null ? attrs : { ...attrs, size }, caption)}
+                />}
           </Slot>
           {caption && <figcaption>{caption}</figcaption>}
         </figure>

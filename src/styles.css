@@ -606,6 +606,10 @@ button { cursor: pointer; }
   border-color: #cdb9a6; box-shadow: 0 2px 8px rgb(91 68 47 / 12%);
 }
 .question-bank-reading-item:focus-visible { outline: 2px solid #8a6a4c; outline-offset: 2px; }
+/* Selected with Cmd/Ctrl- or Shift-click, or Cmd/Ctrl-A, for Cmd/Ctrl-C. */
+.question-bank-reading-item[aria-current="true"] {
+  border-color: var(--paper-accent); background: var(--paper-accent-wash);
+}
 /* The pencil says what a click does, and Copy sits beside it; both wait at
    the end of the head row until the Question is pointed at or focused. A
    Copy that has just run stays up long enough to be read. */
@@ -1288,20 +1292,22 @@ button { cursor: pointer; }
 .work-space[data-ruling='dotted'] .work-space-rule { border-bottom: 1.5px dotted #4a4038; }
 .work-space-points { flex: none; white-space: nowrap; }
 
-/* On the sheet a teacher edits, blank space is otherwise invisible, so the
-   question that owns it shows its extent while hovered, selected or being
-   sized. The outline paints outside the box and takes no height. */
-.exam-question:has(.work-space-handle):hover .work-space,
-.exam-question--selected .work-space,
-.exam-question--sizing .work-space {
-  outline: 1px dashed #d4c3ae; outline-offset: -1px;
+/* On the sheet a teacher edits, blank space is otherwise invisible. Exactly
+   as a picture is (ADR-0050), a Work Space is outlined while pointed at, and
+   outlined more strongly once selected, when its one handle shows at the
+   middle of its bottom edge. The outline paints over the box and takes no
+   height. */
+.exam-question .work-space:hover { outline: 1px solid var(--paper-accent); outline-offset: -1px; }
+.exam-question:has(> .work-space-handle[data-selected]) .work-space:not(.part-work-space .work-space),
+.part-work-space:has(> .work-space-handle[data-selected]) > .work-space {
+  outline: 2px solid var(--paper-accent); outline-offset: -2px;
 }
 
 /* A Short Answer Part's space carries its own bar, in the gap below the Part
    rather than below the whole Multipart question. The wrapper takes no height of its
    own, so the Part measures as it prints. */
 .part-work-space { position: relative; }
-.part-work-space > .work-space-handle { left: 0; bottom: -16px; }
+.part-work-space > .work-space-handle { left: 0; bottom: -7px; }
 
 /* How many incorrect answers a question shows, when it hides some (ADR-0038):
    a quiet line in the gap below its answers, over the body column, taking none
@@ -1321,22 +1327,28 @@ button { cursor: pointer; }
 
 /* The bar that drags a work space open: in the gap below the question, over
    the body column, taking none of the question's measured height. */
+/* The strip a Work Space's handle lives in, centred on its bottom edge and
+   across the body column. Only the handle itself — styled as a picture's
+   corner handle — takes the pointer. */
 .work-space-handle {
-  position: absolute; left: 40px; right: 0; bottom: -17px; z-index: 2;
+  position: absolute; left: 40px; right: 0; bottom: -7px; z-index: 3;
   display: flex; align-items: center; justify-content: center;
-  height: 14px; border-radius: 7px; cursor: ns-resize; touch-action: none;
-  opacity: 0; transition: opacity 90ms ease-in;
+  height: 14px; pointer-events: none; touch-action: none;
+  opacity: 0;
 }
 .work-space-grip {
-  width: 44px; height: 4px; border-radius: 2px; background: #b3a498;
+  width: 10px; height: 10px; box-sizing: border-box; flex: none;
+  border: 1.5px solid #fff; border-radius: 2px; background: var(--paper-accent);
+  box-shadow: 0 0 0 1px rgb(58 42 30 / 30%);
+  pointer-events: auto; cursor: ns-resize;
 }
-.exam-question:hover .work-space-handle,
-.exam-question--selected .work-space-handle,
-.exam-question--sizing .work-space-handle,
+/* The handle shows on its selected Work Space. One with no height has
+   nothing to select: it is added from the question's menu. */
+.work-space-handle[data-selected],
+.work-space-handle:active,
 .work-space-handle:focus-visible { opacity: 1; }
-.work-space-handle:hover .work-space-grip,
-.exam-question--sizing .work-space-grip { background: #9f5037; }
-.work-space-handle:focus-visible { outline: 2px solid #9f5037; outline-offset: 1px; }
+.work-space-handle:focus-visible { outline: none; }
+.work-space-handle:focus-visible .work-space-grip { outline: 2px solid var(--paper-accent); outline-offset: 2px; }
 .exam-question--sizing, .exam-question--sizing * { cursor: ns-resize !important; }
 /* The note and the bar start where the body does: past the number column and
    its 6px gap, however wide the Paper Style makes that column. Condensed's
@@ -1539,6 +1551,14 @@ button { cursor: pointer; }
 .margins-input::placeholder { color: #8b7868; }
 .margins-unit { color: #8b7868; }
 body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important; user-select: none; }
+/* While the Margins panel is open, each sheet draws where its margins fall:
+   a dashed line on all four sides, over the content, taking no room. */
+body.margins-guides .exam-page::after {
+  content: ''; position: absolute; z-index: 4; pointer-events: none;
+  top: var(--page-margin-top); right: var(--page-margin-right);
+  bottom: var(--page-margin-bottom); left: var(--page-margin-left);
+  border: 1px dashed var(--paper-accent); opacity: .7;
+}
 
 .vary-summary {
   position: fixed; z-index: 40; left: 50%; bottom: 22px; transform: translateX(-50%);
@@ -1569,6 +1589,8 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
    it out; left to size itself it shrinks to its shortest content. */
 :is(.question-reading, .pop-over-card) .doc-table { width: 100%; table-layout: fixed; }
 .doc-math--block { display: block; margin: 6px 0; text-align: center; }
+/* A Blank prints as one unbroken line, the same length whatever its answer. */
+.doc-blank { white-space: nowrap; }
 /* A Blockquote prints boxed: a quoted source passage set apart from the stem. */
 .doc-content blockquote { margin: 8px 0; padding: 6px 10px; border: 1px solid #000; }
 .doc-content blockquote > :first-child { margin-top: 0; }
@@ -1901,6 +1923,14 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
   line-height: 1.4; user-select: none;
 }
 .sa-body { position: relative; flex: 1 1 auto; min-width: 0; outline: none; }
+/* A Blank in the question editor: its answer on a tinted chip, underlined
+   where the student's line will be, wide enough to click into when empty. */
+.milkdown .ProseMirror .blank-chip {
+  display: inline-block; min-width: 3em; padding: 0 6px;
+  background: var(--paper-accent-wash);
+  border-bottom: 2px solid var(--paper-accent); border-radius: 4px 4px 0 0;
+  color: var(--paper-accent); font-weight: 600;
+}
 .milkdown .ProseMirror .sa-body > :first-child { margin-top: 0; padding-top: 0; }
 .milkdown .ProseMirror .sa-body > :last-child { margin-bottom: 0; padding-bottom: 0; }
 .milkdown .sa-body .crepe-placeholder::before { content: none; }
@@ -2174,6 +2204,7 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
   html[data-export-reference-print] .document-bar,
   html[data-export-reference-print] .question-handles,
   html[data-export-reference-print] .work-space-handle,
+  html[data-export-reference-print] .sheet-picture-frame,
   html[data-export-reference-print] .context-menu,
   html[data-export-reference-print] .vary-summary,
   html[data-export-reference-print] .measure-host,
@@ -3829,21 +3860,6 @@ button.pop-over-chip-option[aria-pressed='true'] svg { visibility: visible; }
 .milkdown .picture-image { display: block; width: 100%; max-width: 100%; }
 .milkdown .picture-frame.is-cropped .picture-image { position: absolute; max-width: none; }
 .milkdown .picture-block.is-selected .picture-frame { outline: 2px solid var(--paper-accent); outline-offset: 0; }
-.milkdown .picture-handle {
-  position: absolute; width: 10px; height: 10px; box-sizing: border-box;
-  border: 1.5px solid #fff; border-radius: 2px; background: var(--paper-accent);
-  box-shadow: 0 0 0 1px rgb(58 42 30 / 30%); display: none; z-index: 2;
-}
-.milkdown .picture-block.is-selected:not(.is-cropping) .picture-handle { display: block; }
-.milkdown .picture-handle[data-grip='nw'] { left: -5px; top: -5px; cursor: nwse-resize; }
-.milkdown .picture-handle[data-grip='ne'] { right: -5px; top: -5px; cursor: nesw-resize; }
-.milkdown .picture-handle[data-grip='sw'] { left: -5px; bottom: -5px; cursor: nesw-resize; }
-.milkdown .picture-handle[data-grip='se'] { right: -5px; bottom: -5px; cursor: nwse-resize; }
-.milkdown .picture-handle[data-grip='n'] { left: calc(50% - 5px); top: -5px; cursor: ns-resize; }
-.milkdown .picture-handle[data-grip='s'] { left: calc(50% - 5px); bottom: -5px; cursor: ns-resize; }
-.milkdown .picture-handle[data-grip='e'] { right: -5px; top: calc(50% - 5px); cursor: ew-resize; }
-.milkdown .picture-handle[data-grip='w'] { left: -5px; top: calc(50% - 5px); cursor: ew-resize; }
-.milkdown .picture-block.is-resizing .picture-frame { outline-style: dashed; }
 
 .milkdown .picture-block.is-cropping .picture-frame { outline: none; z-index: 5; }
 .milkdown .picture-block.is-cropping .picture-window { visibility: hidden; }
@@ -3891,3 +3907,25 @@ button.pop-over-chip-option[aria-pressed='true'] svg { visibility: visible; }
 .milkdown .picture-upload { position: relative; cursor: pointer; }
 .milkdown .picture-upload-input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .milkdown .picture-link { flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid var(--paper-outline); border-radius: 6px; font: inherit; }
+
+/* A block picture on the exam sheet (ADR-0050): outlined while pointed at,
+   and once selected given a handle at each corner that resizes it on this
+   Exam, in proportion. The chrome is drawn over the picture and takes no
+   room; the figure it is placed in is its frame of reference. */
+.exam-workspace .doc-figure { position: relative; }
+.sheet-picture { display: contents; }
+.sheet-picture-frame {
+  position: absolute; z-index: 3; pointer-events: none;
+  outline: 1px solid var(--paper-accent); outline-offset: 0;
+}
+.sheet-picture-frame[data-selected] { outline-width: 2px; }
+.sheet-picture-handle {
+  position: absolute; width: 10px; height: 10px; box-sizing: border-box;
+  border: 1.5px solid #fff; border-radius: 2px; background: var(--paper-accent);
+  box-shadow: 0 0 0 1px rgb(58 42 30 / 30%); pointer-events: auto; touch-action: none;
+}
+.sheet-picture-handle[data-grip='nw'] { left: -5px; top: -5px; cursor: nwse-resize; }
+.sheet-picture-handle[data-grip='ne'] { right: -5px; top: -5px; cursor: nesw-resize; }
+.sheet-picture-handle[data-grip='sw'] { left: -5px; bottom: -5px; cursor: nesw-resize; }
+.sheet-picture-handle[data-grip='se'] { right: -5px; bottom: -5px; cursor: nwse-resize; }
+@media print { .sheet-picture-frame { display: none; } }

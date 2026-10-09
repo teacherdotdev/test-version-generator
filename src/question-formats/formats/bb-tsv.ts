@@ -1,4 +1,4 @@
-import { richBlocks } from '../rich-text'
+import { inMarkedOrder, markNamedBlanks, richBlocks } from '../rich-text'
 import { delimitedRows, excerpt, plainStructure, trimTrailingEmpty } from '../text'
 import type { ForeignQuestion, FormatInput, FormatSpec, ImportIssue, ParseResult } from '../types'
 
@@ -90,7 +90,9 @@ function parseRow({ fields, line }: Row): ForeignQuestion | string {
         }
       }
       if (!blanks.length) return 'it has no blanks.'
-      return { ...base, kind: 'fill-in-blanks', blanks }
+      // Blackboard writes each blank in the question as `[name]`.
+      const marked = markNamedBlanks(base.stem, blanks.map((blank) => blank.name))
+      return { ...base, stem: marked.stem, kind: 'fill-in-blanks', blanks: inMarkedOrder(blanks, marked.order) }
     }
     case 'NUM': {
       const value = (rest[0] ?? '').trim()

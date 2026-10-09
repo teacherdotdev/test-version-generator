@@ -1,6 +1,6 @@
 import { htmlBlocks, plainBlocks } from '../rich-text'
 import { excerpt, linesOf, plainStructure, type Line } from '../text'
-import type { Blocks, ForeignChoice, ForeignQuestion, FormatInput, FormatSpec, ImportIssue, ParseResult } from '../types'
+import { BLANK_MARK, type Blocks, type ForeignChoice, type ForeignQuestion, type FormatInput, type FormatSpec, type ImportIssue, type ParseResult } from '../types'
 import { categoryTopic } from './moodle-xml'
 
 /**
@@ -20,7 +20,8 @@ import { categoryTopic } from './moodle-xml'
  *   multiple answer, every answer worth anything right. `%n%` weights and
  *   `#feedback` may follow any `=` or `~`, and `####` starts general feedback.
  * - Text after the braces makes a missing-word question: the braces become a
- *   blank `_____` in the question text.
+ *   blank in the question text — a Blank, for one with only `=` answers, and
+ *   a `_____` line in a multiple choice one.
  *
  * A question with no braces is a description, text between questions, and is
  * skipped.
@@ -122,7 +123,7 @@ function parseQuestion(source: string, line: number, onMissing: (source: string)
   // Text after the answers makes it a missing-word question.
   const missingWord = after.trim() !== ''
   const stemText = missingWord
-    ? `${before.trimEnd()} _____${/^[\s]*[.,;:!?)]/.test(after) ? '' : ' '}${after.trim()}`
+    ? `${before.trimEnd()} ${BLANK_MARK}${/^[\s]*[.,;:!?)]/.test(after) ? '' : ' '}${after.trim()}`
     : before
   const stem = blocksIn(stemText, format, onMissing)
   const base = { line, sourceType: 'GIFT', stem }

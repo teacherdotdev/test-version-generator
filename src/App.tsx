@@ -76,6 +76,7 @@ import {
   SECTION_LABELS,
   SECTION_ORDER,
   createQuestion,
+  duplicateQuestion,
   topicsOf,
   withTopicAdded,
 } from './exam'
@@ -153,6 +154,7 @@ import {
   Save,
   SaveAll,
   Tags,
+  TextCursorInput,
   Trash2,
   TriangleAlert,
   Type as TypeIcon,
@@ -219,6 +221,8 @@ import {
   multipartSubpartsSchema,
   multipartSubpartsView,
 } from './multipart'
+import { blankIcon, blankSchema, isInBlank, toggleBlank } from './blank-editor'
+import { pastedSummary, questionsToAdd } from './question-clipboard'
 import {
   keepSuggestedAnswer,
   suggestedAnswerMode,
@@ -232,6 +236,7 @@ const QUESTION_TYPE_ICONS: Record<QuestionType, ReactNode> = {
   'multiple-choice': <ListChecks />,
   'true-false': <ToggleLeft />,
   matching: <Link2 />,
+  'fill-in-the-blank': <TextCursorInput />,
   open: <AlignLeft />,
   multipart: <BookOpenText />,
 }
@@ -484,6 +489,7 @@ function CrepeQuestion({
   fixedChoices = false,
   matching = false,
   multipart = false,
+  blanks = false,
 }: {
   value: ProseMirrorJSON
   onChange: (doc: ProseMirrorJSON) => void
@@ -498,6 +504,9 @@ function CrepeQuestion({
   /** Whether the question is a Multipart question, whose Parts box is kept on the page
    *  the way a matching set is. */
   multipart?: boolean
+  /** Whether the question is Fill in the Blank, whose toolbar and slash menu
+   *  make Blanks (see `blank-editor.ts`). */
+  blanks?: boolean
 }) {
   useEditor((root) => {
     const safeValue = cleanDocument(value)
@@ -522,6 +531,19 @@ function CrepeQuestion({
                 insertSideBySide(ctx.get(editorViewCtx))
               },
             })
+            // An empty Blank, with the caret in it to type its answer.
+            if (blanks) {
+              builder.getGroup('advanced').addItem('blank', {
+                label: 'Blank',
+                icon: blankIcon,
+                onRun: (ctx: Ctx) => {
+                  ctx.get(commandsCtx).call(clearTextInCurrentBlockCommand.key)
+                  const view = ctx.get(editorViewCtx)
+                  toggleBlank(view.state, view.dispatch)
+                  view.focus()
+                },
+              })
+            }
           },
           // Crepe only flips the slash menu above or below the caret; it never
           // shrinks it. In a short editor neither side has the menu's full
@@ -552,7 +574,9 @@ function CrepeQuestion({
         [Crepe.Feature.Placeholder]: {
           text: multipart
             ? 'Write the shared material: a passage, quote, image or table…'
-            : 'Write the question…',
+            : blanks
+              ? 'Write the sentence, then select a word and make it a Blank…'
+              : 'Write the question…',
         },
         [Crepe.Feature.Toolbar]: {
           buildToolbar: (builder) => {
@@ -589,6 +613,22 @@ function CrepeQuestion({
                 active: (ctx: Ctx) => isCentreActive(ctx),
                 onRun: (ctx: Ctx) => toggleCentre(ctx),
               })
+            // The selected words become a Blank, and its answer; inside a
+            // Blank, it turns back into text.
+            if (blanks) {
+              builder
+                .getGroup('formatting')
+                .addItem('blank', {
+                  icon: blankIcon,
+                  label: 'Blank',
+                  active: (ctx: Ctx) => isInBlank(ctx.get(editorViewCtx).state),
+                  onRun: (ctx: Ctx) => {
+                    const view = ctx.get(editorViewCtx)
+                    toggleBlank(view.state, view.dispatch)
+                    view.focus()
+                  },
+                })
+            }
           },
         },
       },
@@ -641,6 +681,7 @@ function CrepeQuestion({
       .use(sideBySideView)
       .use(sideBySidePanelView)
       .use(keepSideBySidesInStems)
+      .use(blankSchema)
       .use(centringDecorations)
       .use(centringKeymap)
     // Make the whole multiple-choice block — or matching set — the drag target
@@ -1009,6 +1050,7 @@ function QuestionDialog({
             fixedChoices={type === 'true-false'}
             matching={type === 'matching'}
             multipart={type === 'multipart'}
+            blanks={type === 'fill-in-the-blank'}
             onReady={(readDocument) => {
               readEditorDocument.current = readDocument
             }}
@@ -1343,6 +1385,16 @@ function QuestionBankWorkspace({
           }
         : undefined}
       onRemoveFromWorkingCopy={onRemoveFromExam}
+      onPasteQuestions={(questionIds) => void (async () => {
+        // A paste into a bank makes new Questions like the copied ones, as
+        // Duplicate does — into their own bank or any other — and selects
+        // them. Copies of Questions this browser no longer holds are skipped.
+        const located = await service.locateQuestions(questionIds)
+        if (located.length === 0) return
+        const copies = located.map(({ question }) => duplicateQuestion(question))
+        onBankChange(await service.commit(bank.id, { kind: 'create-questions', questions: copies }))
+        selection.selectAll(copies.map(({ id }) => id))
+      })()}
     />
     {exporting && <QuestionBankExportDialog bank={bank} onClose={() => setExporting(false)} />}
     {choosingType && <ContextMenu
@@ -1575,6 +1627,11 @@ function QuestionBankTabsPane({
               aria-selected={id === workspace.activeBankId}
               tabIndex={id === workspace.activeBankId ? 0 : -1}
               onClick={() => void activate(id)}
+              // A double-click opens the bank's own page. The editor is left
+              // by loading a document, so the browser's leave-page guard still
+              // stands between the teacher and an unsaved Working Copy.
+              onDoubleClick={() => window.location.assign(`/question-bank?id=${encodeURIComponent(id)}`)}
+              title="Double-click to open this Question Bank's page"
               onKeyDown={(event) => {
                 if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
                 event.preventDefault()
@@ -2125,6 +2182,21 @@ function ExamEditor({
     store.addManyToWorkingCopy(questions, target)
     selectAndReveal(questions.at(-1)!.id)
   }
+  // A paste onto the sheet adds the copied Questions themselves, as a bank's
+  // Add does, after the last selected question or at the end; one already on
+  // the Exam is skipped. Their banks open as tabs, so they can be found again.
+  const pasteQuestions = async (questionIds: string[], after: string | null) => {
+    const located = await bankWorkspaces.locateQuestions(questionIds)
+    const adding = questionsToAdd(located.map(({ question }) => question), new Set(workingCopyIds))
+    const skipped = located.length - adding.length
+    if (adding.length > 0) {
+      const banks = [...new Set(located.filter(({ question }) => adding.includes(question)).map(({ bankId }) => bankId))]
+      for (const bankId of banks) await bankWorkspaces.openTab({ examId }, bankId)
+      if (banks.length > 0) setBankRevision((revision) => revision + 1)
+      addManyToWorkingCopy(adding, after ? { kind: 'question', questionId: after, placement: 'after' } : null)
+    }
+    setVarySummary(pastedSummary(adding.length, skipped, questionIds.length))
+  }
   const shuffleSelectedQuestions = (questionIds: readonly string[]) => {
     store.shuffleSelectedQuestions(questionIds)
     setVarySummary('Shuffled question order.')
@@ -2548,11 +2620,14 @@ function ExamEditor({
           >
             <History aria-hidden="true" />
           </button>
+          {/* Save and Export stay available while a change is still being
+              backed up — both wait for it — so they never flicker off and on
+              with every edit; only a failed backup holds them. */}
           <button
             type="button"
             className="primary-button"
             aria-label="Save"
-            disabled={isHistoricalBrowsing || !state.dirty || backupStatus !== 'ready'}
+            disabled={isHistoricalBrowsing || !state.dirty || backupStatus === 'failed'}
             onClick={() => void store.save()}
           >
             Save
@@ -2561,7 +2636,7 @@ function ExamEditor({
             ref={exportButton}
             type="button"
             className="secondary-button"
-            disabled={backupStatus !== 'ready' || isHistoricalBrowsing}
+            disabled={backupStatus === 'failed' || isHistoricalBrowsing}
             aria-haspopup="dialog"
             aria-expanded={exportDialog !== null}
             onClick={() => openExport()}
@@ -2642,7 +2717,7 @@ function ExamEditor({
             kind: 'action',
             label: 'Save',
             icon: <Save />,
-            disabled: isHistoricalBrowsing || !state.dirty || backupStatus !== 'ready',
+            disabled: isHistoricalBrowsing || !state.dirty || backupStatus === 'failed',
             onSelect: () => { void store.save() },
           },
           {
@@ -2664,7 +2739,7 @@ function ExamEditor({
             kind: 'action',
             label: 'Export',
             icon: <FileType2 />,
-            disabled: backupStatus !== 'ready' || isHistoricalBrowsing,
+            disabled: backupStatus === 'failed' || isHistoricalBrowsing,
             onSelect: openExport,
           },
           {
@@ -2852,6 +2927,8 @@ function ExamEditor({
             exam={exam}
             arrangement={arrangement}
             selection={selection}
+            onPasteQuestions={(questionIds, after) => void pasteQuestions(questionIds, after)}
+            onSetPictureSize={(questionId, picture, size) => store.setPictureSize(questionId, picture, size)}
             drag={drag}
             revealQuestionId={revealQuestionId}
             onRevealed={clearReveal}

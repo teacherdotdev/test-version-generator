@@ -13,6 +13,7 @@ import {
 } from './exam'
 import { subpartLabelAt } from './export-plan'
 import { bankLetter } from './matching'
+import { blankAnswerBlocks } from './blank'
 import { stemNodesOf, type ProseMirrorJSON } from './question-doc'
 
 export type QuestionReadingContent = {
@@ -29,6 +30,9 @@ export type QuestionReadingContent = {
     wordBank: { id: string; content: ProseMirrorJSON[] }[]
   }
   suggestedAnswer?: ProseMirrorJSON[]
+  /** A Fill in the Blank question's Blanks' answers, in order, on one line —
+   *  the stem draws each Blank as its line. */
+  blankAnswers?: ProseMirrorJSON[]
   /** A Multipart question's Parts, lettered as the test prints them, each with its own
    *  answers or Subparts; the shared material is `stem`. */
   parts?: QuestionReadingPart[]
@@ -89,6 +93,10 @@ export function readingOfQuestion(question: Question): QuestionReadingContent {
         ? { suggestedAnswer: childNodes(question.suggestedAnswer) }
         : {}),
     }
+  }
+  if (question.type === 'fill-in-the-blank') {
+    const answers = blankAnswerBlocks(question.doc)
+    return { ...base, ...(answers.length > 0 ? { blankAnswers: answers } : {}) }
   }
   if (question.type === 'multipart') {
     return {

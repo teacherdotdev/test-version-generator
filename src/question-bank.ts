@@ -38,6 +38,10 @@ export type ExamWorkingCopy = {
    *  which a change of Paper Style leaves where they are (ADR-0044). A
    *  layout given on arrival is not one. */
   wordBankLayoutSet?: Record<string, true>
+  /** How wide this Exam prints a question's block pictures, keyed by Question
+   *  Bank record id and then by picture: Exam presentation like `workSpace`,
+   *  set on the sheet, never changing the Question. Absent means as authored. */
+  pictureSizes?: Record<string, Record<string, number>>
   /** The Working Copy's answer arrangement, keyed by Question Bank record id.
    *  Absent means authored order, preserving compatibility with drafts stored
    *  before answer shuffling existed. */
@@ -167,7 +171,11 @@ export function withReferencesRemoved(
   const sectionOf = draft.sectionOf
     ? { ...draft.sectionOf }
     : undefined
+  const pictureSizes = draft.pictureSizes
+    ? { ...draft.pictureSizes }
+    : undefined
   for (const id of [...removing, ...partIds]) {
+    delete pictureSizes?.[id]
     delete wordBankLayoutSet?.[id]
     delete choiceOrder?.[id]
     delete hiddenAnswers?.[id]
@@ -186,6 +194,7 @@ export function withReferencesRemoved(
     ...(wordBankLayout ? { wordBankLayout } : {}),
     ...(wordBankLayoutSet ? { wordBankLayoutSet } : {}),
     ...(sectionOf ? { sectionOf } : {}),
+    ...(pictureSizes ? { pictureSizes } : {}),
   }
 }
 

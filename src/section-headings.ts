@@ -21,6 +21,7 @@ export const SECTION_TITLE: Record<QuestionType, string> = {
   'multiple-choice': 'Multiple Choice',
   'true-false': 'True/False',
   matching: 'Matching',
+  'fill-in-the-blank': 'Fill in the Blank',
   open: 'Short Answer',
   multipart: 'Multipart',
 }
@@ -32,6 +33,7 @@ export const SECTION_INSTRUCTIONS: Record<QuestionType, string> = {
     'Circle T if the statement is true and F if it is false.',
   matching:
     'Match each item with the correct answer from the word bank. Write its letter in the blank.',
+  'fill-in-the-blank': 'Complete each sentence by writing the missing word or words on each line.',
   open: 'Answer the following questions in the space provided. Show all work.',
   multipart: 'Answer every part of each question.',
 }

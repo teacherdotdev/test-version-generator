@@ -13,6 +13,7 @@ import {
   type SemanticDocument,
 } from './question-bank-export'
 import { TopicBadge } from './badges'
+import { blankAnswerBlocks } from './blank'
 import type { Question } from './exam'
 import { QuestionReading } from './question-reading'
 import {
@@ -192,6 +193,13 @@ async function examPreviewPlan(
   return importPreviewPlan(selected, domMeasure)
 }
 
+/** A Fill in the Blank stem's answers, as the reading draws them, when any
+ *  Blank has one. */
+function blankAnswersReading(stem: ProseMirrorJSON[]): { blankAnswers?: ProseMirrorJSON[] } {
+  const answers = blankAnswerBlocks({ type: 'doc', content: stem })
+  return answers.length > 0 ? { blankAnswers: answers } : {}
+}
+
 /** A record Question, as the reading draws it. */
 function readingOfRecordQuestion(
   question: QuestionBankRecordQuestion,
@@ -251,6 +259,7 @@ function readingOfRecordQuestion(
       },
     } : {}),
     ...(question.suggestedAnswer ? { suggestedAnswer: previewDocument(question.suggestedAnswer) } : {}),
+    ...(question.type === 'fill-in-the-blank' ? blankAnswersReading(previewDocument(question.stem)) : {}),
     ...(question.parts ? {
       parts: question.parts.map((part, index) => partOf(part, String.fromCharCode(97 + index))),
     } : {}),

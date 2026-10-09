@@ -16,7 +16,8 @@ import { isBlankRow, readSheet, type SheetRow } from './sheet'
  * The correct answer may be a letter, a 1-based number, the answer's own
  * text, or a list such as `A, C`. The type column is optional: a question
  * with options is Multiple Choice, one whose answer is true or false is
- * True/False, and any other is Short Answer, its answer accepted.
+ * True/False, and any other with an answer is Fill in the Blank, its answer
+ * the Blank's — without one, it is Short Answer.
  *
  * This is the format of last resort for a table, so it scores lower than
  * any format a file names more precisely.

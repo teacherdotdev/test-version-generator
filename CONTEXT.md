@@ -80,12 +80,16 @@ An optional, free-form label describing subject matter assessed by a question. A
 _Avoid_: Concept
 
 **Points**:
-What answering something correctly is worth, as a whole number: an optional part of a Question that is the same on every Exam using it. Points belong to what a student answers — a Multiple Choice, True/False or Short Answer Question, a whole Matching set, or a Part or Subpart that answers — so a Multipart question's Points, and an Exam's total, are always the sum of their parts and never set apart from them. Something with no Points is unpointed, not worth nothing: it adds nothing to a total. Like Question Metadata, Points never show on the exam sheet or the student test unless the Exam's Paper Style prints them; the Answer Key always records them.
+What answering something correctly is worth, as a whole number: an optional part of a Question that is the same on every Exam using it. Points belong to what a student answers — a Multiple Choice, True/False, Fill in the Blank or Short Answer Question, a whole Matching set, or a Part or Subpart that answers — so a Multipart question's Points, and an Exam's total, are always the sum of their parts and never set apart from them. Something with no Points is unpointed, not worth nothing: it adds nothing to a total. Like Question Metadata, Points never show on the exam sheet or the student test unless the Exam's Paper Style prints them; the Answer Key always records them.
 _Avoid_: Marks (except where a Paper Style prints its own wording), score, weight
 
-**Authored Image Size**:
-How wide a teacher makes a block image: the width of what it shows, as a share of its printable container, such as the Question Content lane, a Panel or an answer-choice cell. It never exceeds the container and always preserves the picture's proportions, so the editor resizes a picture from its corners and sides alike, in proportion. A picture no one has sized fits its container at its own width, or the container's when that is narrower. A picture taken from a Source Document for a Question's own content arrives at about the width it had on its page, and a Picture Crop keeps what it shows at the size it printed at before.
-_Avoid_: Image ratio, image height
+**Default Picture Size**:
+How wide a block image starts on any Exam: the width of what it shows, as a share of its printable container, such as the Question Content lane, a Panel or an answer-choice cell. It is part of the Question, but never set in the question editor, which shows each picture at this size and cannot resize it: a picture taken from a Source Document arrives at about the width it had on its page, a Picture Crop keeps what it shows at the size it printed at before, and a picture with none fits its container at its own width, or the container's when that is narrower. Copy, the Pop-over and the Question Bank show pictures at this size.
+_Avoid_: Authored Image Size, image ratio, image height
+
+**Exam Picture Size**:
+How wide one Exam prints one of its Questions' block pictures, set by dragging the picture's corners on the exam sheet. It is Exam presentation, like Work Space, never Question Content: it wins over the Default Picture Size on that Exam alone — in its test and Answer Key, in every format and Version — and the Question never changes. It belongs to the picture as its source and Picture Crop name it, so re-cropping a picture makes it a new one at its default size. It is a share of its container like the default, never exceeds it and always keeps the picture's proportions, so a picture is resized from its corners alone. Duplicate copies it; Reset size lets it go.
+_Avoid_: Image override, picture scale
 
 **Picture Crop**:
 The part of a block image's Media Asset that Question Content shows, measured on the upright picture. The whole Media Asset is kept, so a crop can always be widened again: in the editor a double click shows the cropped-away parts as a ghost around what is kept. Every output shows only the kept part.
@@ -138,11 +142,11 @@ To exclude Question Content from an Exam while leaving it in its Question Bank.
 To permanently remove Question Content from its Question Bank, every Exam that references it, and their Working Copies. Deletion requires showing the affected Exams and explicit confirmation; existing Export Records remain unchanged. Deleting an Exam permanently removes it and its Export History after a confirmation naming the Exam and how many Export Records go with it.
 
 **Question Type**:
-What a Question asks for, settled when it is created and never changed afterwards: Multiple Choice, True/False, Matching, Short Answer, or Multipart. It decides how the Question is answered and laid out, the wording a new Question Section of only Questions of this type begins with, and what its Answer Key entry records.
+What a Question asks for, settled when it is created and never changed afterwards: Multiple Choice, True/False, Matching, Fill in the Blank, Short Answer, or Multipart. It decides how the Question is answered and laid out, the wording a new Question Section of only Questions of this type begins with, and what its Answer Key entry records.
 _Avoid_: Question format, question kind
 
 **True/False**:
-A Question Type whose answer is one of exactly two fixed choices, True and False, which the teacher picks between rather than writes. The pair is not printed as lettered answers: a T and an F print beside its number for a student to circle — or, under a Paper Style that asks for one, an answer blank to write on — and the Answer Key records T or F rather than a choice letter. It does not Vary: True before False is a convention a student reads, not an authored order.
+A Question Type whose answer is one of exactly two fixed choices, True and False, which the teacher picks between rather than writes. The pair is not printed as lettered answers: a T and an F print beside its number for a student to circle — or, under a Paper Style that asks for one, an answer line to write on — and the Answer Key records T or F rather than a choice letter. It does not Vary: True before False is a convention a student reads, not an authored order.
 _Avoid_: Binary question, T/F question, two-choice multiple choice
 
 **Matching**:
@@ -164,6 +168,14 @@ _Avoid_: Pinned answer, fixed answer, anchored choice
 **Hidden Answer**:
 An incorrect Multiple Choice answer an Exam leaves off one of its positions, so the position shows from one up to all of its Question's incorrect answers. It is Exam presentation like answer order, never Question Content: the Question keeps every answer. The correct answer and every Locked Answer always show; nothing is hidden while no answer is marked correct, or beside a Locked Answer that names others by letter. The answers shown close up and are lettered as they print, on the test and in the Answer Key alike.
 _Avoid_: Removed answer, deleted distractor, answer subset
+
+**Fill in the Blank**:
+A Question Type whose stem is a sentence written with one or more Blanks in it, for a student to write in. Each sentence is its own Question and takes one test number however many Blanks it holds, and its Answer Key entry records each Blank's answer in the order they appear. It has no Word Bank: one would be an accommodation, not part of what the question asks. A Fill in the Blank question with no Blank is incomplete rather than invalid.
+_Avoid_: Cloze, completion, missing word
+
+**Blank**:
+A place in a Fill in the Blank question's stem where a student writes, holding the answer the teacher wrote for it as rich text, as they want the Answer Key to show it — a word, or alternatives the teacher allows. It prints the same length wherever it is, whatever its answer, so its length is never a clue; any hint, like a first letter, is ordinary stem text the teacher types.
+_Avoid_: Gap, fill (and never “blank” for an answer line beside a number or in the Page Header)
 
 **Short Answer**:
 A Question Type whose response is intentionally brief and does not present answer choices.
@@ -190,7 +202,7 @@ Room an Exam leaves below a Short Answer question or Short Answer Part for a stu
 _Avoid_: White space, answer box, response area
 
 **Page Header**:
-The line an Exam prints at the top of each test page, beside the paper's ID. By default it is Name, Class and Date blanks on the first page and a Name blank on later ones; an Exam may reword the first page's line and the later pages' line, as plain text in which underscores are the blanks, or clear either. The ID is the one value the header fills in for each paper and is never part of the line. The Exam's title prints on its own line under the first page's header, and Answer Key pages carry the ID alone. Every Paper Style prints it.
+The line an Exam prints at the top of each test page, beside the paper's ID. By default the first page asks for a Name, Class and Date on lines to write on, and later pages for a Name; an Exam may reword the first page's line and the later pages' line, as plain text in which underscores are the lines to write on, or clear either. The ID is the one value the header fills in for each paper and is never part of the line. The Exam's title prints on its own line under the first page's header, and Answer Key pages carry the ID alone. Every Paper Style prints it.
 _Avoid_: Letterhead, banner, identity line
 
 **Page Margins**:

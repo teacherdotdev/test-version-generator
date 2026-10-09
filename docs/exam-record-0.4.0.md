@@ -1,5 +1,7 @@
 # Exam Record 0.4.0
 
+> **Superseded by [Exam Record 0.5.0](exam-record-0.5.0.md).** Test Parrot no longer writes `0.4.0` records; it still reads them, as Exams that print every picture at its Default Picture Size.
+
 The **Exam Record** is the portable composition of one Exam: its name, its test-page header lines, its Question Sections in print order and how each one's heading reads, how large its headings and text print, how its questions print, how far in from each edge its pages print, and, for each position, the Question it uses, the Section it is in, and that position's answer columns, answer order, Hidden Answers and Work Space. It never carries Question Content. It references Questions in Question Bank Records that travel beside it in the same [Test Parrot Package](test-parrot-package-0.1.0.md), and it is importable only inside one. See ADR-0022, ADR-0029, ADR-0038, ADR-0039, ADR-0041, ADR-0044 and ADR-0045.
 
 ## Published contract

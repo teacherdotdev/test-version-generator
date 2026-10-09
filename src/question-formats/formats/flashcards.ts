@@ -1,6 +1,6 @@
 import { htmlBlocks, plainBlocks, richBlocks } from '../rich-text'
 import { delimitedRows, excerpt, plainStructure } from '../text'
-import type { Blocks, ForeignQuestion, FormatInput, FormatSpec, ImportIssue, ParseResult } from '../types'
+import { BLANK_MARK, type Blocks, type ForeignQuestion, type FormatInput, type FormatSpec, type ImportIssue, type ParseResult } from '../types'
 
 /**
  * Flashcards exported as text: one card to a line, its term and definition
@@ -12,8 +12,8 @@ import type { Blocks, ForeignQuestion, FormatInput, FormatSpec, ImportIssue, Par
  * Anki's text export adds header lines — `#separator:Tab`, `#html:true`,
  * `#columns:…`, `#deck:…`, `#tags:…` and the `#… column:N` lines naming its
  * tags and deck columns. A deck names the bank, and tags become topics. A
- * cloze note, `The capital of France is {{c1::Paris}}.`, becomes a fill in
- * the blank question: `The capital of France is _____.`, accepting `Paris`.
+ * cloze note, `The capital of France is {{c1::Paris}}.`, becomes a Fill in
+ * the Blank question whose Blank, where the cloze stood, holds `Paris`.
  *
  * Any two-column table would fit this description, so without Anki's
  * headers it scores below every format that says more about itself.
@@ -173,7 +173,7 @@ function card(row: Row, reading: Reading): ForeignQuestion | string {
   const base = { line: row.line, ...(tags.length ? { topics: tags } : {}) }
   const clozes = [...term.matchAll(CLOZE)]
   if (clozes.length) {
-    const stem = blocks(term.replace(CLOZE, '_____'))
+    const stem = blocks(term.replace(CLOZE, BLANK_MARK))
     if (clozes.length === 1) return { ...base, sourceType: 'Cloze', stem, kind: 'fill-in-blank', accepted: [clozes[0]![2]!] }
     return {
       ...base,

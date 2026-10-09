@@ -33,7 +33,7 @@ import {
 } from './picture-geometry'
 
 export const QUESTION_BANK_FORMAT = 'test-parrot/question-bank'
-export const QUESTION_BANK_FORMAT_VERSION = '0.9.0'
+export const QUESTION_BANK_FORMAT_VERSION = '0.10.0'
 export const QUESTION_BANK_ATTACHMENT_NAME = 'pdfcx.json'
 export const QUESTION_BANK_ATTACHMENT_DESCRIPTION = 'pdf-canonical-extraction'
 
@@ -61,6 +61,15 @@ export const SUPPORTED_SEMANTIC_NODE_TYPES = [
  *  `side-by-side` is only ever a top-level block of a Question's or a Part's
  *  stem, and a `panel` only ever one of its two or three areas. */
 export const SUPPORTED_STEM_LAYOUT_NODE_TYPES = ['side-by-side', 'panel'] as const
+
+/** The node a Fill in the Blank Question's stem alone may hold, apart from
+ *  every other node: a `blank`, standing among the text of one of the stem's
+ *  paragraphs or headings, whose content is its answer — text and
+ *  `inline-math` only (ADR-0049). Added in 0.10.0. */
+export const SUPPORTED_BLANK_NODE_TYPE = 'blank'
+
+/** What a Blank's answer may hold. */
+export const SUPPORTED_BLANK_CONTENT_TYPES = ['text', 'inline-math'] as const
 
 export const SUPPORTED_SEMANTIC_MARK_TYPES = [
   'strong',
@@ -124,11 +133,12 @@ export type SemanticDocument = { type: 'document'; content: SemanticNode[] }
 /** The Question Types the exchange format names. They are the same Question
  *  Sections the app authors, spelled the way the published contract spells
  *  them: a Short Answer question is `'short-answer'` rather than the `'open'`
- *  the local model calls it. */
+ *  the local model calls it. `'fill-in-the-blank'` was added in 0.10.0. */
 export type QuestionBankRecordQuestionType =
   | 'multiple-choice'
   | 'true-false'
   | 'matching'
+  | 'fill-in-the-blank'
   | 'short-answer'
   | 'multipart'
 
@@ -138,6 +148,7 @@ export const RECORD_TYPE_LABELS: Record<QuestionBankRecordQuestionType, string> 
   'multiple-choice': 'Multiple Choice',
   'true-false': 'True/False',
   matching: 'Matching',
+  'fill-in-the-blank': 'Fill in the Blank',
   'short-answer': 'Short Answer',
   multipart: 'Multipart',
 }
@@ -148,6 +159,7 @@ export const RECORD_TYPE_ORDER: readonly QuestionBankRecordQuestionType[] = [
   'multiple-choice',
   'true-false',
   'matching',
+  'fill-in-the-blank',
   'short-answer',
   'multipart',
 ]
@@ -158,6 +170,26 @@ export type QuestionBankRecordPrompt = {
   id: string
   content: SemanticDocument
   answer?: string
+}
+
+/** A Fill in the Blank stem's answers as a preview prints them: one
+ *  paragraph of its Blanks' answers in order, `; ` between them, a Blank left
+ *  empty holding its place as `—` beside others. `null` when no Blank has an
+ *  answer — the record twin of `blankAnswerBlocks` in `blank.ts`. */
+export function recordBlankAnswers(stem: SemanticDocument): SemanticDocument | null {
+  const answers: SemanticNode[][] = []
+  const visit = (node: SemanticNode) => {
+    if (node.type === SUPPORTED_BLANK_NODE_TYPE) answers.push(node.content ?? [])
+    else (node.content ?? []).forEach(visit)
+  }
+  stem.content.forEach(visit)
+  if (answers.every((answer) => answer.length === 0)) return null
+  const content: SemanticNode[] = []
+  answers.forEach((answer, index) => {
+    if (index > 0) content.push({ type: 'text', text: '; ' })
+    content.push(...(answer.length > 0 ? structuredClone(answer) : [{ type: 'text', text: '—' }]))
+  })
+  return { type: 'document', content: [{ type: 'paragraph', content }] }
 }
 
 /** The letter each Word Bank answer of a record Question carries, by its id —
@@ -472,6 +504,12 @@ function semanticNode(node: ProseMirrorJSON, mediaIds: ReadonlyMap<string, Embed
       return { type: 'table-cell', content: content() }
     case 'math_inline':
       return { type: 'inline-math', source: stringValue(attrs.value) }
+    // A Blank and its answer (ADR-0049). `portableQuestion` lets one reach
+    // here only from a Fill in the Blank Question's stem.
+    case 'blank': {
+      const answer = content()
+      return { type: 'blank', ...(answer.length > 0 ? { content: answer } : {}) }
+    }
     case 'doc':
       throw new Error(
         'A document node may appear only at the root of Question Content.',
@@ -549,15 +587,39 @@ export const RECORD_TYPES: Record<QuestionType, QuestionBankRecordQuestionType> 
   'multiple-choice': 'multiple-choice',
   'true-false': 'true-false',
   matching: 'matching',
+  'fill-in-the-blank': 'fill-in-the-blank',
   open: 'short-answer',
   multipart: 'multipart',
 }
 
+/** A document with every Blank in it replaced by its answer, as ordinary
+ *  text. A Blank belongs only to a Fill in the Blank Question's stem; one that
+ *  strayed anywhere else — pasted into another type's question — is written as
+ *  the words it holds rather than as a Blank the record cannot carry there. */
+function withoutBlanks(node: ProseMirrorJSON): ProseMirrorJSON {
+  if (!Array.isArray(node.content)) return node
+  return {
+    ...node,
+    content: (node.content as ProseMirrorJSON[]).flatMap((child) =>
+      child.type === 'blank' ? childNodes(child).map(withoutBlanks) : [withoutBlanks(child)],
+    ),
+  }
+}
+
 function portableQuestion(
-  question: Question,
+  authored: Question,
   index: number,
   mediaIds: ReadonlyMap<string, EmbeddedMedia>,
 ): QuestionBankRecordQuestion {
+  // Only a Fill in the Blank Question's stem holds Blanks; any other
+  // Question's are unwrapped into the words they hold.
+  const question: Question = authored.type === 'fill-in-the-blank'
+    ? authored
+    : {
+        ...authored,
+        doc: withoutBlanks(authored.doc),
+        ...(authored.suggestedAnswer ? { suggestedAnswer: withoutBlanks(authored.suggestedAnswer) } : {}),
+      }
   const base: QuestionBankRecordQuestion = {
     id: `q${index + 1}`,
     type: RECORD_TYPES[question.type],
@@ -580,6 +642,11 @@ function portableQuestion(
           }
         : {}),
     }
+  }
+  if (question.type === 'fill-in-the-blank') {
+    // Its Blanks, in its stem, are what it answers with; it carries nothing
+    // else that answers. A stem with no Blank is incomplete, not invalid.
+    return base
   }
   if (question.type === 'matching') {
     const prompts = promptsOf(question)

@@ -152,6 +152,11 @@ describe('a Multipart question', () => {
     expect(searchableText(aldmere())).toContain('part s1-b')
     expect(stemPreview(open('o1')).parts).toBeUndefined()
   })
+
+  test('with no shared material, the Question Bank row is named by its first Part', () => {
+    const asked = multipart('s2', [{ type: 'paragraph' }], [saPart('s2-a'), mcPart('s2-b', ['b1', 'b2'])])
+    expect(stemPreview(asked)).toMatchObject({ text: 'part s2-a', parts: 2 })
+  })
 })
 
 describe('a Multipart question on the paper', () => {

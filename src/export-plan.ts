@@ -55,6 +55,8 @@ import {
   type WorkSpaceStyle,
 } from './exam'
 import { stemNodesOf, type ProseMirrorJSON } from './question-doc'
+import { blankAnswerBlocks } from './blank'
+import { withPictureSizes } from './picture-geometry'
 import { pointsOfQuestion, sumOfPoints } from './points'
 import { answerVisibilityOf, shownChoices, type AnswerVisibility } from './hidden-answers'
 import { headerLineOf, type ExamHeader, type HeaderLine } from './page-header'
@@ -1318,6 +1320,11 @@ function deriveQuestion(
     ...(question.type === 'open' && suggestedAnswerOf(question).length > 0
       ? { suggestedAnswer: suggestedAnswerOf(question) }
       : {}),
+    // A Fill in the Blank question's answers are its Blanks', which the key
+    // prints on one line where a Suggested Answer goes (ADR-0049).
+    ...(question.type === 'fill-in-the-blank' && blankAnswerBlocks(question.doc).length > 0
+      ? { suggestedAnswer: blankAnswerBlocks(question.doc) }
+      : {}),
     parts: multipart ? deriveParts(exam, question, arrangement) : null,
     ...(totalPoints !== undefined ? { totalPoints } : {}),
     // A matching set's numbers print on its Items.
@@ -1369,7 +1376,9 @@ function deriveItems(exam: Exam, arrangement: Arrangement): PageItem[] {
         : {}),
     })
     const planned = questions.map((question) => {
-      const derived = deriveQuestion(exam, question, arrangement, number)
+      // The Exam's own picture sizes print in place of the Question's (ADR-0050).
+      const sized = { ...question, doc: withPictureSizes(question.doc, exam.pictureSizes?.[question.id]) }
+      const derived = deriveQuestion(exam, sized, arrangement, number)
       number += numbersTakenBy(derived)
       return derived
     })

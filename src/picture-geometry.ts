@@ -124,3 +124,25 @@ export function sizeAfterCrop(width: number, columnWidth: number, before: CropBo
   const scale = width / (before.right - before.left)
   return clampSize((scale * (after.right - after.left)) / columnWidth)
 }
+
+/**
+ * A document with an Exam's own picture sizes put in place of the authored
+ * ones: each block picture whose `pictureKey` the Exam sized is laid out at
+ * that size. The document is not changed; nothing else in it is.
+ */
+export function withPictureSizes<T extends { type?: unknown; attrs?: unknown; content?: unknown }>(
+  doc: T,
+  sizes: Readonly<Record<string, number>> | undefined,
+): T {
+  if (!sizes || Object.keys(sizes).length === 0) return doc
+  const visit = (node: Record<string, unknown>): Record<string, unknown> => {
+    const attrs = node.attrs as Attrs | undefined
+    if (node.type === 'image-block' && attrs) {
+      const size = sizes[pictureKey(attrs)]
+      if (size !== undefined) return { ...node, attrs: { ...attrs, size: clampSize(size) } }
+    }
+    if (!Array.isArray(node.content)) return node
+    return { ...node, content: (node.content as Record<string, unknown>[]).map(visit) }
+  }
+  return visit(doc as Record<string, unknown>) as T
+}

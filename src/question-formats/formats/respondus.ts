@@ -1,6 +1,6 @@
 import { htmlBlocks, plainBlocks } from '../rich-text'
 import { excerpt, linesOf, plainStructure, pointsIn, type Line } from '../text'
-import type { Blocks, ForeignChoice, ForeignQuestion, FormatInput, FormatSpec, ImportIssue, ParseResult } from '../types'
+import { BLANK_MARK, type Blocks, type ForeignChoice, type ForeignQuestion, type FormatInput, type FormatSpec, type ImportIssue, type ParseResult } from '../types'
 
 /**
  * Respondus's “Standard Format” for importing questions from plain text or
@@ -227,7 +227,7 @@ function build(draft: Draft, key: Map<string, string[]>, content: (text: string)
       const blanks: { name: string; accepted: string[] }[] = []
       const shown = stemText.replace(/\[([^\]]*)\]/g, (_, inside: string) => {
         blanks.push({ name: `Blank ${blanks.length + 1}`, accepted: inside.split(',').map((each) => each.trim()).filter(Boolean) })
-        return '_____'
+        return BLANK_MARK
       })
       if (!blanks.length) return { code: 'no-blanks', error: 'a fill in multiple blanks question needs each blank’s answer in [square brackets] in its wording.' }
       return { question: { ...base, stem: content(shown), kind: 'fill-in-blanks', blanks } }

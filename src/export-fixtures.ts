@@ -49,6 +49,20 @@ function open(id: string, ...blocks: ProseMirrorJSON[]): Question {
   }
 }
 
+function fillInTheBlank(id: string, ...blocks: ProseMirrorJSON[]): Question {
+  return {
+    id,
+    type: 'fill-in-the-blank',
+    columns: DEFAULT_COLUMNS,
+    doc: { type: 'doc', content: blocks },
+  }
+}
+
+/** A Blank holding its answer. */
+function blank(...answer: ProseMirrorJSON[]): ProseMirrorJSON {
+  return answer.length > 0 ? { type: 'blank', content: answer } : { type: 'blank' }
+}
+
 function choice(id: string, correct: boolean, ...blocks: ProseMirrorJSON[]) {
   return {
     type: 'multipleChoiceChoice',
@@ -348,6 +362,7 @@ const PAPER_STYLE_EXAM: Exam = {
         bankAnswer('ys-mx-a3', paragraph(text('Holds seeds'))),
       ],
     ),
+    fillInTheBlank('ys-fb', paragraph(text('A plant makes food in its '), blank(text('leaves')), text('.'))),
     open('ys-sa', paragraph(text('Name one thing a plant needs to grow.'))),
     multipart(
       'ys-mp',
@@ -671,6 +686,31 @@ export const FIXTURES: readonly Fixture[] = [
       ],
     },
     arrangement(['x1'], { x1: ['x1-a4', 'x1-a3', 'x1-a1', 'x1-a2'] }),
+  ),
+
+  // A Fill in the Blank question prints its Blanks as lines of one length,
+  // whatever their answers, under one number however many it holds; the key
+  // gives the answers in order on one line, with their own marks and maths.
+  fixture(
+    'fill in the blank questions with one and with two blanks',
+    {
+      title: 'Fill in the Blank',
+      questions: [
+        { ...fillInTheBlank('f1', paragraph(text('Water freezes at '), blank(text('zero')), text(' degrees Celsius.'))), points: 2 },
+        fillInTheBlank(
+          'f2',
+          paragraph(
+            text('The area of a circle is '),
+            blank({ type: 'math_inline', attrs: { value: '\\pi r^2' } }),
+            text(', and its edge is called the '),
+            blank(text('circumference', mark('emphasis'))),
+            text('.'),
+          ),
+        ),
+        fillInTheBlank('f3', paragraph(text('A sentence whose Blank has no answer yet: '), blank(), text('.'))),
+      ],
+    },
+    arrangement(['f1', 'f2', 'f3']),
   ),
 
   // Past five answers the bank moves above the prompts into two columns,

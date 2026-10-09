@@ -15,6 +15,7 @@
 // it starts — can be written from what is already here.
 
 import { isCentred } from './centring'
+import { BLANK_LINE } from './blank'
 import { bankLetter } from './matching'
 import { encoded } from './export-media'
 import { keptPixels, legacyRatioOf, pictureCropOf, pictureKey, pictureSizeOf, printedPictureWidth, type CropBox } from './picture-geometry'
@@ -174,6 +175,9 @@ export function copyBlocksOf(question: Question, format: CopyFormat = {}): CopyB
           ]
         }),
       ]
+    case 'fill-in-the-blank':
+      // The sentence is the whole question; its Blanks print as lines.
+      return stem.length > 0 ? [line(stem)] : []
     case 'open':
       return [...(stem.length > 0 ? [line(stem)] : []), ...rulesOf(format.lines)]
   }
@@ -232,6 +236,8 @@ export function copyPictureKey(node: ProseMirrorJSON): string {
 export function copyMediaOf(blocks: readonly CopyBlock[]): CopyMediaRequest[] {
   const found = new Map<string, CopyMediaRequest>()
   const visit = (node: ProseMirrorJSON) => {
+    // A Blank's answer never reaches the clipboard, so nothing in it is drawn.
+    if (node.type === 'blank') return
     if (node.type === 'math_inline') {
       const source = stringOf(attrsOf(node).value)
       found.set(mathKey(source, false), { kind: 'math', source, display: false })
@@ -316,6 +322,8 @@ function inlineHtml(node: ProseMirrorJSON, writer: Writer): string {
       return '<br>'
     case 'math_inline':
       return mathHtml(stringOf(attrsOf(node).value), false, writer)
+    case 'blank':
+      return BLANK_LINE
     case 'image':
       return pendingImageOf(node)
         ? '[Picture needed]'
@@ -436,6 +444,7 @@ function inlineText(node: ProseMirrorJSON): string {
     case 'text': return stringOf(node.text)
     case 'hardbreak': return '\n'
     case 'math_inline': return `$${stringOf(attrsOf(node).value)}$`
+    case 'blank': return BLANK_LINE
     case 'image': return pendingImageOf(node) ? '[Picture needed]' : '[Picture]'
     default: return childrenOf(node).map(inlineText).join('')
   }

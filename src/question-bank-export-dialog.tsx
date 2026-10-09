@@ -5,6 +5,7 @@ import {
   RECORD_TYPE_LABELS,
   holdsSubparts,
   prepareQuestionBankExport,
+  recordBlankAnswers,
   recordDocumentToEditorNodes,
   wordBankLettersOf,
   type PreparedQuestionBankExport,
@@ -513,6 +514,15 @@ function RecordQuestion({
           ))}
         </ol>
       )}
+      {question.type === 'fill-in-the-blank' && (() => {
+        const answers = recordBlankAnswers(question.stem)
+        return answers && (
+          <section>
+            <h3>Answers</h3>
+            <DocView content={previewNodes(answers)} />
+          </section>
+        )
+      })()}
       {question.suggestedAnswer && (
         <section>
           <h3>Suggested Answer</h3>

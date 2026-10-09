@@ -85,6 +85,12 @@ export function QuestionReading({
         <DocView content={content.suggestedAnswer} />
       </section>
     )}
+    {content.blankAnswers && (
+      <section className="question-reading-answer">
+        <h4>Answers</h4>
+        <DocView content={content.blankAnswers} />
+      </section>
+    )}
     {content.parts && (
       // The Multipart question is the stem above; its Parts follow, lettered as the
       // test prints them, each drawn the way a question of its kind is.

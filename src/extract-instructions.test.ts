@@ -63,8 +63,8 @@ describe('the JSON examples in the conversion instructions', () => {
     })
     expect(versions.length).toBeGreaterThanOrEqual(2)
     expect(new Set(versions)).toEqual(new Set([QUESTION_BANK_FORMAT_VERSION]))
-    expect(instructions).not.toMatch(/question-bank\/0\.[0-8]\.0\//)
-    expect(instructions).not.toMatch(/Question Bank Record `0\.[0-8]\.0`/)
+    expect(instructions).not.toMatch(/question-bank\/0\.[0-9]\.0\//)
+    expect(instructions).not.toMatch(/Question Bank Record `0\.[0-9]\.0`/)
   })
 
   test('each import as Question Bank Record content', async () => {

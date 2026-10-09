@@ -18,10 +18,14 @@ import publicSchema070 from '../public/formats/question-bank/0.7.0/schema.json'
 import applicationSchema070 from './question-bank-record-0.7.0.schema.json'
 import publicSchema080 from '../public/formats/question-bank/0.8.0/schema.json'
 import applicationSchema080 from './question-bank-record-0.8.0.schema.json'
-import publicSchema from '../public/formats/question-bank/0.9.0/schema.json'
-import applicationSchema from './question-bank-record-0.9.0.schema.json'
+import publicSchema090 from '../public/formats/question-bank/0.9.0/schema.json'
+import applicationSchema090 from './question-bank-record-0.9.0.schema.json'
+import publicSchema from '../public/formats/question-bank/0.10.0/schema.json'
+import applicationSchema from './question-bank-record-0.10.0.schema.json'
 import {
   QUESTION_BANK_FORMAT_VERSION,
+  SUPPORTED_BLANK_CONTENT_TYPES,
+  SUPPORTED_BLANK_NODE_TYPE,
   SUPPORTED_SEMANTIC_MARK_TYPES,
   SUPPORTED_SEMANTIC_NODE_TYPES,
   SUPPORTED_STEM_LAYOUT_NODE_TYPES,
@@ -92,10 +96,10 @@ function schemaEnum(definition: 'node' | 'mark', property: string): string[] {
   return schema.$defs[definition]!.properties[property]!.enum
 }
 
-describe('public Question Bank Record 0.9.0 contract', () => {
+describe('public Question Bank Record 0.10.0 contract', () => {
   test('canonical examples validate independently against the published schema', async () => {
     expect(publicSchema.$id).toBe(
-      'https://testparrot.com/formats/question-bank/0.9.0/schema.json',
+      'https://testparrot.com/formats/question-bank/0.10.0/schema.json',
     )
     expect(publicSchema.properties.formatVersion.const).toBe(QUESTION_BANK_FORMAT_VERSION)
     expect(
@@ -104,7 +108,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
           import.meta.dir,
           '..',
           'public',
-          'question-bank-record-0.9.0.schema.json',
+          'question-bank-record-0.10.0.schema.json',
         ),
       ).json(),
     ).toEqual(publicSchema)
@@ -118,6 +122,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       'centred-figure.json',
       'complete-rich-text.json',
       'cropped-picture.json',
+      'fill-in-the-blank.json',
       'locked-answers.json',
       'matching.json',
       'media-rich.json',
@@ -168,7 +173,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     const proposal = await inspectQuestionBankRecord(
       await Bun.file(join(exampleRoot, 'pending-images.json')).bytes(),
     )
-    expect(proposal.summary.formatVersion).toBe('0.9.0')
+    expect(proposal.summary.formatVersion).toBe('0.10.0')
   })
 
   test('a True/False Question states its fixed pair and nothing else', async () => {
@@ -178,6 +183,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       'multiple-choice': 0,
       'true-false': 2,
       matching: 0,
+      'fill-in-the-blank': 0,
       'short-answer': 0,
       multipart: 0,
     })
@@ -195,6 +201,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       'multiple-choice': 0,
       'true-false': 0,
       matching: 2,
+      'fill-in-the-blank': 0,
       'short-answer': 0,
       multipart: 0,
     })
@@ -222,6 +229,118 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     expect(terms!.wordBank).toHaveLength(3)
   })
 
+  test('a Fill in the Blank Question answers with the Blanks in its stem, and one with none is reported', async () => {
+    const proposal = await inspectFixture(exampleRoot, 'fill-in-the-blank.json')
+
+    expect(proposal.summary.questionCounts['fill-in-the-blank']).toBe(4)
+    // The stem with no Blank is incomplete, not invalid.
+    expect(proposal.summary.questionsWithoutCorrectAnswer).toBe(1)
+    const [bees, square, river] = proposal.record.bank.questions
+    expect(bees!.stem.content[0]!.content).toEqual([
+      { type: 'text', text: 'Bees carry (p)' },
+      { type: 'blank', content: [{ type: 'text', text: 'pollen' }] },
+      { type: 'text', text: ' from flower to flower.' },
+    ])
+    expect(bees!.points).toBe(1)
+    expect(river!.stem.content[0]!.content![1]).toEqual({ type: 'blank' })
+
+    const [imported, area] = importedQuestionsFromRecord(proposal.record)
+    expect(imported!.type).toBe('fill-in-the-blank')
+    expect(imported!.points).toBe(1)
+    expect(imported!.doc.content).toEqual([
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'Bees carry (p)' },
+          { type: 'blank', content: [{ type: 'text', text: 'pollen' }] },
+          { type: 'text', text: ' from flower to flower.' },
+        ],
+      },
+    ])
+    expect(JSON.stringify(area!.doc)).toContain('{"type":"blank","content":[{"type":"math_inline","attrs":{"value":"9"}},{"type":"text","text":" cm²"}]}')
+    expect(square!.choices).toBeUndefined()
+  })
+
+  test('a Fill in the Blank Question with two Blanks is written, validates, and imports back as it was', async () => {
+    const validate = new Ajv2020({ strict: true }).compile(publicSchema)
+    const sentence = {
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'Light travels at about ' },
+        { type: 'blank', content: [{ type: 'math_inline', attrs: { value: '3 \\times 10^8' } }, { type: 'text', text: ' m/s' }] },
+        { type: 'text', text: ', far ' },
+        { type: 'blank', content: [{ type: 'text', text: 'faster', marks: [{ type: 'emphasis' }] }] },
+        { type: 'text', text: ' than sound.' },
+      ],
+    }
+    const bank: QuestionBankResource = {
+      id: 'local-bank',
+      name: 'Generated Fill in the Blank',
+      createdAt: 'not-public',
+      lastUpdatedAt: 'not-public',
+      questions: [
+        { id: 'local-fib', type: 'fill-in-the-blank', columns: 2, points: 2, doc: { type: 'doc', content: [sentence] } },
+        // A Blank pasted into another type's question is written as its words.
+        {
+          id: 'local-open',
+          type: 'open',
+          columns: 2,
+          doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Why is it ' }, { type: 'blank', content: [{ type: 'text', text: 'blue' }] }, { type: 'text', text: '?' }] }] },
+        },
+      ],
+    }
+    const prepared = await prepareQuestionBankExport(bank)
+    const generated = JSON.parse(decoder.decode(prepared.recordBytes)) as QuestionBankRecord
+
+    expect(generated.formatVersion).toBe('0.10.0')
+    expect(validate(generated), JSON.stringify(validate.errors)).toBe(true)
+    expect(generated.bank.questions[0]).toEqual({
+      id: 'q1',
+      type: 'fill-in-the-blank',
+      points: 2,
+      stem: {
+        type: 'document',
+        content: [{
+          type: 'paragraph',
+          content: [
+            { type: 'text', text: 'Light travels at about ' },
+            { type: 'blank', content: [{ type: 'inline-math', source: '3 \\times 10^8' }, { type: 'text', text: ' m/s' }] },
+            { type: 'text', text: ', far ' },
+            { type: 'blank', content: [{ type: 'text', text: 'faster', marks: [{ type: 'emphasis' }] }] },
+            { type: 'text', text: ' than sound.' },
+          ],
+        }],
+      },
+    })
+    expect(generated.bank.questions[1]!.stem.content[0]!.content).toEqual([
+      { type: 'text', text: 'Why is it ' },
+      { type: 'text', text: 'blue' },
+      { type: 'text', text: '?' },
+    ])
+
+    const [back] = importedQuestionsFromRecord((await inspectQuestionBankRecord(prepared.recordBytes)).record)
+    expect(back!.type).toBe('fill-in-the-blank')
+    expect(back!.points).toBe(2)
+    expect(back!.doc.content).toEqual([sentence])
+  })
+
+  test('a Blank out of its place is refused, by where it may go', async () => {
+    for (const [name, message] of [
+      ['blank-in-choice.json', 'Question “q1” has a Blank outside the stem of a Fill in the Blank Question. A Blank may appear only there — not in another type’s stem, an answer, a matching item, a Word Bank answer, a Part or a Suggested Answer.'],
+      ['blank-in-short-answer.json', 'Question “q1” has a Blank outside the stem of a Fill in the Blank Question. A Blank may appear only there — not in another type’s stem, an answer, a matching item, a Word Bank answer, a Part or a Suggested Answer.'],
+      ['blank-as-block.json', 'Question “q1” has a Blank that stands as a block of its own. A Blank stands among the text of a paragraph or heading of its stem.'],
+      ['blank-nested.json', 'Question “q1” has a Blank inside another Blank. A Blank’s answer holds only text and inline mathematics.'],
+      ['blank-holding-picture.json', 'Question “q1” has a Blank whose answer holds something other than text and inline mathematics.'],
+    ] as const) {
+      try {
+        await inspectFixture(invalidRoot, name)
+        throw new Error(`${name} unexpectedly conformed`)
+      } catch (error) {
+        expect((error as QuestionBankImportError).message, name).toBe(message)
+      }
+    }
+  })
+
   test('a Multipart Question keeps its Parts in lettered order, each answering as its own type', async () => {
     const proposal = await inspectFixture(exampleRoot, 'multipart.json')
 
@@ -229,6 +348,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       'multiple-choice': 0,
       'true-false': 0,
       matching: 0,
+      'fill-in-the-blank': 0,
       'short-answer': 0,
       multipart: 3,
     })
@@ -592,10 +712,16 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       'align-right.json',
       'bad-reference.json',
       'base64-media.json',
+      'blank-as-block.json',
+      'blank-holding-picture.json',
+      'blank-in-choice.json',
+      'blank-in-short-answer.json',
+      'blank-nested.json',
       'crop-inverted.json',
       'crop-on-inline-image.json',
       'crop-on-pending.json',
       'crop-out-of-range.json',
+      'fill-in-the-blank-with-choices.json',
       'invalid-media.json',
       'locked-not-boolean.json',
       'locked-true-false.json',
@@ -631,8 +757,13 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       // An inverted crop is well-formed: only the importer can compare its sides.
       if (/^(?:pending-|side-by-side-|crop-(?!inverted)|base64-|locked-|subparts-|points-|align-)/.test(name))
         expect(validate(await fixture(invalidRoot, name)), name).toBe(false)
-      // Only the importer can compare a crop's sides, or look for a file.
-      if (['crop-inverted.json', 'missing-media-file.json', 'invalid-media.json'].includes(name))
+      // A Blank out of its place is beyond the schema's sight; what it holds,
+      // and a Fill in the Blank Question that answers otherwise, are not.
+      if (['blank-as-block.json', 'blank-holding-picture.json', 'blank-nested.json', 'fill-in-the-blank-with-choices.json'].includes(name))
+        expect(validate(await fixture(invalidRoot, name)), name).toBe(false)
+      // Only the importer can compare a crop's sides, look for a file, or see
+      // which Question's stem a Blank stands in.
+      if (['crop-inverted.json', 'missing-media-file.json', 'invalid-media.json', 'blank-in-choice.json', 'blank-in-short-answer.json'].includes(name))
         expect(validate(await fixture(invalidRoot, name)), name).toBe(true)
       try {
         await inspectFixture(invalidRoot, name)
@@ -678,6 +809,11 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       layoutDefinitions.sideBySide!.properties.type.const,
       layoutDefinitions.panel!.properties.type.const,
     ])
+    const blankDefinition = (publicSchema.$defs as unknown as Record<string, {
+      properties: { type: { const: string }; content: { items: { properties: { type: { enum: string[] } } } } }
+    }>).blank!
+    expect(SUPPORTED_BLANK_NODE_TYPE).toBe(blankDefinition.properties.type.const)
+    expect([...SUPPORTED_BLANK_CONTENT_TYPES]).toEqual(blankDefinition.properties.content.items.properties.type.enum)
 
     const complete = (await fixture(
       exampleRoot,
@@ -835,7 +971,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     const prepared = await prepareQuestionBankExport(bank)
     const generated = JSON.parse(decoder.decode(prepared.recordBytes)) as QuestionBankRecord
 
-    expect(generated.formatVersion).toBe('0.9.0')
+    expect(generated.formatVersion).toBe('0.10.0')
     expect(validate(generated), JSON.stringify(validate.errors)).toBe(true)
     expect(generated.bank.questions[0]!.parts![1]).toEqual({
       id: 'q1-s2',
@@ -871,6 +1007,66 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     }))
     expect(shape(back)).toEqual(shape(original))
     expect(back[1]!.subparts[0]!.id).not.toBe('local-b-i')
+  })
+})
+
+describe('retained Question Bank Record 0.9.0 contract', () => {
+  const root090 = fixtureRootFor('0.9.0')
+
+  test('the published 0.9.0 schema is unchanged and still checked in twice', async () => {
+    expect(publicSchema090.$id).toBe(
+      'https://testparrot.com/formats/question-bank/0.9.0/schema.json',
+    )
+    expect(publicSchema090.properties.formatVersion.const).toBe('0.9.0')
+    expect(applicationSchema090).toEqual(publicSchema090)
+    expect(
+      await Bun.file(join(import.meta.dir, '..', 'public', 'question-bank-record-0.9.0.schema.json')).json(),
+    ).toEqual(publicSchema090)
+  })
+
+  test('every 0.9.0 canonical example still imports from beside its files, migrated to the current version', async () => {
+    const names = await filesIn(join(root090, 'examples'))
+
+    expect(names).toContain('subparts.json')
+    for (const name of names) {
+      const proposal = await inspectFixture(join(root090, 'examples'), name)
+      expect(proposal.record.formatVersion, name).toBe(QUESTION_BANK_FORMAT_VERSION)
+      expect(proposal.summary.formatVersion, name).toBe('0.9.0')
+    }
+  })
+
+  test('0.9.0 counterexamples are still rejected with their documented errors', async () => {
+    const root = join(root090, 'invalid')
+    const manifest = (await fixture(root, 'manifest.json')) as Record<string, string>
+
+    for (const [name, code] of Object.entries(manifest)) {
+      try {
+        await inspectFixture(root, name)
+        throw new Error(`${name} unexpectedly conformed`)
+      } catch (error) {
+        expect(error, name).toBeInstanceOf(QuestionBankImportError)
+        expect((error as QuestionBankImportError).code, name).toBe(code)
+      }
+    }
+  })
+
+  test('a 0.9.0 record has no Fill in the Blank Questions and no Blanks', async () => {
+    const record = (await fixture(exampleRoot, 'fill-in-the-blank.json')) as {
+      formatVersion: string
+      bank: { questions: Record<string, unknown>[] }
+    }
+    record.formatVersion = '0.9.0'
+    const validate = new Ajv2020({ allErrors: true, strict: false }).compile(publicSchema090)
+    expect(validate(record)).toBe(false)
+    try {
+      await inspectQuestionBankRecordValue(record)
+      throw new Error('A 0.9.0 Blank unexpectedly conformed')
+    } catch (error) {
+      expect(error).toBeInstanceOf(QuestionBankImportError)
+      expect((error as QuestionBankImportError).message).toBe(
+        'Blanks need Question Bank Record 0.10.0 or later; this record declares 0.9.0.',
+      )
+    }
   })
 })
 
@@ -915,7 +1111,7 @@ describe('retained Question Bank Record 0.8.0 contract', () => {
   })
 })
 
-// 0.1.0 through 0.8.0 are retired as producer versions and retained as
+// 0.1.0 through 0.9.0 are retired as producer versions and retained as
 // consumer ones: every Question Bank File a teacher has already shared must
 // still open. Their published contracts are therefore frozen — these are the
 // assertions that keep them that way.
@@ -1322,6 +1518,7 @@ describe('retained Question Bank Record 0.1.0 contract', () => {
         | typeof publicSchema020
         | typeof publicSchema030
         | typeof publicSchema070
+        | typeof publicSchema090
         | typeof publicSchema,
     ) =>
       (schema as {
@@ -1343,11 +1540,19 @@ describe('retained Question Bank Record 0.1.0 contract', () => {
       'matching',
       'short-answer',
     ])
-    expect(typeEnum(publicSchema070)).toEqual(typeEnum(publicSchema))
+    expect(typeEnum(publicSchema070)).toEqual(typeEnum(publicSchema090))
+    expect(typeEnum(publicSchema090)).toEqual([
+      'multiple-choice',
+      'true-false',
+      'matching',
+      'short-answer',
+      'multipart',
+    ])
     expect(typeEnum(publicSchema)).toEqual([
       'multiple-choice',
       'true-false',
       'matching',
+      'fill-in-the-blank',
       'short-answer',
       'multipart',
     ])
