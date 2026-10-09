@@ -1,6 +1,6 @@
 import type { SemanticMark, SemanticNode } from '../../question-bank-export'
 import { textRun } from '../rich-text'
-import { excerpt, linesOf, plainStructure, type Line } from '../text'
+import { excerpt, linesOf, plainStructure, pointsIn, type Line } from '../text'
 import type { Blocks, ForeignChoice, ForeignQuestion, FormatInput, FormatSpec, ImportIssue, ParseResult } from '../types'
 
 /**
@@ -13,10 +13,11 @@ import type { Blocks, ForeignChoice, ForeignQuestion, FormatInput, FormatSpec, I
  * `*c)` the correct one; `[*]` and `[ ]` for multiple answers; `*   text` for
  * each accepted short answer; `=   1.4142 +- 0.0001`, `=   [1.2598, 1.26]`
  * or `=   5` for a number; `____` for an essay and `^^^^` for a file upload.
- * `Quiz title:` and `Quiz description:` name the bank; `Title:` and
- * `Points:` above a question, feedback (`... `, `+ `, `- `) and question
- * groups are text2qti's and are not kept, though a `!` solution becomes an
- * essay's suggested answer and every question in a group comes in.
+ * `Quiz title:` and `Quiz description:` name the bank. `Points:` above a
+ * question, or a group's `Points per question:`, is kept as its Points when a
+ * whole number. `Title:` above a question, feedback (`... `, `+ `, `- `) and
+ * question groups are text2qti's and are not kept, though a `!` solution
+ * becomes an essay's suggested answer and every question in a group comes in.
  *
  * Bold, italics, code, links and `$…$` math in the Markdown are kept.
  * text2qti can run a ```` ```{.python .run} ```` block to write questions;
@@ -57,6 +58,7 @@ type Draft = {
   essay: boolean
   upload: boolean
   solution?: Element
+  points?: number
 }
 
 export function parseText2qti(text: string): ParseResult {
@@ -72,6 +74,10 @@ export function parseText2qti(text: string): ParseResult {
   let inComment = false
   let groups = 0
   let pictures = 0
+  // `Points:` holds for the next question; a group's `Points per question:`
+  // for every question in it that gives none of its own.
+  let points: number | undefined
+  let groupPoints: number | undefined
 
   const markdown = (element: Element) => markdownBlocks(element.lines.join('\n'), () => {
     pictures += 1
@@ -85,7 +91,7 @@ export function parseText2qti(text: string): ParseResult {
     open = null
     const result = build(current, markdown)
     if ('question' in result) {
-      questions.push({ ...result.question, number: found })
+      questions.push({ ...result.question, number: found, ...(current.points !== undefined ? { points: current.points } : {}) })
       if (current.upload) {
         issues.push({
           severity: 'info',
@@ -161,10 +167,12 @@ export function parseText2qti(text: string): ParseResult {
     if (/^GROUP\s*$/.test(text)) {
       finish()
       groups += 1
+      groupPoints = undefined
       continue
     }
     if (/^END_GROUP\s*$/.test(text)) {
       finish()
+      groupPoints = undefined
       continue
     }
 
@@ -175,7 +183,9 @@ export function parseText2qti(text: string): ParseResult {
       draft = {
         number: question[1]!, line: line.line, stem: { lines: [question[2]!], line: line.line },
         choices: [], answers: [], accepted: [], numeric: [], essay: false, upload: false,
+        ...((points ?? groupPoints) !== undefined ? { points: points ?? groupPoints } : {}),
       }
+      points = undefined
       open = { element: draft.stem, indent }
       continue
     }
@@ -243,6 +253,8 @@ export function parseText2qti(text: string): ParseResult {
         description = start([value], line.line, indentOf(raw.replace(/^([^:]*:[ \t]*).*$/, '$1')))
         continue
       }
+      if (key === 'points') points = pointsIn(value)
+      if (key === 'points per question') groupPoints = pointsIn(value)
       if (key === 'title' || key === 'points' || key === 'text title' || key === 'text' || QUIZ_OPTIONS.has(key) || GROUP_SETTINGS.has(key)) {
         finish()
         // A title's or text region's wrapped lines are indented too.

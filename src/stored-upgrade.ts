@@ -29,9 +29,32 @@ function renamedNodes(node: ProseMirrorJSON): ProseMirrorJSON {
   }
 }
 
+// Points were first built as "Marks", and a question written then carries
+// `marks` on itself, or on a Part's or Subpart's node.
+function pointsFromMarks(node: ProseMirrorJSON): ProseMirrorJSON {
+  const attrs = node.attrs as Record<string, unknown> | undefined
+  const content = Array.isArray(node.content)
+    ? (node.content as ProseMirrorJSON[]).map(pointsFromMarks)
+    : undefined
+  if (attrs && 'marks' in attrs && (node.type === 'multipartPart' || node.type === 'multipartSubpart')) {
+    const { marks, ...rest } = attrs
+    return { ...node, attrs: { ...rest, points: rest.points ?? marks }, ...(content ? { content } : {}) }
+  }
+  return content ? { ...node, content } : node
+}
+
 /** A stored question in its current shape. A question that is already current
  *  is returned as it is. */
 export function upgradeStoredQuestion(question: Question): Question {
-  if ((question.type as string) !== 'stimulus') return question
-  return { ...question, type: 'multipart', doc: renamedNodes(question.doc) }
+  let upgraded = question
+  if ((upgraded.type as string) === 'stimulus') {
+    upgraded = { ...upgraded, type: 'multipart', doc: renamedNodes(upgraded.doc) }
+  }
+  if ('marks' in upgraded) {
+    const { marks, ...rest } = upgraded as Question & { marks?: number }
+    const points = rest.points ?? marks
+    upgraded = points === undefined ? rest : { ...rest, points }
+  }
+  if (upgraded.type === 'multipart') upgraded = { ...upgraded, doc: pointsFromMarks(upgraded.doc) }
+  return upgraded
 }

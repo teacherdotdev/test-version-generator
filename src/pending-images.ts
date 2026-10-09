@@ -1,7 +1,10 @@
 import { bankLetter } from './matching'
 import {
+  holdsSubparts,
   partLetter,
   type PendingImageReference,
+  type QuestionBankRecordAnsweringPart,
+  type QuestionBankRecordPart,
   type QuestionBankRecordQuestion,
   type SemanticDocument,
   type SemanticNode,
@@ -10,6 +13,7 @@ import type { ParsedQuestionBankRecord } from './question-bank-import'
 import { positionColumns, type ImportProposal } from './package-import'
 import { DEFAULT_COLUMNS, type ColumnSetting } from './exam'
 import { pendingImageOf, type ProseMirrorJSON } from './question-doc'
+import { subpartLabelAt } from './export-plan'
 
 /**
  * Pending Images in a proposal, read and resolved without touching storage.
@@ -79,21 +83,31 @@ function partsOf(question: QuestionBankRecordQuestion, columns: ColumnSetting): 
     ...(question.suggestedAnswer
       ? [{ id: 'suggested-answer', where: 'Suggested Answer', document: question.suggestedAnswer }]
       : []),
-    ...(question.parts ?? []).flatMap((part, index) => {
-      const where = `Part ${partLetter(index)}`
-      return [
-        { id: part.id, where, document: part.stem },
-        ...(part.choices ?? []).map((choice, choiceIndex) => ({
-          id: choice.id,
-          where: `${where}, Answer ${bankLetter(choiceIndex)}`,
-          document: choice.content,
-          answerColumns: DEFAULT_COLUMNS,
-        })),
-        ...(part.suggestedAnswer
-          ? [{ id: `${part.id}-suggested-answer`, where: `${where}, Suggested Answer`, document: part.suggestedAnswer }]
-          : []),
-      ]
-    }),
+    ...(question.parts ?? []).flatMap((part, index) => recordPartsOf(part, `Part ${partLetter(index)}`)),
+  ]
+}
+
+// A Part's own stem, then its answers — or the Subparts it holds, each named
+// under its Part: “Part b (ii), Answer C”.
+function recordPartsOf(part: QuestionBankRecordPart, where: string): Part[] {
+  if (holdsSubparts(part)) {
+    return [
+      { id: part.id, where, document: part.stem },
+      ...part.subparts.flatMap((subpart, index) =>
+        recordPartsOf(subpart, `${where} (${subpartLabelAt(index)})`)),
+    ]
+  }
+  return [
+    { id: part.id, where, document: part.stem },
+    ...(part.choices ?? []).map((choice, choiceIndex) => ({
+      id: choice.id,
+      where: `${where}, Answer ${bankLetter(choiceIndex)}`,
+      document: choice.content,
+      answerColumns: DEFAULT_COLUMNS,
+    })),
+    ...(part.suggestedAnswer
+      ? [{ id: `${part.id}-suggested-answer`, where: `${where}, Suggested Answer`, document: part.suggestedAnswer }]
+      : []),
   ]
 }
 
@@ -195,16 +209,25 @@ function mapPendingImages(
       : {}),
     ...(question.parts
       ? {
-          parts: question.parts.map((part) => ({
-            ...part,
-            stem: resolveDocument(question.id, part.id, part.stem),
-            ...(part.choices
-              ? { choices: part.choices.map((choice) => ({ ...choice, content: resolveDocument(question.id, choice.id, choice.content) })) }
-              : {}),
-            ...(part.suggestedAnswer
-              ? { suggestedAnswer: resolveDocument(question.id, `${part.id}-suggested-answer`, part.suggestedAnswer) }
-              : {}),
-          })),
+          parts: question.parts.map((part): QuestionBankRecordPart => {
+            const resolveAnswering = (one: QuestionBankRecordAnsweringPart): QuestionBankRecordAnsweringPart => ({
+              ...one,
+              stem: resolveDocument(question.id, one.id, one.stem),
+              ...(one.choices
+                ? { choices: one.choices.map((choice) => ({ ...choice, content: resolveDocument(question.id, choice.id, choice.content) })) }
+                : {}),
+              ...(one.suggestedAnswer
+                ? { suggestedAnswer: resolveDocument(question.id, `${one.id}-suggested-answer`, one.suggestedAnswer) }
+                : {}),
+            })
+            return holdsSubparts(part)
+              ? {
+                  ...part,
+                  stem: resolveDocument(question.id, part.id, part.stem),
+                  subparts: part.subparts.map(resolveAnswering),
+                }
+              : resolveAnswering(part)
+          }),
         }
       : {}),
   }))
@@ -393,18 +416,21 @@ export function pendingImagesOfQuestions(questions: readonly EditorQuestion[]): 
         })
       }
       const partColumns = (node.attrs as Record<string, unknown> | undefined)?.columns
-      const answersGrid: ColumnSetting = node.type === 'multipartPart'
+      const answersGrid: ColumnSetting = (node.type === 'multipartPart' || node.type === 'multipartSubpart')
         && (partColumns === 1 || partColumns === 2 || partColumns === 4)
         ? partColumns
         : grid
-      // A Multipart question's Parts are lettered, and so are the answers
-      // inside each: “Part b, Answer C”.
+      // A Multipart question's Parts are lettered, their Subparts numbered
+      // under them, and the answers inside each lettered too: “Part b,
+      // Answer C”, “Part b (ii), Answer A”.
       const answers = editorChildren(node).filter((child) => child.type === 'multipleChoiceChoice')
       const parts = editorChildren(node).filter((child) => child.type === 'multipartPart')
+      const subparts = editorChildren(node).filter((child) => child.type === 'multipartSubpart')
       const within = (place: string) => (where === 'Question' ? place : `${where}, ${place}`)
       for (const child of editorChildren(node)) {
         const letter = answers.indexOf(child)
         const partIndex = parts.indexOf(child)
+        const subpartIndex = subparts.indexOf(child)
         visit(
           part,
           child,
@@ -412,9 +438,11 @@ export function pendingImagesOfQuestions(questions: readonly EditorQuestion[]): 
             ? within(`Answer ${bankLetter(letter)}`)
             : partIndex >= 0
               ? `Part ${partLetter(partIndex)}`
-              : child.type === 'suggestedAnswer' && where !== 'Question'
-                ? within('Suggested Answer')
-                : where,
+              : subpartIndex >= 0
+                ? `${where} (${subpartLabelAt(subpartIndex)})`
+                : child.type === 'suggestedAnswer' && where !== 'Question'
+                  ? within('Suggested Answer')
+                  : where,
           inPanel || child.type === 'sideBySidePanel',
           answersGrid,
           letter >= 0 ? answersGrid : answerColumns,

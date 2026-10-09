@@ -3,11 +3,13 @@ import { DocView } from './doc-view'
 import {
   RECORD_PART_TYPE_LABELS,
   RECORD_TYPE_LABELS,
+  holdsSubparts,
   prepareQuestionBankExport,
   recordDocumentToEditorNodes,
   wordBankLettersOf,
   type PreparedQuestionBankExport,
   type QuestionBankRecord,
+  type QuestionBankRecordPart,
   type QuestionBankRecordQuestion,
   type SemanticDocument,
 } from './question-bank-export'
@@ -375,6 +377,55 @@ function TopicBubbles({ section, onJump }: { section: OutlineSection; onJump: (k
   )
 }
 
+// One Part of a record Question: its stem, then its choices or Suggested
+// Answer — or, for a Part that holds Subparts, its lead-in and then its
+// Subparts, numbered (i), (ii)… beneath it.
+function RecordPart({
+  part,
+  previewNodes,
+}: {
+  part: QuestionBankRecordPart
+  previewNodes: (document: SemanticDocument) => ReturnType<typeof recordDocumentToEditorNodes>
+}) {
+  if (holdsSubparts(part)) {
+    return (
+      <li aria-label="Subparts">
+        <DocView content={previewNodes(part.stem)} />
+        <ol type="i" className="record-multipart-parts">
+          {part.subparts.map((subpart) => (
+            <RecordPart key={subpart.id} part={subpart} previewNodes={previewNodes} />
+          ))}
+        </ol>
+      </li>
+    )
+  }
+  return (
+    <li aria-label={RECORD_PART_TYPE_LABELS[part.type]}>
+      <DocView content={previewNodes(part.stem)} />
+      {part.choices && (
+        <ol type="A" className="question-bank-export-choices">
+          {part.choices.map((choice) => (
+            <li key={choice.id}>
+              <DocView content={previewNodes(choice.content)} />
+              {choice.correct && (
+                <strong className="question-bank-correct">
+                  Correct answer
+                </strong>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      {part.suggestedAnswer && (
+        <section>
+          <h3>Suggested Answer</h3>
+          <DocView content={previewNodes(part.suggestedAnswer)} />
+        </section>
+      )}
+    </li>
+  )
+}
+
 function RecordQuestion({
   question,
   number,
@@ -458,39 +509,7 @@ function RecordQuestion({
         // lettered as the test prints them.
         <ol type="a" className="record-multipart-parts">
           {question.parts.map((part) => (
-            <li key={part.id} aria-label={RECORD_PART_TYPE_LABELS[part.type]}>
-              <DocView
-                content={previewNodes(part.stem)}
-              />
-              {part.choices && (
-                <ol type="A" className="question-bank-export-choices">
-                  {part.choices.map((choice) => (
-                    <li key={choice.id}>
-                      <DocView
-                        content={previewNodes(
-                          choice.content,
-                        )}
-                      />
-                      {choice.correct && (
-                        <strong className="question-bank-correct">
-                          Correct answer
-                        </strong>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              )}
-              {part.suggestedAnswer && (
-                <section>
-                  <h3>Suggested Answer</h3>
-                  <DocView
-                    content={previewNodes(
-                      part.suggestedAnswer,
-                    )}
-                  />
-                </section>
-              )}
-            </li>
+            <RecordPart key={part.id} part={part} previewNodes={previewNodes} />
           ))}
         </ol>
       )}

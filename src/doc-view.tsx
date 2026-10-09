@@ -8,6 +8,7 @@
 
 import { useContext, type CSSProperties, type ReactNode } from 'react'
 import katex from 'katex'
+import { isCentred } from './centring'
 import { pendingImageOf, type PendingImageReference, type ProseMirrorJSON } from './question-doc'
 import { keptAspect, legacyRatioOf, pictureCropOf, pictureSizeOf, type PictureCrop } from './picture-geometry'
 import { PictureSlotContext } from './picture-slot'
@@ -128,6 +129,8 @@ function withMarks(node: ProseMirrorJSON, content: ReactNode): ReactNode {
 
 function renderNode(node: ProseMirrorJSON, key: number): ReactNode {
   const attrs = attrsOf(node)
+  // A Centred block says so on its element; the stylesheet centres it.
+  const align = isCentred(node) ? 'center' : undefined
   switch (node.type) {
     case 'text':
       return <span key={key}>{withMarks(node, text(node.text))}</span>
@@ -138,7 +141,7 @@ function renderNode(node: ProseMirrorJSON, key: number): ReactNode {
       // ProseMirror gives an empty paragraph a trailing break so it still
       // occupies a line in the editor. Reproduce that in the read-only view;
       // an empty <p> alone has no line box and adjacent margins collapse.
-      return <p key={key}>{content.length > 0 ? content : <br />}</p>
+      return <p key={key} data-align={align}>{content.length > 0 ? content : <br />}</p>
     }
     case 'heading': {
       const level = Math.min(Math.max(Number(attrs.level) || 1, 1), 6)
@@ -193,7 +196,7 @@ function renderNode(node: ProseMirrorJSON, key: number): ReactNode {
       const caption = text(attrs.caption)
       const pending = pendingImageOf(node)
       return (
-        <figure key={key} className="doc-figure">
+        <figure key={key} className="doc-figure" data-align={align}>
           <Slot pictureKey={attrs.pictureKey}>
             {pending
               ? <PictureNeeded pending={pending} />
@@ -225,7 +228,7 @@ function renderNode(node: ProseMirrorJSON, key: number): ReactNode {
       return <div key={key} className="doc-panel">{renderAll(node)}</div>
     case 'table':
       return (
-        <table key={key} className="doc-table">
+        <table key={key} className="doc-table" data-align={align}>
           <tbody>{renderAll(node)}</tbody>
         </table>
       )

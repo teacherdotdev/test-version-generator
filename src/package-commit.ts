@@ -114,6 +114,7 @@ export function planImport(
     const hiddenAnswers: Record<string, string[]> = {}
     const workSpace: Record<string, WorkSpace> = {}
     const wordBankLayout: Record<string, WordBankLayout> = {}
+    const wordBankLayoutSet: Record<string, true> = {}
     const identityOf = (position: ExamRecordPosition) =>
       identities.get(position.question.bank)!.get(position.question.question)!
     const layout = positionColumns(
@@ -133,11 +134,16 @@ export function planImport(
       }
       // Every Matching position stores where its Word Bank prints. A record
       // that does not say — written before it could, or by another tool —
-      // takes the layout its Question Style and the fit rule give it here,
+      // takes the layout its Paper Style and the fit rule give it here,
       // once, as a question added to an Exam does (ADR-0041).
       if (question.type === 'matching') {
         wordBankLayout[question.id] = position.wordBankLayout
           ?? wordBankLayoutFor(question, exam, bankAnswerWidth)
+        // One the teacher chose stays where it is when the style changes
+        // (ADR-0044); one placed here does not.
+        if (position.wordBankLayout !== undefined && position.wordBankLayoutSet === true) {
+          wordBankLayoutSet[question.id] = true
+        }
       }
       if (position.workSpace) {
         workSpace[question.id] = {
@@ -170,11 +176,12 @@ export function planImport(
       ...(Object.keys(columns).length > 0 ? { columns } : {}),
       ...(Object.keys(workSpace).length > 0 ? { workSpace } : {}),
       ...(Object.keys(wordBankLayout).length > 0 ? { wordBankLayout } : {}),
+      ...(Object.keys(wordBankLayoutSet).length > 0 ? { wordBankLayoutSet } : {}),
       ...(sections ? { sections, sectionOf } : {}),
       ...(exam.sectionHeadings ? { sectionHeadings: exam.sectionHeadings } : {}),
       ...(exam.headingSize ? { headingSize: exam.headingSize } : {}),
       ...(exam.textSize ? { textSize: exam.textSize } : {}),
-      ...(exam.questionStyle ? { questionStyle: exam.questionStyle } : {}),
+      ...(exam.paperStyle ? { paperStyle: exam.paperStyle } : {}),
       ...(exam.header ? { header: exam.header } : {}),
       ...(exam.margins ? { margins: exam.margins } : {}),
     }

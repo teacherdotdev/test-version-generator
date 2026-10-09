@@ -3,6 +3,7 @@
 // Questions are stored as plain JSON so the model and the store never need a
 // live editor; only the Crepe dialog turns it back into a ProseMirror document.
 
+import { isCentred, UNCENTRED_CONTAINERS } from './centring'
 import { isLocked, type AnswerLock } from './locked-answers'
 
 export type ProseMirrorJSON = Record<string, unknown>
@@ -97,6 +98,25 @@ function attrsOf(value: unknown): Record<string, unknown> | undefined {
   return { ...(attrs as Record<string, unknown>) }
 }
 
+/** Points a stored or imported value gives, when it gives any: a positive
+ *  whole number. Anything else — absent, zero, a fraction, a string — reads as
+ *  unpointed, so a record written before Points existed, or one an older build
+ *  stored, needs no upgrade to be read (ADR-0042). The one guard, so the
+ *  editor, the sheet, storage and import agree on what Points are. */
+export function readPoints(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 ? value : undefined
+}
+
+/** What a teacher typed into a Points field, read: a positive whole number,
+ *  `null` for an empty field — which clears the Points — or `undefined` for
+ *  anything else, which changes nothing. */
+export function parsePointsInput(text: string): number | null | undefined {
+  const trimmed = text.trim()
+  if (trimmed === '') return null
+  if (!/^\d+$/.test(trimmed)) return undefined
+  return readPoints(Number(trimmed))
+}
+
 // Strip a document down to the shapes the editor schema accepts, so a document
 // that has been round-tripped through storage always loads. `attrs` are carried
 // through — they are where a heading's level, an image's source and a latex
@@ -104,9 +124,12 @@ function attrsOf(value: unknown): Record<string, unknown> | undefined {
 // stable id and their boolean `correct`; a choice list is never left with fewer
 // than the two answers the schema requires.
 export function cleanDocument(value: ProseMirrorJSON): ProseMirrorJSON {
-  const cleanNode = (node: ProseMirrorJSON): ProseMirrorJSON => {
+  const cleanNode = (node: ProseMirrorJSON, uncentred = false): ProseMirrorJSON => {
     const clean: ProseMirrorJSON = { type: String(node.type ?? 'paragraph') }
     const attrs = attrsOf(node)
+    // A Centred block keeps `align: 'center'`; anything else — a left block,
+    // the editor's null, a block in a list item or an answer — keeps none.
+    if (attrs && 'align' in attrs && (uncentred || !isCentred(node))) delete attrs.align
     if (attrs) clean.attrs = attrs
     if (typeof node.text === 'string') clean.text = node.text
     if (Array.isArray(node.marks)) {
@@ -120,8 +143,9 @@ export function cleanDocument(value: ProseMirrorJSON): ProseMirrorJSON {
       })
     }
     if (Array.isArray(node.content)) {
+      const within = uncentred || UNCENTRED_CONTAINERS.has(String(node.type))
       clean.content = node.content.map((child) =>
-        cleanNode(child as ProseMirrorJSON),
+        cleanNode(child as ProseMirrorJSON, within),
       )
     }
     if (node.type === 'multipleChoice') {
@@ -164,15 +188,27 @@ export function cleanDocument(value: ProseMirrorJSON): ProseMirrorJSON {
         ? (clean.content as ProseMirrorJSON[])
         : []
       ).filter((child) => child.type === 'multipartPart')
-    } else if (node.type === 'multipartPart') {
+    } else if (node.type === 'multipartPart' || node.type === 'multipartSubpart') {
       const attrs = (node.attrs ?? {}) as Record<string, unknown>
+      clean.content = cleanPartContent(
+        Array.isArray(clean.content) ? (clean.content as ProseMirrorJSON[]) : [],
+        node.type === 'multipartPart',
+      )
+      // Points belong to a Part that answers, never to one holding Subparts,
+      // and an unpointed one keeps no `points` at all — not the editor's null —
+      // so a document saved before Points existed is saved unchanged.
+      const points = readPoints(attrs.points)
+      const answers = (clean.content as ProseMirrorJSON[]).at(-1)?.type !== 'multipartSubparts'
       clean.attrs = {
         id: typeof attrs.id === 'string' ? attrs.id : '',
         columns: attrs.columns === 1 || attrs.columns === 4 ? attrs.columns : 2,
+        ...(points !== undefined && answers ? { points } : {}),
       }
-      clean.content = cleanPartContent(
-        Array.isArray(clean.content) ? (clean.content as ProseMirrorJSON[]) : [],
-      )
+    } else if (node.type === 'multipartSubparts') {
+      clean.content = (Array.isArray(clean.content)
+        ? (clean.content as ProseMirrorJSON[])
+        : []
+      ).filter((child) => child.type === 'multipartSubpart')
     } else if (node.type === 'sideBySide') {
       // Panels only, and no more than three; one left is unwrapped by the
       // editor as soon as it loads.
@@ -231,15 +267,19 @@ function cleanMatchingContent(nodes: ProseMirrorJSON[]): ProseMirrorJSON[] {
   return [...prompts, ...bank]
 }
 
-// A Part's content in the one shape the schema accepts: its stem, then the
-// answer node that makes it the Part it is. A Part that lost its answer node
-// in storage comes back as a Multiple Choice Part, the kind a new one starts
-// as, rather than failing to load.
-function cleanPartContent(nodes: ProseMirrorJSON[]): ProseMirrorJSON[] {
+// A Part's or Subpart's content in the one shape the schema accepts: its
+// stem, then the node that makes it the Part it is — its answers, or, for a
+// Part only, the Subparts it holds. A Part that lost that node in storage, or
+// kept a Subparts box with nothing in it, comes back as a Multiple Choice
+// Part, the kind a new one starts as, rather than failing to load.
+function cleanPartContent(nodes: ProseMirrorJSON[], holdsSubparts: boolean): ProseMirrorJSON[] {
   const stem = nodes.find((node) => node.type === 'multipartPartStem')
     ?? { type: 'multipartPartStem', content: [{ type: 'paragraph' }] }
   const answer = nodes.find(
-    (node) => node.type === 'multipleChoice' || node.type === 'suggestedAnswer',
+    (node) =>
+      node.type === 'multipleChoice'
+      || node.type === 'suggestedAnswer'
+      || (holdsSubparts && node.type === 'multipartSubparts' && childrenOf(node).length > 0),
   ) ?? { type: 'multipleChoice', content: [blankChoice(), blankChoice()] }
   return [stem, answer]
 }
@@ -364,14 +404,23 @@ export function partStemNodesOf(part: ProseMirrorJSON): ProseMirrorJSON[] {
   return stem ? childrenOf(stem) : []
 }
 
-// The node that answers a Part: its `multipleChoice` list, or its
-// `suggestedAnswer` block for a Short Answer Part. Unlike a Short Answer
+// The node that answers a Part or Subpart: its `multipleChoice` list, or its
+// `suggestedAnswer` block for a Short Answer one. Unlike a Short Answer
 // question's, a Part's Suggested Answer stays inside the document, beside the
-// stem it answers.
+// stem it answers. A Part that holds Subparts has none: they answer for it.
 export function partAnswerNodeOf(part: ProseMirrorJSON): ProseMirrorJSON | undefined {
   return childrenOf(part).find(
     (node) => node.type === 'multipleChoice' || node.type === 'suggestedAnswer',
   )
+}
+
+// A Part's Subparts in authored order — the order they are numbered (i), (ii)…
+// in. Empty for a Part that answers itself, and for a Subpart, which never
+// holds any (ADR-0043).
+export function subpartNodesOf(part: ProseMirrorJSON): ProseMirrorJSON[] {
+  if (part.type !== 'multipartPart') return []
+  const box = childrenOf(part).find((node) => node.type === 'multipartSubparts')
+  return box ? childrenOf(box).filter((node) => node.type === 'multipartSubpart') : []
 }
 
 // The `suggestedAnswer` node of a question document being edited, or undefined
@@ -465,8 +514,8 @@ export function withMultipleChoice(
 // A copy of the document whose answers carry brand-new ids. Duplicating a
 // question must not hand the copy the original's choice ids: a version's
 // `choiceOrder` is keyed by choice id, so shared ids would make one question's
-// ordering move the other's answers. A Multipart question's Parts are renamed too, since
-// their answer order and Work Space are keyed by Part id. A matching set's Word Bank is renamed the
+// ordering move the other's answers. A Multipart question's Parts and Subparts are renamed
+// too, since their answer order and Work Space are keyed by their ids. A matching set's Word Bank is renamed the
 // same way, and every prompt follows the answer it named to its new id, so the
 // copy matches what the original matched.
 export function withFreshChoiceIds(doc: ProseMirrorJSON): ProseMirrorJSON {
@@ -484,6 +533,7 @@ export function withFreshChoiceIds(doc: ProseMirrorJSON): ProseMirrorJSON {
       || node.type === 'matchingPrompt'
       || node.type === 'matchingAnswer'
       || node.type === 'multipartPart'
+      || node.type === 'multipartSubpart'
     ) {
       copy.attrs = { ...attrs, id: freshId(choiceIdOf(node)) }
     }

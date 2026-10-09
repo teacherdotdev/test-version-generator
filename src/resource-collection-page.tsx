@@ -20,6 +20,7 @@ export function ResourceCollectionPage({
   onNewBank,
   onExportBank,
   onDeleteBank,
+  onDeleteExam,
   onImportBank,
 }: {
   kind: 'exams' | 'question-banks'
@@ -32,6 +33,7 @@ export function ResourceCollectionPage({
   onNewBank?: () => void
   onExportBank?: (bank: QuestionBankCollectionItem) => void
   onDeleteBank?: (bank: QuestionBankCollectionItem) => void
+  onDeleteExam?: (exam: RecentExam) => void
   onImportBank?: () => void
 }) {
   const [query, setQuery] = useState('')
@@ -110,7 +112,7 @@ export function ResourceCollectionPage({
         >
           {isExams
             ? shownExams.map((exam) => (
-                <ExamCard key={exam.id} exam={exam} onOpen={onOpenExam} />
+                <ExamCard key={exam.id} exam={exam} onOpen={onOpenExam} onDelete={onDeleteExam} />
               ))
             : shownBanks.map((bank) => (
                 <QuestionBankCard

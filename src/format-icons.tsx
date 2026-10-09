@@ -1,7 +1,7 @@
 // Drawings the menus need that lucide has no icon for.
 
 import type { ReactNode, SVGProps } from 'react'
-import type { QuestionStyle } from './question-style'
+import type { PaperStyle } from './paper-style'
 
 /** A Section inserted above this one: a new row, marked with a plus, over the
  *  Section's own. Lucide has a glyph for putting something between rows, but
@@ -59,7 +59,7 @@ export function MarginsIcon(props: SVGProps<SVGSVGElement>) {
   )
 }
 
-// A Question Style at a glance, beside its name in the Questions submenu: the
+// A Paper Style at a glance, beside its name in the Paper style submenu: the
 // one thing it changes most, in a 32 by 24 sketch of a question or two, with
 // a small "1." where that style prints the question's number. The menu draws
 // it half as large again (`.context-menu-preview`), keeping its strokes a
@@ -81,7 +81,7 @@ function Mark({ x, y, children, bold = false }: { x: number; y: number; children
   )
 }
 
-const PREVIEWS: Record<QuestionStyle, ReactNode> = {
+const PREVIEWS: Record<PaperStyle, ReactNode> = {
   // T and F to circle, then the number and its stem; an answer letter circled.
   standard: (
     <>
@@ -114,9 +114,20 @@ const PREVIEWS: Record<QuestionStyle, ReactNode> = {
       <path d="M8 18.5h23M8 22.5h23" strokeOpacity="0.55" />
     </>
   ),
+  // A bare bold number and a Part's (a), dotted lines to write on, and the
+  // answer's points in brackets at the right margin.
+  'exam-board': (
+    <>
+      <Mark x={0.5} y={7} bold>1</Mark>
+      <Mark x={5} y={7} bold>(a)</Mark>
+      <path d="M16 4.5h15" />
+      <path d="M5 12.5h26M5 17.5h18" strokeDasharray="0.1 2" strokeOpacity="0.8" />
+      <Mark x={24} y={23}>[2]</Mark>
+    </>
+  ),
 }
 
-export function QuestionStylePreview({ style }: { style: QuestionStyle }) {
+export function PaperStylePreview({ style }: { style: PaperStyle }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

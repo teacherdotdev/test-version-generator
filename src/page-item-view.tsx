@@ -11,23 +11,34 @@
 // reads a page's furniture: a header, a footer and a page number belong to the
 // page, not to the items on it.
 
-import type { ReactNode } from 'react'
+import { type ReactNode } from 'react'
 import { TITLE_PX, sectionHeadingStyles } from './export-typography'
 import { Check, Lock, RotateCcw } from 'lucide-react'
 import { DifficultyBadge, TopicBadge } from './badges'
 import { DocView } from './doc-view'
+import { pointsLabel } from './points'
 import {
   hasAnswerBlank,
   headerHeightOf,
   numberColumnOf,
+  partsOpenNumberLine,
+  pointsOnLastRule,
   printsNumberLine,
+  subpartsOpenLabelLine,
   type AnswerKeyEntryItem,
+  type AnswerKeyHeadingItem,
+  answerKeyPointsText,
+  answerKeyTotalText,
   type AnswerKeySectionItem,
+  printedLabel,
+  printedNumberOf,
   type ChoiceGrid,
+  type PaperTotalItem,
   type MatchingSet,
   type PageFurniture,
   type PlannedBankAnswer,
   type PlannedPart,
+  type PlannedSubpart,
   type PlannedWorkSpace,
   type PageHeader,
   type PageItem,
@@ -97,7 +108,7 @@ export function ChoiceGridView({
                           <Lock aria-hidden="true" />
                         </span>
                       )}
-                      {choice.letter}.
+                      {printedLabel(choice.letter, choice.printed)}
                     </span>
                     <DocView className="choice-body" content={blocksOf(choice.node)} />
                   </>
@@ -121,7 +132,7 @@ export function ChoiceGridView({
 export function BankAnswer({ answer }: { answer: PlannedBankAnswer }) {
   return (
     <div className="matching-answer">
-      <span className="matching-letter">{answer.letter}.</span>
+      <span className="matching-letter">{printedLabel(answer.letter, answer.printed)}</span>
       <DocView className="matching-body" content={blocksOf(answer.node)} />
     </div>
   )
@@ -147,7 +158,7 @@ export function MatchingSetView({
           aria-label="Answer blank"
           data-answer={showCorrectness && prompt.letter ? prompt.letter : undefined}
         />
-        <span className="matching-count">{prompt.number}.</span>
+        <span className="matching-count">{printedLabel(prompt.number, prompt.printed)}</span>
       </span>
       <DocView className="matching-body" content={blocksOf(prompt.node)} />
     </div>
@@ -197,7 +208,11 @@ export function MatchingSetView({
 // as the plan says, and either empty or ruled with the plan's own count of
 // lines, each one pitch tall with its rule along the bottom. Nothing is drawn
 // for a question that has no room, so a zero-height space measures as nothing.
-export function WorkSpaceView({ space }: { space: PlannedWorkSpace }) {
+//
+// `points` are the `[n]` of the answer the space ends, when they stand on its
+// last rule (`pointsOnLastRule`): at the rule's right end, the rule stopping
+// short of them, in the row's own height.
+export function WorkSpaceView({ space, points }: { space: PlannedWorkSpace; points?: ReactNode }) {
   if (space.height <= 0) return null
   const rows = rowsOfPlanned(space)
   return (
@@ -206,44 +221,186 @@ export function WorkSpaceView({ space }: { space: PlannedWorkSpace }) {
       data-style={space.style}
       data-lines={space.style === 'lines' ? space.lines : undefined}
       data-fill={space.fill ? 'true' : undefined}
+      data-ruling={space.ruling}
       style={{ height: `${space.height}px` }}
     >
-      {Array.from({ length: space.lines }, (_unused, index) => (
-        <div
-          className="work-space-line"
-          key={index}
-          style={{ height: `${index === 0 ? rows.first : rows.pitch}px` }}
-        />
-      ))}
+      {Array.from({ length: space.lines }, (_unused, index) => {
+        const height = { height: `${index === 0 ? rows.first : rows.pitch}px` }
+        return points !== undefined && index === space.lines - 1 ? (
+          <div className="work-space-line work-space-line--points" key={index} style={height}>
+            <span className="work-space-rule" />
+            <span className="work-space-points">{points}</span>
+          </div>
+        ) : (
+          <div className="work-space-line" key={index} style={height} />
+        )
+      })}
     </div>
+  )
+}
+
+// Points a Paper Style prints after an answer or a question, against the
+// right margin on a line of their own: `[2]`, `[Total: 9]`. A paragraph, so it
+// measures, prints and reads back as one.
+export function PointsAfter({ text }: { text: string }) {
+  return <p className="points-after">{text}</p>
+}
+
+/** What a printed `[n]` is the Points of: a Part or Subpart by its id, or —
+ *  `partId` `null` — the question itself. `onRule` when it stands on the last
+ *  rule of a Work Space, inside that rule's row, rather than on a line of its
+ *  own. */
+export type PrintedPoints = { partId: string | null; points: number; text: string; onRule: boolean }
+
+/** Draws a printed `[n]` in place of `PointsAfter`, or of the bare text on a
+ *  rule. The sheet uses it to make the `[n]` the control that changes the
+ *  Points it shows; it must take the same room the plain one does, since the
+ *  page was measured with that. */
+export type RenderPrintedPoints = (printed: PrintedPoints) => ReactNode
+
+function printedPoints(
+  text: string,
+  partId: string | null,
+  points: number | undefined,
+  render: RenderPrintedPoints | undefined,
+  onRule = false,
+): ReactNode {
+  if (render && points !== undefined) return render({ partId, points, text, onRule })
+  return onRule ? text : <PointsAfter text={text} />
+}
+
+/** An answer's room and the `[n]` after it: on the space's last rule where it
+ *  has one, otherwise on a line of their own below it. */
+function AnswerSpace({
+  id,
+  space,
+  pointsAfter,
+  points,
+  renderWorkSpace,
+  renderPoints,
+}: {
+  /** The Part's or Subpart's id, or `null` for the question itself. */
+  id: string | null
+  space: PlannedWorkSpace | null
+  pointsAfter: string | undefined
+  points: number | undefined
+  renderWorkSpace?: (partId: string, space: PlannedWorkSpace, points?: ReactNode) => ReactNode
+  renderPoints?: RenderPrintedPoints
+}) {
+  const onRule = pointsAfter !== undefined && pointsOnLastRule(space)
+  const ruled = onRule ? printedPoints(pointsAfter, id, points, renderPoints, true) : undefined
+  return (
+    <>
+      {space
+        && (renderWorkSpace && id !== null
+          ? renderWorkSpace(id, space, ruled)
+          : <WorkSpaceView space={space} points={ruled} />)}
+      {!onRule && pointsAfter && printedPoints(pointsAfter, id, points, renderPoints)}
+    </>
   )
 }
 
 // One Part of a Multipart question, drawn the way a question of its kind is, one level
 // in: a short letter column — no answer blank, for either kind — then its
-// stem, its choice grid or its work space. `renderWorkSpace` lets the sheet wrap a Short Answer Part's space in
-// the handle that sizes it.
+// stem, its choice grid or its work space, or the Subparts it holds.
+// `renderWorkSpace` lets the sheet wrap a Short Answer Part's or Subpart's
+// space in the handle that sizes it.
 export function PartContent({
   part,
   showCorrectness = false,
   renderWorkSpace,
+  renderPoints,
 }: {
   part: PlannedPart
   showCorrectness?: boolean
-  renderWorkSpace?: (part: PlannedPart, space: PlannedWorkSpace) => ReactNode
+  renderWorkSpace?: (partId: string, space: PlannedWorkSpace, points?: ReactNode) => ReactNode
+  /** How the sheet draws a Part's or Subpart's printed `[n]`. */
+  renderPoints?: RenderPrintedPoints
 }) {
+  // A piece continued from an earlier page keeps the letter column, empty, so
+  // its Subparts stand where they would have under the lead-in.
   return (
-    <div className="multipart-part-print" data-part-id={part.id} data-part-type={part.type}>
+    <div
+      className="multipart-part-print"
+      data-part-id={part.id}
+      data-part-type={part.type}
+      {...(part.continued ? { 'data-continued': 'true' } : {})}
+    >
       <div className="part-letter">
-        <span className="part-count">{part.letter}.</span>
+        {!part.continued && <span className="part-count">{printedLabel(part.letter, part.printed)}</span>}
       </div>
       <div className="part-body">
-        <DocView className="question-stem" content={part.stem} />
+        {/* A continued piece prints the stem blocks it carries, if any. */}
+        {(!part.continued || part.stem.length > 0) && <DocView className="question-stem" content={part.stem} />}
         {part.grid && <ChoiceGridView grid={part.grid} showCorrectness={showCorrectness} />}
-        {part.workSpace
-          && (renderWorkSpace
-            ? renderWorkSpace(part, part.workSpace)
-            : <WorkSpaceView space={part.workSpace} />)}
+        <AnswerSpace
+          id={part.id}
+          space={part.workSpace}
+          pointsAfter={part.pointsAfter}
+          points={part.points}
+          renderWorkSpace={renderWorkSpace}
+          renderPoints={renderPoints}
+        />
+        {/* A Part with no lead-in opens with Subpart (i) on its own line. */}
+        {part.subparts.length > 0 && (
+          <div
+            className={
+              subpartsOpenLabelLine(part)
+                ? 'multipart-subparts-print multipart-subparts-print--opening'
+                : 'multipart-subparts-print'
+            }
+          >
+            {part.subparts.map((subpart) => (
+              <SubpartContent
+                key={subpart.id}
+                subpart={subpart}
+                showCorrectness={showCorrectness}
+                renderWorkSpace={renderWorkSpace}
+                renderPoints={renderPoints}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// One Subpart, drawn as a Part is, one level further in under its Part's
+// lead-in: its label column, then its stem and its choice grid or work space.
+function SubpartContent({
+  subpart,
+  showCorrectness,
+  renderWorkSpace,
+  renderPoints,
+}: {
+  subpart: PlannedSubpart
+  showCorrectness: boolean
+  renderWorkSpace?: (partId: string, space: PlannedWorkSpace, points?: ReactNode) => ReactNode
+  renderPoints?: RenderPrintedPoints
+}) {
+  // A piece continued from an earlier page keeps the label column, empty.
+  return (
+    <div
+      className="multipart-part-print multipart-subpart-print"
+      data-part-id={subpart.id}
+      data-part-type={subpart.type}
+      {...(subpart.continued ? { 'data-continued': 'true' } : {})}
+    >
+      <div className="part-letter">
+        {!subpart.continued && <span className="part-count">{printedLabel(subpart.label, subpart.printed)}</span>}
+      </div>
+      <div className="part-body">
+        <DocView className="question-stem" content={subpart.stem} />
+        {subpart.grid && <ChoiceGridView grid={subpart.grid} showCorrectness={showCorrectness} />}
+        <AnswerSpace
+          id={subpart.id}
+          space={subpart.workSpace}
+          pointsAfter={subpart.pointsAfter}
+          points={subpart.points}
+          renderWorkSpace={renderWorkSpace}
+          renderPoints={renderPoints}
+        />
       </div>
     </div>
   )
@@ -257,19 +414,23 @@ export function QuestionContent({
   item,
   showCorrectness = false,
   renderPartWorkSpace,
+  renderPoints,
 }: {
   item: QuestionItem
   /** Correct-answer feedback is authoring chrome, never export content. */
   showCorrectness?: boolean
   /** The sheet's own drawing of a Short Answer Part's work space, with its
    *  sizing handle; everywhere else the space is drawn plain. */
-  renderPartWorkSpace?: (part: PlannedPart, space: PlannedWorkSpace) => ReactNode
+  renderPartWorkSpace?: (partId: string, space: PlannedWorkSpace, points?: ReactNode) => ReactNode
+  /** How the sheet draws each printed `[n]` — the question's, a Part's or a
+   *  Subpart's. A total, which no one sets, is always drawn plain. */
+  renderPoints?: RenderPrintedPoints
 }) {
   const numbered = printsNumberLine(item)
   const column = numberColumnOf(item.question)
   return (
     <>
-      {/* The column holds the number, and whatever the Question Style puts
+      {/* The column holds the number, and whatever the Paper Style puts
           before it — a True/False question's marks, or an answer blank —
           `questionIndentOf` in export-plan.ts is the same width for the
           adapters. */}
@@ -288,22 +449,37 @@ export function QuestionContent({
             ))}
           </span>
         )}
-        {numbered && <span className="question-count">{item.question.number}.</span>}
+        {numbered && <span className="question-count">{printedNumberOf(item.question)}</span>}
       </div>
       <div className="question-body">
         <DocView className="question-stem" content={item.stem} />
         {item.grid && (
           <ChoiceGridView grid={item.grid} showCorrectness={showCorrectness} />
         )}
-        {item.workSpace && <WorkSpaceView space={item.workSpace} />}
+        {item.workSpace && (
+          <WorkSpaceView
+            space={item.workSpace}
+            points={item.pointsAfter && pointsOnLastRule(item.workSpace)
+              ? printedPoints(item.pointsAfter, null, item.question.totalPoints, renderPoints, true)
+              : undefined}
+          />
+        )}
+        {/* With no stem above them, Part (a) opens on the number's line. */}
         {item.parts && item.parts.length > 0 && (
-          <div className="multipart-parts-print">
+          <div
+            className={
+              partsOpenNumberLine(item)
+                ? 'multipart-parts-print multipart-parts-print--opening'
+                : 'multipart-parts-print'
+            }
+          >
             {item.parts.map((part) => (
               <PartContent
                 key={part.id}
                 part={part}
                 showCorrectness={showCorrectness}
                 renderWorkSpace={renderPartWorkSpace}
+                renderPoints={renderPoints}
               />
             ))}
           </div>
@@ -312,8 +488,24 @@ export function QuestionContent({
       {item.matching && (
         <MatchingSetView set={item.matching} showCorrectness={showCorrectness} />
       )}
+      {/* The question's own `[n]`, where no ruled Work Space carries it,
+          then the totals no one sets: a Multipart question's, and any
+          Section's. */}
+      {((item.pointsAfter && !pointsOnLastRule(item.workSpace)) || item.closingPoints) && (
+        <div className="question-closing">
+          {item.pointsAfter && !pointsOnLastRule(item.workSpace)
+            && printedPoints(item.pointsAfter, null, item.question.totalPoints, renderPoints)}
+          {(item.closingPoints ?? []).map((text, index) => <PointsAfter text={text} key={index} />)}
+        </div>
+      )}
     </>
   )
+}
+
+// The paper's total, beneath the title on the test's first page, under a
+// Paper Style that prints it there (ADR-0045).
+export function PaperTotalContent({ item }: { item: PaperTotalItem }) {
+  return <p className="paper-total">{item.text}</p>
 }
 
 // A cleared part prints nothing — not an empty line — and a heading cleared of
@@ -333,8 +525,26 @@ export function SectionHeadingContent({ item }: { item: SectionHeadingItem }) {
   )
 }
 
-export function AnswerKeyHeading() {
-  return <h2 className="answer-key-heading">Answer Section</h2>
+// The paper's total Points stand at the right of the heading's own line, so
+// the heading measures the same height with a total as without one.
+export function AnswerKeyHeading({ item }: { item: AnswerKeyHeadingItem }) {
+  return (
+    <h2 className="answer-key-heading">
+      Answer Section
+      {item.totalPoints !== undefined && (
+        <>
+          {' '}
+          <span className="answer-key-total">{answerKeyTotalText(item.totalPoints)}</span>
+        </>
+      )}
+    </h2>
+  )
+}
+
+/** Points as the Answer Key prints them after an answer: `[2]`. */
+function AnswerKeyPoints({ points }: { points: number | undefined }) {
+  if (points === undefined) return null
+  return <span className="answer-key-points" aria-label={pointsLabel(points)}>{answerKeyPointsText(points)}</span>
 }
 
 export function AnswerKeySection({ item }: { item: AnswerKeySectionItem }) {
@@ -343,11 +553,14 @@ export function AnswerKeySection({ item }: { item: AnswerKeySectionItem }) {
 
 export function AnswerKeyEntry({ item }: { item: AnswerKeyEntryItem }) {
   return (
-    <div className="answer-key-entry">
+    <div
+      className={item.points !== undefined ? 'answer-key-entry answer-key-entry--pointed' : 'answer-key-entry'}
+    >
       <span>{item.number}.</span>
       <span className="answer-key-answer" aria-label={item.letter ?? 'Blank answer'}>
         {item.letter}
       </span>
+      <AnswerKeyPoints points={item.points} />
       {(item.difficulty || (item.topics?.length ?? 0) > 0) && (
         <span className="answer-key-metadata" aria-label="Question Metadata">
           {item.difficulty && <DifficultyBadge difficulty={item.difficulty} />}
@@ -358,7 +571,13 @@ export function AnswerKeyEntry({ item }: { item: AnswerKeyEntryItem }) {
         <DocView className="answer-key-suggested" content={item.suggestedAnswer} />
       )}
       {item.parts && (
-        <div className="answer-key-parts">
+        <div
+          className={
+            item.parts.some((part) => part.subpart)
+              ? 'answer-key-parts answer-key-parts--subparts'
+              : 'answer-key-parts'
+          }
+        >
           {item.parts.map((part) => (
             <div className="answer-key-part" key={part.letter}>
               <span className="answer-key-part-letter">{part.letter}.</span>
@@ -368,6 +587,7 @@ export function AnswerKeyEntry({ item }: { item: AnswerKeyEntryItem }) {
               >
                 {part.answer}
               </span>
+              <AnswerKeyPoints points={part.points} />
               {part.suggestedAnswer && (
                 <DocView className="answer-key-suggested" content={part.suggestedAnswer} />
               )}
@@ -480,13 +700,17 @@ export function PageHeaderContent({
   onTitleChange?: (title: string) => void
   titleDisabled?: boolean
 }) {
-  // A title that wraps grows its header by the lines the plan measured, which
-  // the stylesheet's fixed band per variant cannot know.
-  const height = furniture.titleLines && furniture.titleLines > 1
+  // A title that wraps, or a page number printed above the line, grows its
+  // header by what the plan measured, which the stylesheet's fixed band per
+  // variant cannot know.
+  const height = (furniture.titleLines && furniture.titleLines > 1) || furniture.pageNumberAt === 'top'
     ? { height: `${headerHeightOf(header, furniture)}px` }
     : undefined
   return (
     <header className={`page-header page-header--${header}`} style={height}>
+      {furniture.pageNumberAt === 'top' && (
+        <div className="page-running-head">{furniture.pageNumber}</div>
+      )}
       <div className="page-identity">
         {identityEditor ? (
           <EditableIdentityText editor={identityEditor} />
@@ -533,6 +757,20 @@ export function PageHeaderContent({
   )
 }
 
+// The foot of a sheet: its page number, centred, on every style that prints
+// it there; and "Turn over" against the right under a style that prints it
+// (ADR-0045).
+export function PageFooterContent({ furniture }: { furniture: PageFurniture }) {
+  return (
+    <footer className={furniture.footRight ? 'page-footer page-footer--running' : 'page-footer'}>
+      {furniture.pageNumberAt === undefined && (
+        <span className="page-footer-number">{furniture.pageNumber}</span>
+      )}
+      {furniture.footRight && <span className="page-foot-right">{furniture.footRight}</span>}
+    </footer>
+  )
+}
+
 // One page item at its printed size, with no handlers and no gutter — what
 // `dom-measure.ts` renders off-screen to read a height back off.
 //
@@ -540,6 +778,8 @@ export function PageHeaderContent({
 // until it has been given a way to be drawn, and therefore measured.
 export function PageItemMeasureView({ item }: { item: PageItem }) {
   switch (item.kind) {
+    case 'paper-total':
+      return <PaperTotalContent item={item} />
     case 'section-heading':
       return (
         <SectionHeadingContent item={item} />
@@ -551,7 +791,7 @@ export function PageItemMeasureView({ item }: { item: PageItem }) {
         </section>
       )
     case 'answer-key-heading':
-      return <AnswerKeyHeading />
+      return <AnswerKeyHeading item={item} />
     case 'answer-key-section':
       return <AnswerKeySection item={item} />
     case 'answer-key-entry':

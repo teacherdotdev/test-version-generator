@@ -78,23 +78,23 @@ const HEIGHT_CACHE_LIMIT = 600
 // there would be fighting React's own scheduling for no gain — nothing in a
 // measured item is interactive or stateful.
 //
-// The host carries the Exam's text size and Question Style exactly as a page's
+// The host carries the Exam's text size and Paper Style exactly as a page's
 // content does, and is as wide as the page's margins leave — the width packing
 // hands over, so the width an item is measured at is by construction the width
 // it is packed against. All three are part of what a height is remembered by.
 function itemHeight(item: PageItem, layout: ItemLayout = {}): number {
   const element = measureHost()
   if (!element) return 0
-  const { textSize, questionStyle } = layout
+  const { textSize, paperStyle } = layout
   const width = layout.contentWidth ?? PAGE_CONTENT_WIDTH
   const markup = renderToStaticMarkup(createElement(PageItemMeasureView, { item }))
-  const key = `${textSize ?? 'normal'}:${questionStyle ?? 'standard'}:${width}:${markup}`
+  const key = `${textSize ?? 'normal'}:${paperStyle ?? 'standard'}:${width}:${markup}`
   const remembered = heights.get(key)
   if (remembered !== undefined) return remembered
   element.style.width = `${width}px`
   element.style.fontSize = textSize && textSize !== 'normal' ? `${BODY_PX[textSize]}px` : ''
-  if (questionStyle) element.dataset.questionStyle = questionStyle
-  else delete element.dataset.questionStyle
+  if (paperStyle) element.dataset.paperStyle = paperStyle
+  else delete element.dataset.paperStyle
   element.innerHTML = markup
   // Fractional, unlike `scrollHeight`: the heights of a dozen items are summed
   // against a fixed box, and a rounded pixel each would be a rounded page.
@@ -186,7 +186,7 @@ function titleLines(title: string, size: HeadingSize | undefined, width: number)
   if (remembered !== undefined) return remembered
   element.style.width = `${width}px`
   element.style.fontSize = ''
-  delete element.dataset.questionStyle
+  delete element.dataset.paperStyle
   element.innerHTML =
     '<header class="page-header page-header--first" style="height: auto"><h1 class="exam-title"></h1></header>'
   const heading = element.querySelector('h1')!

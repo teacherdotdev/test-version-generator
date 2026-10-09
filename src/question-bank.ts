@@ -34,6 +34,10 @@ export type ExamWorkingCopy = {
    *  Question Bank record id: Beside or Above, stored for every Matching
    *  position as it arrives. Exam presentation like `columns`. */
   wordBankLayout?: Record<string, import('./exam').WordBankLayout>
+  /** The Matching positions whose layout the teacher chose from the sheet,
+   *  which a change of Paper Style leaves where they are (ADR-0044). A
+   *  layout given on arrival is not one. */
+  wordBankLayoutSet?: Record<string, true>
   /** The Working Copy's answer arrangement, keyed by Question Bank record id.
    *  Absent means authored order, preserving compatibility with drafts stored
    *  before answer shuffling existed. */
@@ -55,7 +59,7 @@ export type ExamWorkingCopy = {
   headingSize?: import('./section-headings').HeadingSize
   textSize?: import('./section-headings').TextSize
   /** How every question on this Exam prints; absent means Standard. */
-  questionStyle?: import('./question-style').QuestionStyle
+  paperStyle?: import('./paper-style').PaperStyle
   /** This Exam's own test-page header lines; absent means the default. */
   header?: import('./page-header').ExamHeader
   /** This Exam's Page Margins, in inches; absent means the default. */
@@ -157,10 +161,14 @@ export function withReferencesRemoved(
   const wordBankLayout = draft.wordBankLayout
     ? { ...draft.wordBankLayout }
     : undefined
+  const wordBankLayoutSet = draft.wordBankLayoutSet
+    ? { ...draft.wordBankLayoutSet }
+    : undefined
   const sectionOf = draft.sectionOf
     ? { ...draft.sectionOf }
     : undefined
   for (const id of [...removing, ...partIds]) {
+    delete wordBankLayoutSet?.[id]
     delete choiceOrder?.[id]
     delete hiddenAnswers?.[id]
     delete columns?.[id]
@@ -176,6 +184,7 @@ export function withReferencesRemoved(
     ...(columns ? { columns } : {}),
     ...(workSpace ? { workSpace } : {}),
     ...(wordBankLayout ? { wordBankLayout } : {}),
+    ...(wordBankLayoutSet ? { wordBankLayoutSet } : {}),
     ...(sectionOf ? { sectionOf } : {}),
   }
 }

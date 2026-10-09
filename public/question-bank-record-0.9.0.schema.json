@@ -312,9 +312,37 @@
         },
         "pending": {
           "$ref": "#/$defs/pending"
+        },
+        "align": {
+          "description": "A Centred block: a paragraph, block image or table set in the middle of its column, such as a figure and its “Fig. 1.1” caption. Left is the default and is written by omitting `align`. Centring is ignored in a list item and in an answer choice, matching item or word-bank answer.",
+          "const": "center"
         }
       },
       "allOf": [
+        {
+          "if": {
+            "properties": {
+              "align": true
+            },
+            "required": [
+              "align"
+            ]
+          },
+          "then": {
+            "properties": {
+              "type": {
+                "enum": [
+                  "paragraph",
+                  "block-image",
+                  "table"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ]
+          }
+        },
         {
           "if": {
             "properties": {
@@ -547,7 +575,6 @@
       "type": "object",
       "required": [
         "id",
-        "type",
         "stem"
       ],
       "properties": {
@@ -573,6 +600,17 @@
         },
         "suggestedAnswer": {
           "$ref": "#/$defs/document"
+        },
+        "points": {
+          "$ref": "#/$defs/points"
+        },
+        "subparts": {
+          "description": "The Subparts this Part holds, in the order they are numbered (i), (ii)…. A Part that holds Subparts answers nothing itself: its stem is their lead-in, and it has no `type`, `choices` or `suggestedAnswer`. Added in 0.9.0.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/subpart"
+          }
         }
       },
       "allOf": [
@@ -597,8 +635,129 @@
               "choices"
             ]
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "subparts": {
+                "type": "array"
+              }
+            },
+            "required": [
+              "subparts"
+            ]
+          },
+          "then": {
+            "properties": {
+              "type": false,
+              "choices": false,
+              "suggestedAnswer": false,
+              "points": false
+            }
+          },
+          "else": {
+            "properties": {
+              "type": {
+                "$ref": "#/$defs/part/properties/type"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          }
         }
       ]
+    },
+    "subpart": {
+      "description": "A Subpart of a Part, numbered (i), (ii)… in authored order: a Multiple Choice or Short Answer question shaped like a Part that answers. It never holds Subparts of its own. Added in 0.9.0.",
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "stem"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^q[1-9][0-9]*-s[1-9][0-9]*-s[1-9][0-9]*$"
+        },
+        "type": {
+          "enum": [
+            "multiple-choice",
+            "short-answer"
+          ]
+        },
+        "stem": {
+          "$ref": "#/$defs/stemDocument"
+        },
+        "choices": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/subpartChoice"
+          }
+        },
+        "suggestedAnswer": {
+          "$ref": "#/$defs/document"
+        },
+        "points": {
+          "$ref": "#/$defs/points"
+        },
+        "subparts": false
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "multiple-choice"
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "then": {
+            "properties": {
+              "choices": {
+                "$ref": "#/$defs/subpart/properties/choices"
+              }
+            },
+            "required": [
+              "choices"
+            ]
+          }
+        }
+      ]
+    },
+    "subpartChoice": {
+      "type": "object",
+      "required": [
+        "id",
+        "content",
+        "correct"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^q[1-9][0-9]*-s[1-9][0-9]*-s[1-9][0-9]*-c[1-9][0-9]*$"
+        },
+        "content": {
+          "$ref": "#/$defs/document"
+        },
+        "correct": {
+          "type": "boolean"
+        },
+        "locked": {
+          "description": "Whether this answer is a Locked Answer, which keeps its authored position however answers are shuffled. `true` locks it; `false` records that its author unlocked it, so a consumer that locks answers by their wording must not; absent, the record makes no decision.",
+          "type": "boolean"
+        }
+      }
+    },
+    "points": {
+      "description": "What answering it is worth, as a positive whole number. Absent means unpointed, which is not the same as worth nothing: it adds nothing to a total. A Multipart Question's Points, and a paper's total, are always the sum of what its answering Parts and Subparts carry, and are never written. Added in 0.9.0.",
+      "type": "integer",
+      "minimum": 1
     },
     "question": {
       "type": "object",
@@ -636,6 +795,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "points": {
+          "$ref": "#/$defs/points"
         },
         "choices": {
           "type": "array",
@@ -764,7 +926,8 @@
             "properties": {
               "parts": {
                 "$ref": "#/$defs/question/properties/parts"
-              }
+              },
+              "points": false
             },
             "required": [
               "parts"

@@ -31,7 +31,13 @@ Every record has these required members:
 
 `0.9.0` adds the **Locked Answer**: an optional boolean `locked` on a Multiple Choice Question's choice and on a Multiple Choice Part's choice (see [Locked Answers](#locked-answers)). An answer such as “All of the above” means something only in the place it was written, so a producer that varies a test keeps a locked answer at its authored position and shuffles only the others among the positions left. A record with no `locked` anywhere is otherwise the same in `0.8.0` and `0.9.0`.
 
-An older consumer would read a `0.9.0` record without loss of structure but would shuffle a locked answer, changing what it means, which is why the change is a minor version rather than a patch. A consumer reads a `0.1.0`–`0.8.0` record as making no decision about any answer's lock; an older record's `locked`, if one carries it, is an unknown optional field and is ignored.
+`0.9.0` also lets a Multipart Part hold **Subparts**: an optional `subparts` list in place of the Part's own `type` and answers, each Subpart shaped like a Part that answers (see [Subparts](#subparts)). A record with no `subparts` anywhere is otherwise the same in `0.8.0` and `0.9.0`.
+
+`0.9.0` also adds **Points**: an optional whole number `points` on what a student answers — a Multiple Choice, True/False, Matching or Short Answer Question, and a Part or Subpart that answers (see [Points](#points)). A record with no `points` anywhere is otherwise the same in `0.8.0` and `0.9.0`.
+
+`0.9.0` also adds the **Centred** block: an optional `"align": "center"` on a `paragraph`, a `block-image` or a `table` (see [Centred blocks](#centred-blocks)). A record with no `align` anywhere is otherwise the same in `0.8.0` and `0.9.0`, and a consumer reads every block of a `0.1.0`–`0.8.0` record as left, ignoring any `align` one carries.
+
+An older consumer would read a `0.9.0` record without loss of structure but would shuffle a locked answer, changing what it means — and could not read a Part that holds Subparts at all, and would drop every Point — which is why the change is a minor version rather than a patch. A consumer reads a `0.1.0`–`0.8.0` record as making no decision about any answer's lock, and as unpointed throughout; an older record's `locked` or `points`, if one carries it, is an unknown optional field and is ignored.
 
 `0.8.0` changed only how a Media Asset's bytes travel. Through `0.7.0` each Media Asset carried its bytes in the record as base64 `bytes`; from `0.8.0` it names its `file` instead, a path in the zip the record's package travels in (see [Media Assets](#media-assets) and [The package zip](#the-package-zip)). A picture of a few megabytes no longer makes the record a string of several million characters, and the record stays readable in a text editor. A record that declares no Media Asset — one with no pictures, or whose pictures are all Pending Images — is otherwise the same in `0.7.0` and `0.8.0`. A consumer reads a `0.1.0`–`0.7.0` record's base64 `bytes` as before.
 
@@ -45,7 +51,7 @@ Unknown optional fields may be ignored and need not survive re-export. Unknown Q
 
 ## Identity and ordering
 
-`bank.questions` is in canonical authored Question order. A Question has a package-local ordinal ID such as `q1`; a Multiple Choice choice has one such as `q1-c1`, a Matching item one such as `q1-p1`, a Word Bank answer one such as `q1-a1`, a Multipart Part one such as `q1-s1` and a Part's own Multiple Choice choice one such as `q1-s1-c1`. These IDs exist only to make references inside one record readable — a Matching item names its answer by one. They are not local application identities, synchronization keys, or IDs to preserve on import. An application creates fresh local IDs for an imported bank, its Questions, its Parts, and its choices. The `s` prefix keeps a Part apart from a Matching item's `p`, and a Part choice carries its Part's ID so two Parts' choices never collide.
+`bank.questions` is in canonical authored Question order. A Question has a package-local ordinal ID such as `q1`; a Multiple Choice choice has one such as `q1-c1`, a Matching item one such as `q1-p1`, a Word Bank answer one such as `q1-a1`, a Multipart Part one such as `q1-s1`, a Part's own Multiple Choice choice one such as `q1-s1-c1`, a Subpart one such as `q1-s1-s1` and a Subpart's choice one such as `q1-s1-s1-c1`. These IDs exist only to make references inside one record readable — a Matching item names its answer by one. They are not local application identities, synchronization keys, or IDs to preserve on import. An application creates fresh local IDs for an imported bank, its Questions, its Parts and Subparts, and its choices. The `s` prefix keeps a Part apart from a Matching item's `p`, and a Part choice carries its Part's ID so two Parts' choices never collide.
 
 Media Asset IDs are different: `sha256:<digest>` is a content address derived from immutable bytes. Implementations may use that hash to reuse identical media locally. It is not the identity of a Question or Question Bank.
 
@@ -57,7 +63,22 @@ The contract contains no IndexedDB store names, local URL paths, editor-specific
 
 ## Question Types and metadata
 
-Every Question has `id`, `type`, and a semantic `stem`. Optional Question Metadata consists of `difficulty` (`easy`, `medium`, or `hard`) and ordered `topics` strings.
+Every Question has `id`, `type`, and a semantic `stem`. Optional Question Metadata consists of `difficulty` (`easy`, `medium`, or `hard`) and ordered `topics` strings. Any Question but a Multipart one may carry `points` (see [Points](#points)).
+
+### Points
+
+**Points** are what answering something correctly is worth: an optional positive whole number, `"points": 2`, added in `0.9.0`. They belong to what a student answers, and to nothing larger:
+
+- A `multiple-choice`, `true-false` or `short-answer` Question may carry `points`.
+- A `matching` Question carries one `points` for the whole set: its items share one Word Bank and are never Questions of their own.
+- A Part that answers, and a Subpart, may carry `points`.
+- A `multipart` Question must not carry `points`, and nor may a Part that holds Subparts. A Multipart Question's worth is always the sum of its answering Parts' and Subparts' Points, and a paper's total the sum of its Questions', so neither is ever written and neither can disagree with what it adds up. A record that gives either one is rejected.
+
+A Question, Part or Subpart without `points` is **unpointed**, which is not the same as being worth nothing: it adds nothing to a sum, and a sum over nothing with Points has no Points rather than zero. Zero, a negative number and a fraction are not Points and invalidate the record. Points are the Question's, the same on every Exam that uses it; where they print on a paper is the paper's presentation, not part of the record.
+
+```json
+{ "id": "q4", "type": "short-answer", "stem": { "type": "document", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Explain why leaves are green." }] }] }, "points": 3 }
+```
 
 ### Multiple Choice
 
@@ -100,12 +121,20 @@ A `short-answer` Question has no choices and may have a rich-text `suggestedAnsw
 
 A `multipart` Question is a stem with its Parts: its `stem` is usually the shared material a student answers from, such as a passage, a quote, an image, or a table, and its `parts` are the questions asked about it, in the order they are lettered. The stem is ordinary rich text: a source or attribution line is written as part of it, not as a field of its own. `parts` is required and may be empty; a Multipart question with no Parts is conforming but represents incomplete authoring, as a Multiple Choice Question with no correct choice does.
 
-Each Part has a package-local `id`, a `type`, and its own semantic `stem`. A Part's `type` is `multiple-choice` or `short-answer`, and no other value is conforming — there are no True/False, Matching or Multipart Parts:
+Each Part has a package-local `id` and its own semantic `stem`, and either answers or holds Subparts. A Part that answers has a `type`, which is `multiple-choice` or `short-answer`, and no other value is conforming — there are no True/False, Matching or Multipart Parts:
 
 - A `multiple-choice` Part has an authored `choices` list of at least two entries, each with a package-local `id`, semantic `content`, boolean `correct`, and optional boolean `locked` with the meaning a [Locked Answer](#locked-answers) has in a Multiple Choice Question, under the same correctness rule as a Multiple Choice Question: zero or one may be correct, and zero is conforming but represents incomplete authoring. It must not contain `suggestedAnswer`.
 - A `short-answer` Part has no `choices` and may have a rich-text `suggestedAnswer`.
 
 Question Metadata — `difficulty` and `topics` — belongs to the Multipart Question, not to its Parts: a Part is never a Question of its own. On a test a Multipart Question takes one question number and its Parts print lettered beneath it. A producer must not reorder the Parts, which are lettered in place and often build on one another; a producer that varies a test may shuffle a Multiple Choice Part's choices as it would a Multiple Choice Question's, Locked Answers kept in place. A Multipart Question must not contain `choices`, `prompts`, `wordBank`, or `suggestedAnswer` of its own — each Part carries its own — and no other Question Type may contain `parts`.
+
+#### Subparts
+
+A Part may instead hold `subparts`, added in `0.9.0`: a non-empty list of the questions it asks, in the order they are numbered (i), (ii)…, so that a paper's question 2(a)(i) is Subpart (i) of Part a of the second Question. Such a Part's `stem` is their shared lead-in, and **a Part either answers or holds Subparts, never both**: a Part with `subparts` must not contain `type`, `choices`, `suggestedAnswer` or `points`, and a Part without them must have a `type`. A record that gives a Part both is rejected rather than read one way or the other.
+
+A Subpart is shaped exactly like a Part that answers — an `id`, a `type` of `multiple-choice` or `short-answer`, a `stem`, the `choices` or optional `suggestedAnswer` its type calls for, under the same rules, and optional `points` — and must not contain `subparts` of its own: a Multipart Question is never deeper than its Parts' Subparts. A Subpart's `id` carries its Part's, `q1-s2-s1`, and its own Multiple Choice choice's carries the Subpart's, `q1-s2-s1-c1`. A producer must not reorder Subparts, for the reason it does not reorder Parts, and may shuffle a Multiple Choice Subpart's choices as it would a Part's. An answer key records one line for each Subpart in place of its Part.
+
+A record older than `0.9.0` has no Subparts: every one of its Parts answers, and a `subparts` member it carries is an unknown optional field, ignored.
 
 Answer columns and Work Space are Exam presentation, as they are for a whole Question, and are not part of the record.
 
@@ -143,6 +172,19 @@ A **Side-by-Side** lays two or three **Panels** across one line of a stem, left 
 - A `side-by-side` appears only as a top-level block of a Question's `stem` or of a Multipart Part's `stem`. It is not conforming in a choice, a Matching item, a Word Bank answer, or a Suggested Answer, and not inside a `blockquote`, a list item, a table cell, or a `panel` — a Side-by-Side never holds another.
 
 The schema enforces all three rules: a Question's and a Part's `stem` are a `stemDocument`, whose top-level blocks may be Side-by-Sides, while every other document and every node's `content` admit neither node. A Side-by-Side is exchanged as its content, so a picture inside a Panel is an ordinary image node: its Media Asset is declared in `media` and a Pending Image in a Panel is resolved like any other.
+
+### Centred blocks
+
+A **Centred** block is set in the middle of its column rather than at its left: a figure, its “Fig. 1.1” caption, a table and its “Table 1.1”.
+
+```json
+{ "type": "paragraph", "align": "center", "content": [{ "type": "text", "text": "Fig. 1.1" }] }
+```
+
+- `align` is optional and its one value is `"center"`. Left is the default and is written by leaving `align` out; any other value invalidates the record.
+- Only a `paragraph`, a `block-image` or a `table` may carry `align`; on any other node it invalidates the record. A Centred `block-image` centres its `caption` with it. A paragraph in a table cell or a Panel may be centred too.
+- A consumer reads a paragraph in a `list-item`, a Multiple Choice choice, a Matching item or a Word Bank answer as left whatever it says: each opens with its own marker or letter. Test Parrot never writes `align` there.
+- A Panel centres its pictures and tables by itself (see [Side-by-Side](#side-by-side)), so `align` adds nothing to a picture or table in a Panel.
 
 ## Marks
 
@@ -245,9 +287,9 @@ Importers must never reconstruct Questions from PDF page text, images, annotatio
 
 ## Examples and counterexamples
 
-The canonical examples cover a cropped block image, Locked Answers — a locked correct “All of the above”, a locked correct answer beside an unlocked “None of the above”, and a locked answer in a Multiple Choice Part — a minimal Multiple Choice bank, a True/False bank, a Matching bank with a distractor and an unmatched item, a Multipart question bank with Multiple Choice and Short Answer Parts and a Multipart question with no Parts yet, Short Answer with Suggested Answer, every supported rich-text node and mark, provenance and external links, referenced Media Assets, Pending Images: a tag in a stem, tags as Multiple Choice answers, a tag shared by two Questions, a page, and a Multipart question whose shared material and one of whose Parts are Pending Images; and Side-by-Sides: two graphs in a stem, a table beside a table, and a Multipart question whose shared material is a blockquote passage, its source line, and a picture beside text, with a Part whose stem holds three Panels. Each fixture directory is laid out as a package zip is: a record's `file` paths resolve against the directory it sits in, whose `media/` holds the files. Their formatting and generator values are deliberately not Test Parrot output requirements.
+The canonical examples cover a Centred figure, caption and table with a centred cell, a cropped block image, Locked Answers — a locked correct “All of the above”, a locked correct answer beside an unlocked “None of the above”, and a locked answer in a Multiple Choice Part — a minimal Multiple Choice bank, a True/False bank, a Matching bank with a distractor and an unmatched item, a Multipart question bank with Multiple Choice and Short Answer Parts and a Multipart question with no Parts yet, a Multipart question with a Part that answers and a Part that holds a Multiple Choice and two Short Answer Subparts, Short Answer with Suggested Answer, every supported rich-text node and mark, provenance and external links, referenced Media Assets, Pending Images: a tag in a stem, tags as Multiple Choice answers, a tag shared by two Questions, a page, and a Multipart question whose shared material and one of whose Parts are Pending Images; and Side-by-Sides: two graphs in a stem, a table beside a table, and a Multipart question whose shared material is a blockquote passage, its source line, and a picture beside text, with a Part whose stem holds three Panels. Each fixture directory is laid out as a package zip is: a record's `file` paths resolve against the directory it sits in, whose `media/` holds the files. Their formatting and generator values are deliberately not Test Parrot output requirements.
 
-The invalid fixture manifest records the expected application-level rejection category for unsupported versions and required features, unsafe URLs, malformed Questions, dangling references, invalid Media Assets — a file whose bytes do not match its digest, a file missing from the zip, and a Media Asset still carrying base64 `bytes` — and malformed Pending Images: one with a Media Asset too, an empty one, one naming both a tag and a page, zero or negative numbers, and an unknown member; and misplaced or malformed Side-by-Sides: one Panel, four Panels, a Side-by-Side inside a Panel, one in a Multiple Choice answer, and one inside a blockquote; and malformed Picture Crops: an inverted one, one outside 0–1, one on a Pending Image, and one on an inline image; and malformed Locked Answers: a `locked` that is not a boolean, and one on a True/False answer. Conformance tests validate examples directly with an independent JSON Schema implementation, inspect them through Test Parrot's public import seam, validate Test Parrot-generated records against the published schema, and assert that schema vocabulary, adapters, and examples remain aligned.
+The invalid fixture manifest records the expected application-level rejection category for unsupported versions and required features, unsafe URLs, malformed Questions, dangling references, invalid Media Assets — a file whose bytes do not match its digest, a file missing from the zip, and a Media Asset still carrying base64 `bytes` — and malformed Pending Images: one with a Media Asset too, an empty one, one naming both a tag and a page, zero or negative numbers, and an unknown member; and misplaced or malformed Side-by-Sides: one Panel, four Panels, a Side-by-Side inside a Panel, one in a Multiple Choice answer, and one inside a blockquote; and malformed Picture Crops: an inverted one, one outside 0–1, one on a Pending Image, and one on an inline image; and malformed Locked Answers: a `locked` that is not a boolean, and one on a True/False answer; and malformed Centred blocks: a centred heading, and a right-aligned paragraph. Conformance tests validate examples directly with an independent JSON Schema implementation, inspect them through Test Parrot's public import seam, validate Test Parrot-generated records against the published schema, and assert that schema vocabulary, adapters, and examples remain aligned.
 
 
 ## Implementation status

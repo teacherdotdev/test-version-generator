@@ -27,6 +27,8 @@ describe('Respondus CSV', () => {
       'multiple-choice', 'true-false', 'multiple-choice', 'short-answer', 'short-answer', 'multiple-choice', 'true-false',
     ])
     const [capital, sun, primes, water, essay, planets, moon] = questions
+    // The Points column gives each question's Points.
+    expect(questions.map((question) => question.points)).toEqual([1, 1, 2, 1, 5, 1, 1])
     expect(text(capital!.stem)).toBe('What is the capital of France?')
     expect(capital!.choices!.map((choice) => [text(choice.content), choice.correct])).toEqual([
       ['London', false], ['Berlin', false], ['Paris', true], ['Madrid', false],
@@ -63,5 +65,16 @@ describe('Respondus CSV', () => {
     expect(score('respondus-csv')).toBeLessThan(0.5)
     expect(score('flashcards')).toBe(0)
     expect(score('spreadsheet')).toBe(0)
+  })
+
+  test('drops Points that are fractional, zero or missing', async () => {
+    const { reading, questions } = await read('respondus.csv', encode([
+      'ES,Clouds,1.5,Describe a cloud.',
+      'ES,Rain,0,Describe rain.',
+      'ES,Snow,,Describe snow.',
+      'ES,Wind,3,Describe wind.',
+    ].join('\n')))
+    expect(reading.format).toBe('respondus-csv')
+    expect(questions.map((question) => question.points)).toEqual([undefined, undefined, undefined, 3])
   })
 })

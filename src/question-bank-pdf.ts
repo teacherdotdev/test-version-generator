@@ -25,9 +25,11 @@ import {
   QUESTION_BANK_FORMAT_VERSION,
   RECORD_PART_TYPE_LABELS,
   RECORD_TYPE_LABELS,
+  holdsSubparts,
   partLetter,
   wordBankLettersOf,
   type PreparedQuestionBankExport,
+  type QuestionBankRecordPart,
   type QuestionBankRecordQuestion,
   type SemanticDocument,
   type SemanticNode,
@@ -40,6 +42,7 @@ import {
   topicKey,
   type QuestionBankFileOutline,
 } from './question-bank-file-outline'
+import { subpartLabelAt } from './export-plan'
 import { PACKAGE_FORMAT, PACKAGE_FORMAT_VERSION, type TestParrotPackage } from './package-import'
 import {
   PACKAGE_ZIP_ATTACHMENT_NAME,
@@ -314,11 +317,18 @@ function layoutPieces(context: Context, pieces: readonly Piece[], maxWidth: numb
 function drawPieces(
   context: Context,
   pieces: readonly Piece[],
-  options: { x?: number; width?: number; line?: number } = {},
+  options: { x?: number; width?: number; line?: number; centred?: boolean } = {},
 ): void {
   const x0 = options.x ?? MARGIN
   const line = options.line ?? BODY_LINE
-  for (const laidOut of layoutPieces(context, pieces, options.width ?? CONTENT_WIDTH)) {
+  const maxWidth = options.width ?? CONTENT_WIDTH
+  for (const laidOut of layoutPieces(context, pieces, maxWidth)) {
+    // A Centred paragraph's line stands in the middle of its column, by what
+    // it shows: a space it ends on is not part of it.
+    const end = Math.max(0, ...laidOut.runs.map((run) => run.typeset
+      ? run.x + run.width
+      : run.x + measure(context, run.piece.font, run.text.trimEnd(), run.piece.size)))
+    const shift = options.centred ? Math.max(0, (maxWidth - end) / 2) : 0
     // A line is as tall as its tallest equation needs: a stacked fraction
     // pushes the lines around it apart rather than over them.
     const textSize = Math.max(0, ...laidOut.runs.filter((run) => !run.typeset).map((run) => run.piece.size))
@@ -334,7 +344,7 @@ function drawPieces(
     ensure(context, height)
     for (const run of laidOut.runs) {
       const { piece } = run
-      const x = x0 + run.x
+      const x = x0 + shift + run.x
       if (run.typeset) {
         drawTypesetMath(context.page, context.fonts.regular, run.typeset, run.text, x, context.y - ascent, piece.size, { ink: INK })
         continue
@@ -363,7 +373,7 @@ function drawPieces(
 function drawText(
   context: Context,
   value: string,
-  options: Partial<Piece> & { x?: number; width?: number; line?: number } = {},
+  options: Partial<Piece> & { x?: number; width?: number; line?: number; centred?: boolean } = {},
 ): void {
   drawPieces(
     context,
@@ -495,6 +505,8 @@ function drawImage(context: Context, node: SemanticNode, x: number, width: numbe
   const wholeWidth = targetWidth / keptWidth
   const wholeHeight = targetHeight / keptHeight
   const top = context.y
+  // A Centred picture stands in the middle of its column, its caption under it.
+  if (node.align === 'center') x += Math.max(0, (width - targetWidth) / 2)
   context.page.pushOperators(pushGraphicsState(), rectangle(x, top - targetHeight, targetWidth, targetHeight), clip(), endPath())
   context.page.drawImage(image, {
     x: x - crop.left * wholeWidth,
@@ -504,7 +516,9 @@ function drawImage(context: Context, node: SemanticNode, x: number, width: numbe
   })
   context.page.pushOperators(popGraphicsState())
   context.y -= targetHeight + 4
-  if (node.caption) drawText(context, node.caption, { x, width: targetWidth, font: 'italic', size: 9 })
+  if (node.caption) {
+    drawText(context, node.caption, { x, width: targetWidth, font: 'italic', size: 9, centred: node.align === 'center' })
+  }
   context.y -= 4
 }
 
@@ -535,7 +549,7 @@ function drawBlocks(
   for (const node of nodes) {
     switch (node.type) {
       case 'paragraph':
-        drawPieces(context, inlinePieces(node.content ?? []), { x, width })
+        drawPieces(context, inlinePieces(node.content ?? []), { x, width, centred: node.align === 'center' })
         context.y -= 3
         break
       case 'heading':
@@ -635,9 +649,13 @@ function drawTable(
         borderWidth: 0.6,
       })
       const copy = { ...context, y: top - 4 }
+      const paragraphs = (cell.content ?? []).filter((block) => block.type === 'paragraph')
       drawPieces(copy, inlinePieces(cell.content ?? []), {
         x: x + column * cellWidth + 4,
         width: cellWidth - 8,
+        // A cell's text is drawn as one run; it is centred when its
+        // paragraphs are.
+        centred: paragraphs.length > 0 && paragraphs.every((block) => block.align === 'center'),
       })
     })
     context.y -= height
@@ -1019,27 +1037,43 @@ function drawQuestion(context: Context, question: QuestionBankRecordQuestion, nu
     if (question.parts.length === 0) {
       drawText(context, 'No Parts yet.', { font: 'italic' })
     }
-    question.parts.forEach((part, partIndex) => {
+    // A Part that holds Subparts prints its lead-in, then each Subpart
+    // numbered beneath it and one level further in, drawn as a Part is.
+    const drawPart = (
+      label: string,
+      part: QuestionBankRecordPart,
+      indent: number,
+    ) => {
       context.y -= 3
       drawPieces(
         context,
         [
-          { text: `${partLetter(partIndex)}. `, font: 'bold', size: BODY_SIZE },
-          { text: RECORD_PART_TYPE_LABELS[part.type], font: 'italic', size: BODY_SIZE },
+          { text: `${label}. `, font: 'bold', size: BODY_SIZE },
+          {
+            text: holdsSubparts(part) ? 'Subparts' : RECORD_PART_TYPE_LABELS[part.type],
+            font: 'italic',
+            size: BODY_SIZE,
+          },
         ],
-        { x: MARGIN + 18, width: CONTENT_WIDTH - 18 },
+        { x: MARGIN + indent, width: CONTENT_WIDTH - indent },
       )
-      drawIndentedDocument(context, part.stem, 36)
-      if (part.choices) drawChoices(context, part.choices, 36)
+      drawIndentedDocument(context, part.stem, indent + 18)
+      if (holdsSubparts(part)) {
+        part.subparts.forEach((subpart, subpartIndex) =>
+          drawPart(subpartLabelAt(subpartIndex), subpart, indent + 18))
+        return
+      }
+      if (part.choices) drawChoices(context, part.choices, indent + 18)
       if (part.suggestedAnswer) {
         drawText(context, 'Suggested Answer', {
-          x: MARGIN + 36,
-          width: CONTENT_WIDTH - 36,
+          x: MARGIN + indent + 18,
+          width: CONTENT_WIDTH - indent - 18,
           font: 'bold',
         })
-        drawIndentedDocument(context, part.suggestedAnswer, 36)
+        drawIndentedDocument(context, part.suggestedAnswer, indent + 18)
       }
-    })
+    }
+    question.parts.forEach((part, partIndex) => drawPart(partLetter(partIndex), part, 18))
   }
   if (question.suggestedAnswer) {
     context.y -= 3

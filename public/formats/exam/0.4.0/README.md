@@ -10,11 +10,11 @@
   empty Extra Credit Section; it prints every heading large and its text small,
   and rewords the first page's header line. `margins.json` is the same Exam with
   its own Page Margins: an inch at the top and bottom, 0.6 inch on the right and
-  an inch and a quarter on the left. `question-style.json` prints its questions
-  in the Classic Question Style, and its Short Answer position sets its Work
+  an inch and a quarter on the left. `paper-style.json` prints its questions
+  in the Classic Paper Style, and its Short Answer position sets its Work
   Space to none on purpose, so it prints no answer lines though the style would
   rule them there. `minimal.json` sets none of the new members, and prints
-  today's margins in the Standard Question Style with every answer shown.
+  today's margins in the Standard Paper Style with every answer shown.
 - `hidden-answers.json` has a Multiple Choice position that shows its answers
   in a shuffled order and leaves one incorrect answer off.
 - Invalid counterexamples are with the package, in

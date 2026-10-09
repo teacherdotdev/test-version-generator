@@ -7,17 +7,21 @@ import {
   type Difficulty,
   type Question,
   type QuestionType,
+  type Subpart,
 } from './exam'
+import { isCentred } from './centring'
 import { bankLetter } from './matching'
+import { pointsOnQuestion } from './points'
 import {
   choiceLockOf,
   pendingImageOf,
+  readPoints,
   stemNodesOf,
   type PendingImageReference,
   type ProseMirrorJSON,
 } from './question-doc'
 import type { QuestionBankResource } from './question-bank-workspaces'
-import { PAGE_CONTENT_WIDTH } from './export-plan'
+import { PAGE_CONTENT_WIDTH, subpartLabelAt } from './export-plan'
 import { mediaFilePath } from './package-zip'
 import { jpegOrientation } from './export-media'
 import {
@@ -101,6 +105,8 @@ export type SemanticNode = {
   authoredSize?: number
   /** A Picture Crop, on a block image with an `asset` only (0.7.0). */
   crop?: CropBox
+  /** A Centred paragraph, block image or table (0.9.0); absent is left. */
+  align?: 'center'
   /** Importer-only, never written to a record: the Authored Image Size a
    *  0.1.0–0.6.0 record gave, which meant Crepe's ratio against the size the
    *  picture fit at, not a share of its container. */
@@ -169,16 +175,40 @@ export function wordBankLettersOf(
  *  Matching or Multipart itself. */
 export type QuestionBankRecordPartType = 'multiple-choice' | 'short-answer'
 
-/** One lettered Part of a Multipart question: its own stem, then the choices of a
- *  Multiple Choice Part or the optional Suggested Answer of a Short Answer
+/** One lettered Part of a Multipart question that answers — or one Subpart of a
+ *  Part, which has the same shape: its own stem, then the choices of a
+ *  Multiple Choice one or the optional Suggested Answer of a Short Answer
  *  one. Answer columns and Work Space are Exam presentation, as they are for a
  *  whole Question, so neither is written here. */
-export type QuestionBankRecordPart = {
+export type QuestionBankRecordAnsweringPart = {
   id: string
   type: QuestionBankRecordPartType
   stem: SemanticDocument
   choices?: QuestionBankRecordChoice[]
   suggestedAnswer?: SemanticDocument
+  /** What answering it is worth, when it has points. Added in 0.9.0. */
+  points?: number
+}
+
+/** A Subpart of a Part, numbered (i), (ii)…: shaped as a Part that answers,
+ *  and never holding Subparts of its own. Added in 0.9.0. */
+export type QuestionBankRecordSubpart = QuestionBankRecordAnsweringPart
+
+/** A Part that holds Subparts: its stem is their lead-in, and it has no type,
+ *  choices or Suggested Answer of its own (ADR-0043). Added in 0.9.0. */
+export type QuestionBankRecordHoldingPart = {
+  id: string
+  stem: SemanticDocument
+  subparts: QuestionBankRecordSubpart[]
+}
+
+/** One lettered Part of a Multipart question: one that answers, or one that holds
+ *  Subparts. */
+export type QuestionBankRecordPart = QuestionBankRecordAnsweringPart | QuestionBankRecordHoldingPart
+
+/** Whether a record Part holds Subparts rather than answering itself. */
+export function holdsSubparts(part: QuestionBankRecordPart): part is QuestionBankRecordHoldingPart {
+  return 'subparts' in part && Array.isArray(part.subparts)
 }
 
 /** One answer of a Multiple Choice or True/False Question or a Multiple
@@ -210,6 +240,10 @@ export type QuestionBankRecordQuestion = {
   stem: SemanticDocument
   difficulty?: Difficulty
   topics?: string[]
+  /** What answering it is worth, on any type but `multipart`, whose worth is
+   *  its Parts' and Subparts' sum and never written (ADR-0042). Added in
+   *  0.9.0. */
+  points?: number
   choices?: QuestionBankRecordChoice[]
   prompts?: QuestionBankRecordPrompt[]
   wordBank?: { id: string; content: SemanticDocument }[]
@@ -339,6 +373,7 @@ function imageSemanticNode(
   return {
     type: block ? 'block-image' : 'inline-image',
     ...(pending ? { pending } : { asset: media!.id }),
+    ...centredOf(node),
     ...(stringValue(attrs.alt) ? { alt: stringValue(attrs.alt) } : {}),
     ...(stringValue(attrs.caption) ? { caption: stringValue(attrs.caption) } : {}),
     ...(authoredSize !== undefined ? { authoredSize } : {}),
@@ -367,6 +402,11 @@ function recordSize(attrs: Record<string, unknown>, media: EmbeddedMedia | undef
   return clampSize((ratio * fitted) / PAGE_CONTENT_WIDTH)
 }
 
+/** A Centred block's `align`, as the record writes it. */
+function centredOf(node: ProseMirrorJSON): { align?: 'center' } {
+  return isCentred(node) ? { align: 'center' } : {}
+}
+
 function semanticNode(node: ProseMirrorJSON, mediaIds: ReadonlyMap<string, EmbeddedMedia>): SemanticNode {
   const attrs = attributes(node)
   const content = () => childNodes(node).map((child) => semanticNode(child, mediaIds))
@@ -385,7 +425,7 @@ function semanticNode(node: ProseMirrorJSON, mediaIds: ReadonlyMap<string, Embed
     case 'hardbreak':
       return { type: 'hard-break' }
     case 'paragraph':
-      return { type: 'paragraph', content: content() }
+      return { type: 'paragraph', ...centredOf(node), content: content() }
     case 'heading':
       return {
         type: 'heading',
@@ -421,7 +461,7 @@ function semanticNode(node: ProseMirrorJSON, mediaIds: ReadonlyMap<string, Embed
     case 'hr':
       return { type: 'rule' }
     case 'table':
-      return { type: 'table', content: content() }
+      return { type: 'table', ...centredOf(node), content: content() }
     case 'table_header_row':
       return { type: 'table-row', header: true, content: content() }
     case 'table_row':
@@ -526,6 +566,7 @@ function portableQuestion(
     ...(topicsOf(question).length > 0
       ? { topics: [...topicsOf(question)] }
       : {}),
+    ...pointsOf(pointsOnQuestion(question) ? question.points : undefined),
   }
   if (question.type === 'open') {
     return {
@@ -580,33 +621,21 @@ function portableQuestion(
       parts: partsOf(question).map((part, partIndex): QuestionBankRecordPart => {
         const id = `q${index + 1}-s${partIndex + 1}`
         const where = `Question ${index + 1}, Part ${partLetter(partIndex)}`
-        const stem = semanticStem(part.stem, mediaIds)
-        if (part.type === 'open') {
-          return {
-            id,
-            type: 'short-answer',
-            stem,
-            ...(part.suggestedAnswer
-              ? { suggestedAnswer: semanticDocument(childNodes(part.suggestedAnswer), mediaIds) }
-              : {}),
-          }
+        if (part.type !== 'subparts') {
+          return recordAnsweringPart({ ...part, type: part.type }, id, where, mediaIds)
         }
-        if (part.choices.length < 2) {
-          throw new Error(`${where} must have at least two choices.`)
-        }
-        if (part.choices.filter((choice) => choice.correct).length > 1) {
-          throw new Error(`${where} must have zero or one correct choice.`)
-        }
+        // A Part that holds Subparts is their lead-in alone; each Subpart is
+        // written as a Part that answers, under an id that carries its Part's.
         return {
           id,
-          type: 'multiple-choice',
-          stem,
-          choices: part.choices.map((choice, choiceIndex) => ({
-            id: `${id}-c${choiceIndex + 1}`,
-            content: semanticDocument(childNodes(choice.node), mediaIds),
-            correct: choice.correct,
-            ...recordLockOf(choice),
-          })),
+          stem: semanticStem(part.stem, mediaIds),
+          subparts: part.subparts.map((subpart, subpartIndex) =>
+            recordAnsweringPart(
+              subpart,
+              `${id}-s${subpartIndex + 1}`,
+              `${where} (${subpartLabelAt(subpartIndex)})`,
+              mediaIds,
+            )),
         }
       }),
     }
@@ -634,6 +663,54 @@ function portableQuestion(
       ...(question.type === 'multiple-choice' ? recordLockOf(choice) : {}),
     })),
   }
+}
+
+/** A Part that answers, or a Subpart, as a record writes it under `id`: a
+ *  Short Answer one with its Suggested Answer, if any, or a Multiple Choice one
+ *  with its choices, held to a Multiple Choice Question's rules. `where` names
+ *  it in an error. */
+function recordAnsweringPart(
+  part: Subpart,
+  id: string,
+  where: string,
+  mediaIds: ReadonlyMap<string, EmbeddedMedia>,
+): QuestionBankRecordAnsweringPart {
+  const stem = semanticStem(part.stem, mediaIds)
+  if (part.type === 'open') {
+    return {
+      id,
+      type: 'short-answer',
+      stem,
+      ...(part.suggestedAnswer
+        ? { suggestedAnswer: semanticDocument(childNodes(part.suggestedAnswer), mediaIds) }
+        : {}),
+      ...pointsOf(part.points),
+    }
+  }
+  if (part.choices.length < 2) {
+    throw new Error(`${where} must have at least two choices.`)
+  }
+  if (part.choices.filter((choice) => choice.correct).length > 1) {
+    throw new Error(`${where} must have zero or one correct choice.`)
+  }
+  return {
+    id,
+    type: 'multiple-choice',
+    stem,
+    choices: part.choices.map((choice, choiceIndex) => ({
+      id: `${id}-c${choiceIndex + 1}`,
+      content: semanticDocument(childNodes(choice.node), mediaIds),
+      correct: choice.correct,
+      ...recordLockOf(choice),
+    })),
+    ...pointsOf(part.points),
+  }
+}
+
+/** `points` as a record writes it: present only when there are any. */
+function pointsOf(value: unknown): { points?: number } {
+  const points = readPoints(value)
+  return points === undefined ? {} : { points }
 }
 
 /** A choice's `locked` as a record writes it: `true` for every Locked Answer,
@@ -874,6 +951,7 @@ function editorNode(node: SemanticNode, media?: RecordMediaSizes): ProseMirrorJS
         ...(node.alt !== undefined ? { alt: node.alt } : {}),
         ...(node.caption !== undefined ? { caption: node.caption } : {}),
         ...(node.type === 'block-image' ? editorPictureAttrs(node, media) : {}),
+        ...(node.type === 'block-image' && node.align === 'center' ? { align: 'center' } : {}),
       },
     }
   }
@@ -888,6 +966,7 @@ function editorNode(node: SemanticNode, media?: RecordMediaSizes): ProseMirrorJS
   const attrs: Record<string, unknown> = {}
   if (node.type === 'heading') attrs.level = node.level
   if (node.type === 'ordered-list') attrs.order = node.start
+  if ((node.type === 'paragraph' || node.type === 'table') && node.align === 'center') attrs.align = 'center'
   const converted: ProseMirrorJSON = {
     type,
     ...(node.text !== undefined ? { text: node.text } : {}),

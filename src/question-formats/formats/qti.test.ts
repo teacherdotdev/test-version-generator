@@ -58,6 +58,8 @@ describe('Canvas classic quiz export', () => {
       'matching', 'short-answer', 'short-answer', 'short-answer',
     ])
     const [choice, trueFalse, shortAnswer, blanks, multiple, dropdowns, matching, numeric, essay, upload] = questions
+    // Each item's points_possible of 1.0 is one point, the Matching set's for the set.
+    expect(questions.map((question) => question.points)).toEqual(questions.map(() => 1))
 
     expect(text(choice!.stem)).toBe('Which gas do plants take in?')
     expect(choice!.choices!.map((each) => [text(each.content), each.correct])).toEqual([
@@ -167,6 +169,70 @@ describe('QTI 2.1 and 2.2 items', () => {
     expect(questions.map((question) => question.type)).toEqual(['multiple-choice', 'matching'])
     expect(reading.record.media).toHaveLength(1)
     expect(reading.issues.filter((issue) => issue.code === 'picture-missing')).toEqual([])
+  })
+})
+
+describe('QTI points kept as Points', () => {
+  const qti12 = (items: string) => encode(`<?xml version="1.0" encoding="UTF-8"?>
+<questestinterop xmlns="http://www.imsglobal.org/xsd/ims_qtiasiv1p2">
+  <assessment ident="a1" title="Weather"><section ident="root_section">${items}</section></assessment>
+</questestinterop>`)
+  const essay = (ident: string, wording: string, extra: string) => `
+      <item ident="${ident}" title="Question">${extra}
+        <presentation>
+          <material><mattext>${wording}</mattext></material>
+          <response_str ident="r" rcardinality="Single"><render_fib rows="5"/></response_str>
+        </presentation>
+      </item>`
+
+  test('a QTI 1.2 item keeps a whole-number weighting or SCORE maximum, and drops a fraction', async () => {
+    const { reading, questions } = await read('weather.xml', qti12([
+      essay('i1', 'Describe a storm.', '<itemmetadata><qtimetadata><qtimetadatafield><fieldlabel>qmd_weighting</fieldlabel><fieldentry>2</fieldentry></qtimetadatafield></qtimetadata></itemmetadata>'),
+      essay('i2', 'Describe fog.', '<resprocessing><outcomes><decvar varname="SCORE" vartype="Decimal" minvalue="0" maxvalue="3"/></outcomes></resprocessing>'),
+      essay('i3', 'Describe hail.', '<resprocessing><outcomes><decvar varname="SCORE" vartype="Decimal" minvalue="0" maxvalue="1.5"/></outcomes></resprocessing>'),
+      essay('i4', 'Describe sleet.', ''),
+    ].join('')))
+    expect(reading.format).toBe('qti')
+    expect(questions.map((question) => question.points)).toEqual([2, 3, undefined, undefined])
+  })
+
+  test('a Canvas item’s points_possible is its Points, never its SCORE percentage', async () => {
+    const canvas = (points: string) => `<itemmetadata><qtimetadata>
+          <qtimetadatafield><fieldlabel>question_type</fieldlabel><fieldentry>essay_question</fieldentry></qtimetadatafield>
+          <qtimetadatafield><fieldlabel>points_possible</fieldlabel><fieldentry>${points}</fieldentry></qtimetadatafield>
+        </qtimetadata></itemmetadata>
+        <resprocessing><outcomes><decvar maxvalue="100" minvalue="0" varname="SCORE" vartype="Decimal"/></outcomes></resprocessing>`
+    const { questions } = await read('weather.xml', qti12([
+      essay('i1', 'Describe a storm.', canvas('4.0')),
+      essay('i2', 'Describe fog.', canvas('0.5')),
+      essay('i3', 'Describe hail.', canvas('0.0')),
+    ].join('')))
+    expect(questions.map((question) => question.points)).toEqual([4, undefined, undefined])
+  })
+
+  test('a QTI 2.1 item’s MAXSCORE, and a QTI 3.0 item’s SCORE normal-maximum', async () => {
+    const qti21 = await read('storm.xml', encode(`<?xml version="1.0" encoding="UTF-8"?>
+<assessmentItem xmlns="http://www.imsglobal.org/xsd/imsqti_v2p1" identifier="storm" title="Storm" adaptive="false" timeDependent="false">
+  <responseDeclaration identifier="RESPONSE" cardinality="single" baseType="string"/>
+  <outcomeDeclaration identifier="SCORE" cardinality="single" baseType="float"/>
+  <outcomeDeclaration identifier="MAXSCORE" cardinality="single" baseType="float"><defaultValue><value>4</value></defaultValue></outcomeDeclaration>
+  <itemBody><p>Describe a storm.</p><extendedTextInteraction responseIdentifier="RESPONSE"/></itemBody>
+</assessmentItem>`))
+    expect(qti21.reading.format).toBe('qti')
+    expect(qti21.questions[0]!.points).toBe(4)
+
+    const qti30 = await read('fog.xml', encode(`<?xml version="1.0" encoding="UTF-8"?>
+<qti-assessment-item xmlns="http://www.imsglobal.org/xsd/imsqtiasi_v3p0" identifier="fog" title="Fog" adaptive="false" time-dependent="false">
+  <qti-response-declaration identifier="RESPONSE" cardinality="single" base-type="string"/>
+  <qti-outcome-declaration identifier="SCORE" cardinality="single" base-type="float" normal-maximum="2"/>
+  <qti-item-body><p>Describe fog.</p><qti-extended-text-interaction response-identifier="RESPONSE"/></qti-item-body>
+</qti-assessment-item>`))
+    expect(qti30.reading.format).toBe('qti')
+    expect(qti30.questions[0]!.points).toBe(2)
+
+    // An item whose SCORE gives no maximum is unpointed.
+    const plain = await read('choice.xml', fixture('qti21-choice.xml'))
+    expect(plain.questions[0]!.points).toBeUndefined()
   })
 })
 

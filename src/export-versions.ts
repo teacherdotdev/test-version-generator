@@ -9,7 +9,7 @@ import {
   movableAnswerIds,
   orderedChoices,
   orderedPartChoices,
-  partsOf,
+  answeringPartsOf,
   questionsInSection,
   sectionsOf,
   variesAnswers,
@@ -116,7 +116,7 @@ function shuffleGroups(
     if (!shuffle.answers) continue
     for (const question of questions) {
       if (question.type === 'multipart') {
-        for (const part of partsOf(question)) {
+        for (const part of answeringPartsOf(question)) {
           if (part.type !== 'multiple-choice') continue
           groups.push(...answerGroup(part.id, orderedPartChoices(part, arrangement)))
         }

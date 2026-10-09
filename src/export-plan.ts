@@ -48,12 +48,14 @@ import {
   type QuestionType,
   type Arrangement,
   type PartType,
+  type Subpart,
   type WorkSpaceRows,
   type WordBankLayout,
   type WorkSpace,
   type WorkSpaceStyle,
 } from './exam'
 import { stemNodesOf, type ProseMirrorJSON } from './question-doc'
+import { pointsOfQuestion, sumOfPoints } from './points'
 import { answerVisibilityOf, shownChoices, type AnswerVisibility } from './hidden-answers'
 import { headerLineOf, type ExamHeader, type HeaderLine } from './page-header'
 import { DEFAULT_MARGIN, marginPx, marginsOf, sameMargins, type MarginSide, type PageMargins } from './page-margins'
@@ -70,11 +72,15 @@ import {
 import { TITLE_LINE_HEIGHT, TITLE_PX } from './export-typography'
 import {
   ANSWER_BLANK,
-  DEFAULT_QUESTION_STYLE,
-  questionStyleRules,
-  type QuestionStyle,
-  type QuestionStyleRules,
-} from './question-style'
+  DEFAULT_PAPER_STYLE,
+  PERIOD_LABELS,
+  labelled,
+  paperStyleRules,
+  type LabelTemplate,
+  type PaperSize,
+  type PaperStyle,
+  type PaperStyleRules,
+} from './paper-style'
 
 // How many columns a choice grid is drawn in — the same set a question's
 // `columns` setting comes from, named here because the plan is what the
@@ -82,26 +88,26 @@ import {
 export type ColumnCount = 1 | 2 | 4
 
 /** What an item is laid out under besides its own content: the Exam's text
- *  size, the width its page's margins leave, and its Question Style, which
+ *  size, the width its page's margins leave, and its Paper Style, which
  *  decides the space left below a question. Absent members are the defaults —
  *  normal text on today's sheet, in the Standard style. */
 export type ItemLayout = {
   textSize?: TextSize
   contentWidth?: number
-  questionStyle?: QuestionStyle
+  paperStyle?: PaperStyle
 }
 
 // Everything the render needs to know about how big things come out. The app
 // supplies a DOM-backed implementation; tests supply stubs.
 export type Measure = {
   /** Height in px of one page item, laid out at the content box's width, at
-   *  the Exam's text size and with the space its Question Style leaves below
+   *  the Exam's text size and with the space its Paper Style leaves below
    *  a question. Each member of `layout` is passed only when it is not the
    *  default. */
   itemHeight(item: PageItem, layout?: ItemLayout): number
   /** The width in px a choice-grid cell needs to hold this answer on one line,
    *  its letter and the cell's padding included. Optional: a measure without
-   *  it never lets a Question Style widen answers past their set columns. */
+   *  it never lets a Paper Style widen answers past their set columns. */
   choiceWidth?(choice: PlannedChoice, textSize?: TextSize): number
   /** How many lines the Exam title wraps onto at this heading size, set
    *  across `width`. Optional: a measure without it plans every title on one
@@ -133,12 +139,31 @@ export type PlannedChoice = {
    *  Only the Working Copy's sheet shows it; nothing prints it. */
   locked?: true
   node: ProseMirrorJSON
+  /** How its letter prints on the test, when the Paper Style labels answers
+   *  otherwise than `A.` — `A` under Exam Board. Absent prints `letter` and a
+   *  full stop (`printedLabel`). Only a grid's cells carry it. */
+  printed?: string
+}
+
+/** How a label prints: as the plan resolved it for its Paper Style, or — on
+ *  every style that labels with a full stop, and every plan recorded before a
+ *  style could say otherwise — the number or letter and a full stop. Every
+ *  adapter labels questions, Parts, Subparts and answers through this. */
+export function printedLabel(label: string | number, printed: string | undefined): string {
+  return printed ?? `${label}.`
+}
+
+/** A label resolved through a style's template, or nothing where the
+ *  template is the sheet's own `{n}.`, so a plan under any style that
+ *  labels so is exactly what it always was. */
+function printedBy(template: LabelTemplate, value: string | number): { printed: string } | Record<string, never> {
+  return template === PERIOD_LABELS.question ? {} : { printed: labelled(template, value) }
 }
 
 // The choice grid, row by row. `cells[row][column]` is `null` where the last
 // column runs out of choices. Filled column-major: reading a column top to
 // bottom gives consecutive letters. A cell's letter is the one the test prints
-// — lower case under a Question Style that letters "a." — while the question's
+// — lower case under a Paper Style that letters "a." — while the question's
 // own `choices` keep the capitals its Answer Key records.
 export type ChoiceGrid = {
   columns: ColumnCount
@@ -154,16 +179,20 @@ export type PlannedPrompt = {
   number: number
   letter: string | null
   node: ProseMirrorJSON
+  /** How its number prints, when the style numbers otherwise than `1.`. */
+  printed?: string
 }
 
 // A Word Bank answer as it prints: its letter is its position in this
 // arrangement's ordering, which is what a student writes in a prompt's blank.
-// It prints as the Question Style letters it; the prompt's own `letter`, which
+// It prints as the Paper Style letters it; the prompt's own `letter`, which
 // the answer key records, keeps its capital.
 export type PlannedBankAnswer = {
   id: string
   letter: string
   node: ProseMirrorJSON
+  /** How its letter prints, when the style letters otherwise than `A.`. */
+  printed?: string
 }
 
 // A long Word Bank laid out in columns above the items, column-major like a
@@ -221,11 +250,23 @@ export type PlannedWorkSpace = {
   lines: number
   fill: boolean
   /** How far apart its rows lie, and how tall its first one is, in CSS
-   *  pixels: the Question Style's pitch, the first row shortened so the first
+   *  pixels: the Paper Style's pitch, the first row shortened so the first
    *  rule sits close under the question. A plan recorded before either was
    *  stated reads as 32 and 32 (`rowsOfPlanned`), as it printed. */
   pitch?: number
   firstRow?: number
+  /** Set when its lines are dotted rather than solid, as the Paper Style
+   *  rules them (ADR-0045). Absent is a solid rule. */
+  ruling?: 'dotted'
+}
+
+/** Whether Points printed after an answer that ends in this Work Space stand
+ *  on its last ruled line, at its right end — `……………… [3]` — the last rule
+ *  stopping short of them, rather than on a line of their own. Only a ruled
+ *  space that takes room has a last rule to set them on. Every adapter, and
+ *  so the measure, draws by this. */
+export function pointsOnLastRule(space: PlannedWorkSpace | null | undefined): boolean {
+  return !!space && space.style === 'lines' && space.lines > 0 && space.height > 0
 }
 
 /** The rows a planned work space is drawn in. Every adapter draws by this. */
@@ -239,7 +280,7 @@ const WORK_SPACE_FILL_SLACK = 1
 
 /** A stored work space as the page lays it out in `rows`: as many rows as it
  *  stores, at the style's pitch. */
-function plannedWorkSpace(space: WorkSpace, rows: WorkSpaceRows): PlannedWorkSpace {
+function plannedWorkSpace(space: WorkSpace, rows: WorkSpaceRows, rules: PaperStyleRules): PlannedWorkSpace {
   const height = laidWorkSpaceHeight(space.height, rows)
   return {
     height,
@@ -248,30 +289,110 @@ function plannedWorkSpace(space: WorkSpace, rows: WorkSpaceRows): PlannedWorkSpa
     fill: space.fill,
     pitch: rows.pitch,
     firstRow: rows.first,
+    ...(rules.ruling === 'dotted' ? { ruling: 'dotted' as const } : {}),
   }
+}
+
+// One Subpart of a Part as it prints: numbered `i`, `ii`, … in authored order
+// beneath its Part's lead-in, with its own stem and — for a Multiple Choice
+// Subpart — its answers in this arrangement's order and the grid they lay out
+// in, or — for a Short Answer one — the room it leaves for work. A Subpart
+// prints the way a Part of its kind does, one level further in.
+export type PlannedSubpart = {
+  id: string
+  /** Its position under its Part — `i`, `ii`, … — as every Paper Style labels
+   *  it today. The label is data, like a Part's letter, so a style that prints
+   *  `(i)` changes the plan rather than an adapter. */
+  label: string
+  type: PartType
+  stem: ProseMirrorJSON[]
+  /** The answers in this arrangement's order, lettered `A`, `B`, …; empty for
+   *  a Short Answer one. */
+  choices: PlannedChoice[]
+  grid: ChoiceGrid | null
+  /** The room a Short Answer one leaves for work, resolved as a question's is
+   *  — zero-height when it leaves none, so the sheet can offer a handle to
+   *  drag some open. `null` for a Multiple Choice one. */
+  workSpace: PlannedWorkSpace | null
+  /** A Short Answer one's Suggested Answer, for the Answer Key only. */
+  suggestedAnswer?: ProseMirrorJSON[]
+  /** What answering it is worth, when it has points (ADR-0042). Planned as
+   *  data whether or not the Paper Style prints it: the Answer Key does, and
+   *  where the test does is the style's to decide. A Part that holds
+   *  Subparts never has any of its own. */
+  points?: number
+  /** How its label prints, when the Paper Style labels it otherwise than
+   *  `i.` — `(i)` under Exam Board; a Part's letter, `(a)`. */
+  printed?: string
+  /** Its Points as the Paper Style prints them after its answer, against the
+   *  right margin — `[2]` under Exam Board. Absent on an unpointed one and
+   *  under every style that prints no Points on the test, and on every piece
+   *  of one broken across pages but the last. */
+  pointsAfter?: string
+  /** Set on a piece of one whose stem broke across pages (ADR-0048): its
+   *  label printed on an earlier page, so this piece prints none — only the
+   *  stem blocks it carries, and its answers or room when it is the last. */
+  continued?: true
 }
 
 // One Part of a Multipart question as it prints: lettered `a`, `b`, … in authored order
 // beneath the Multipart question's one number, with its own stem and — for a Multiple
 // Choice Part — its answers in this arrangement's order and the grid they lay
 // out in, or — for a Short Answer Part — the room it leaves for work. A Part
-// prints the way a question of its kind does, one level in.
-export type PlannedPart = {
-  id: string
+// prints the way a question of its kind does, one level in. A Part that holds
+// Subparts prints its stem as their lead-in and answers nothing itself: no
+// answers, no grid, no work space — its Subparts carry them.
+export type PlannedPart = Omit<PlannedSubpart, 'label' | 'type'> & {
   /** Its position under the Multipart question: `a`, `b`, …. */
   letter: string
-  type: PartType
-  stem: ProseMirrorJSON[]
-  /** The answers in this arrangement's order, lettered `A`, `B`, …; empty for
-   *  a Short Answer Part. */
-  choices: PlannedChoice[]
-  grid: ChoiceGrid | null
-  /** The room a Short Answer Part leaves for work, resolved as a question's is
-   *  — zero-height when it leaves none, so the sheet can offer a handle to
-   *  drag some open. `null` for a Multiple Choice Part. */
-  workSpace: PlannedWorkSpace | null
-  /** A Short Answer Part's Suggested Answer, for the Answer Key only. */
-  suggestedAnswer?: ProseMirrorJSON[]
+  type: PartType | 'subparts'
+  /** The Subparts this piece prints beneath the Part's lead-in, in authored
+   *  order; empty for a Part that answers itself. */
+  subparts: PlannedSubpart[]
+  /** Set on a piece of a Part whose letter printed on an earlier page: it
+   *  prints no letter, only the stem blocks it carries — the rest of its stem
+   *  or lead-in, none when it only goes on with its Subparts — then its
+   *  answers or room, or its Subparts, in their place. */
+  continued?: true
+}
+
+/** A Part or Subpart that answers, as it is planned, with the name it goes by:
+ *  a Part's letter, `a`, or a Subpart's place under its Part, `a (i)`. */
+export type NamedAnswering = {
+  name: string
+  part: Omit<PlannedSubpart, 'label'>
+  /** Whether it is a Subpart rather than a Part. */
+  subpart: boolean
+}
+
+/** Every Part and Subpart that answers among these planned Parts, in the order
+ *  they print, by the name the Answer Key and the sheet's menus give each. */
+export function answeringPartsIn(parts: readonly PlannedPart[]): NamedAnswering[] {
+  return parts.flatMap(({ letter, subparts, type, continued, ...part }): NamedAnswering[] => {
+    void continued
+    return type === 'subparts'
+      ? subparts.map(({ label, ...subpart }) => ({ name: `${letter} (${label})`, part: subpart, subpart: true }))
+      : [{ name: letter, part: { ...part, type }, subpart: false }]
+  })
+}
+
+/** The Work Space that ends this Part on the page: its own, or its last
+ *  Subpart's when it holds Subparts. */
+export function closingWorkSpaceOf(part: PlannedPart): PlannedWorkSpace | null {
+  return part.subparts.length > 0 ? part.subparts.at(-1)!.workSpace : part.workSpace
+}
+
+/** The Part with the Work Space that ends it grown by `grow`. */
+function withClosingWorkSpace(
+  part: PlannedPart,
+  grow: (space: PlannedWorkSpace) => PlannedWorkSpace,
+): PlannedPart {
+  const last = part.subparts.at(-1)
+  if (last) {
+    if (!last.workSpace) return part
+    return { ...part, subparts: [...part.subparts.slice(0, -1), { ...last, workSpace: grow(last.workSpace) }] }
+  }
+  return part.workSpace ? { ...part, workSpace: grow(part.workSpace) } : part
 }
 
 export type PlannedQuestion = {
@@ -282,7 +403,7 @@ export type PlannedQuestion = {
    *  numbers from there, one each, and the set's stem prints unnumbered. */
   number: number
   /** What prints in the number column, before the number, as the Exam's
-   *  Question Style decides: the T and F a student circles on a True/False
+   *  Paper Style decides: the T and F a student circles on a True/False
    *  question, or an answer blank to write on — `ANSWER_BLANK` — and nothing
    *  on a Standard Multiple Choice question, whose letter is circled on its
    *  answer. */
@@ -307,7 +428,7 @@ export type PlannedQuestion = {
    *  Question Type. */
   matching: MatchingSet | null
   /** The room this Exam leaves below a Short Answer question for a student's
-   *  work, as the teacher set it or its Question Style supplies it, laid out
+   *  work, as the teacher set it or its Paper Style supplies it, laid out
    *  in the style's rows; `null` for every other Question Type. A Short Answer
    *  question with no room still carries one, zero-height, so the sheet can
    *  offer a handle to drag some open. */
@@ -326,6 +447,33 @@ export type PlannedQuestion = {
   /** A Multipart question's Parts, lettered, in authored order; `null` for every other
    *  Question Type. A Multipart question's `stem` is the shared material its Parts are asked about. */
   parts: PlannedPart[] | null
+  /** What the whole question is worth, when anything in it has Points: its
+   *  own Points, or a Multipart question's Parts' and Subparts' sum
+   *  (ADR-0042). Not to be confused with `marks`, which is what prints in
+   *  the number column. No current Paper Style prints it on the test; the
+   *  Answer Key counts its total from it. Absent on a plan recorded before
+   *  Points existed, which therefore reprints as it always did. */
+  totalPoints?: number
+  /** How its number prints, when the Paper Style numbers otherwise than
+   *  `1.` — a bold `1` under Exam Board. */
+  printedNumber?: string
+  /** Its Points as the Paper Style prints them after its answer — `[2]` —
+   *  as a Part's are (ADR-0045): on the last line of a ruled Work Space
+   *  (`pointsOnLastRule`), otherwise on a line of their own against the right
+   *  margin. Absent on a Multipart question, whose Parts carry their own, on
+   *  an unpointed question, and under every style that prints none. */
+  pointsAfter?: string
+  /** The totals its Paper Style prints after the whole question, against the
+   *  right margin, in order (ADR-0045): a Multipart question's — `[Total: 9]`
+   *  — and, after a Section's last question, that Section's. Absent when the
+   *  style prints none, or nothing in it has points. Only the question's last
+   *  piece prints them. */
+  closingPoints?: string[]
+}
+
+/** How a question's number prints in its number column. */
+export function printedNumberOf(question: Pick<PlannedQuestion, 'number' | 'printedNumber'>): string {
+  return printedLabel(question.number, question.printedNumber)
 }
 
 /** How many numbers a question takes on the test: one, or one per prompt for
@@ -388,10 +536,17 @@ export type QuestionItem = {
    *  for an answer always follows the whole question. `null` on every other
    *  piece and for every other Question Type. */
   workSpace: PlannedWorkSpace | null
-  /** The Parts of a Multipart question this piece prints, whole; `null` for every other
-   *  Question Type. A Multipart question breaks only between its Parts, or — when the
-   *  stem and its first Part cannot share a page — between its stem's blocks. */
+  /** The Parts of a Multipart question this piece prints; `null` for every other
+   *  Question Type. A Multipart question breaks only between its Parts or a
+   *  Part's Subparts, or — when the stem and its first Part cannot share a
+   *  page — between its stem's blocks. */
   parts: PlannedPart[] | null
+  /** The question's own Points after its answer (`PlannedQuestion.pointsAfter`),
+   *  on the piece that ends it; absent on every other piece. */
+  pointsAfter?: string
+  /** The question's closing totals (`PlannedQuestion.closingPoints`), on the
+   *  piece that ends it; absent on every other piece. */
+  closingPoints?: string[]
 }
 
 /** Whether this piece prints the question's number line: the first piece of
@@ -400,13 +555,33 @@ export function printsNumberLine(item: QuestionItem): boolean {
   return item.numbered && item.question.matching === null
 }
 
+/** Whether this piece's first Part prints on the question's number line —
+ *  `1 (a) Fig. 1.1 shows…` — because the Multipart question has no stem of
+ *  its own: the first piece, with nothing above its Parts. Every adapter
+ *  draws, and reads back, the number and the Part's letter as one line. */
+export function partsOpenNumberLine(item: QuestionItem): boolean {
+  const first = item.parts?.[0]
+  return printsNumberLine(item) && item.stem.length === 0 && first !== undefined && !first.continued
+}
+
+/** Whether a Part's first Subpart prints on the Part's own letter line —
+ *  `(b) (i) Name…` — because the Part has no lead-in. */
+export function subpartsOpenLabelLine(part: PlannedPart): boolean {
+  return !part.continued && part.stem.length === 0 && part.subparts.length > 0
+}
+
 // The answer key's own content items. The repeated title lives in the page's
 // furniture (see `PageHeader`'s `'answer-key'` variant) rather than packing
 // as an item — it is drawn the same way the test's own title is, on every
 // key page, since the key carries only one header variant. What does pack is
 // the "Answer Section" heading, one grouping heading per section that holds a
 // question, and one line per question.
-export type AnswerKeyHeadingItem = { kind: 'answer-key-heading' }
+export type AnswerKeyHeadingItem = {
+  kind: 'answer-key-heading'
+  /** The paper's total Points, printed beside the heading, when any of its
+   *  questions have points (ADR-0042). Under every Paper Style. */
+  totalPoints?: number
+}
 
 export type AnswerKeySectionItem = {
   kind: 'answer-key-section'
@@ -426,21 +601,52 @@ export type AnswerKeyEntryItem = {
   difficulty?: Difficulty
   topics?: string[]
   suggestedAnswer?: ProseMirrorJSON[]
-  /** A Multipart question's one line per Part, under its one number. */
+  /** A Multipart question's one line per Part — or per Subpart, where a Part
+   *  holds them — under its one number. */
   parts?: AnswerKeyPartLine[]
+  /** What the question is worth, printed `[n]` after its answer, when it has
+   *  Points. A Multipart question's Points print on its Part lines instead, and
+   *  a Matching set's — one for the whole set — on its first Item's line. */
+  points?: number
 }
 
-/** What the Answer Key records for one Part: the correct letter for a
- *  Multiple Choice Part (`null` when none is marked), or the Suggested Answer
- *  for a Short Answer Part. */
+/** What the Answer Key records for one Part or Subpart: the correct letter for
+ *  a Multiple Choice one (`null` when none is marked), or the Suggested Answer
+ *  for a Short Answer one. */
 export type AnswerKeyPartLine = {
+  /** What the line is labelled: a Part's letter, `a`, or a Subpart's place
+   *  under its Part, `a (i)`. */
   letter: string
+  /** Set on a Subpart's line, whose longer label takes a wider column. */
+  subpart?: true
   answer: string | null
   suggestedAnswer?: ProseMirrorJSON[]
+  /** What the Part or Subpart is worth, printed `[n]`, when it has points. */
+  points?: number
+}
+
+/** Points as the Answer Key prints them after an answer, in every adapter. */
+export function answerKeyPointsText(points: number): string {
+  return `[${points}]`
+}
+
+/** The paper's total as the Answer Key prints it beside its heading. */
+export function answerKeyTotalText(points: number): string {
+  return `Total: ${points} ${points === 1 ? 'point' : 'points'}`
+}
+
+// The paper's total, as a Paper Style that prints it there (ADR-0045) words
+// it: one line opening the test, beneath the title on its first page, when
+// anything on the paper has Points. Never part of the Answer Key, which
+// prints its own total beside its heading.
+export type PaperTotalItem = {
+  kind: 'paper-total'
+  text: string
 }
 
 // One thing that occupies vertical space on a page, in print order.
 export type PageItem =
+  | PaperTotalItem
   | SectionHeadingItem
   | QuestionItem
   | AnswerKeyHeadingItem
@@ -506,6 +712,23 @@ export type PageFurniture = {
   /** What the footer prints. The same number as the page, named separately
    *  because a footer is furniture rather than an item that packs. */
   pageNumber: number
+  /** Where the page number prints, when not centred at the foot: centred at
+   *  the top, on a row of its own above the header line, under a Paper Style
+   *  that puts it there. Absent on every page of every other style. */
+  pageNumberAt?: 'top'
+  /** What the foot prints against the right margin — "Turn over" on a test
+   *  page another test page follows, under a style that prints it. Absent
+   *  prints nothing there. */
+  footRight?: string
+}
+
+/** What a page's foot prints, in order: its page number, where it prints
+ *  there, then "Turn over". */
+export function runningFootOf(furniture: PageFurniture): string[] {
+  return [
+    ...(furniture.pageNumberAt === undefined ? [String(furniture.pageNumber)] : []),
+    furniture.footRight ?? '',
+  ].filter(Boolean)
 }
 
 const IDENTITY_FIELDS: Record<PageHeader, readonly IdentityField[]> = {
@@ -534,6 +757,13 @@ const HEADER_LINE: Record<PageHeader, HeaderLine | null> = {
   'answer-key-later': null,
 }
 
+/** What a test page's running furniture needs beyond its header variant:
+ *  its Paper Style's rules, and whether another test page follows it. */
+type RunningContext = {
+  rules: PaperStyleRules
+  continues: boolean
+}
+
 function furnitureOf(
   page: { header: PageHeader; number: number },
   title: string,
@@ -541,9 +771,12 @@ function furnitureOf(
   header: ExamHeader | undefined,
   titleSize: HeadingSize | undefined,
   titleLines: number,
+  running?: RunningContext,
 ): PageFurniture {
   const line = HEADER_LINE[page.header]
   const identityLine = line ? headerLineOf(header, line) : undefined
+  const top = running?.rules.running.pageNumber === 'top'
+  const continues = running?.continues ? running.rules.running.continues : undefined
   return {
     identityFields: IDENTITY_FIELDS[page.header],
     ...(identityLine !== undefined ? { identityLine } : {}),
@@ -552,6 +785,8 @@ function furnitureOf(
     ...(REPEATS_TITLE[page.header] && titleLines > 1 ? { titleLines } : {}),
     arrangementLabel: version ?? '',
     pageNumber: page.number,
+    ...(top ? { pageNumberAt: 'top' as const } : {}),
+    ...(continues ? { footRight: continues } : {}),
   }
 }
 
@@ -572,6 +807,14 @@ function furnitureOf(
 // mismatch here is what makes content creep onto an extra sheet on paper.
 export const PAGE_WIDTH = 816
 export const PAGE_HEIGHT = 1056
+
+/** A4 at 96dpi, 210×297mm, in the whole CSS pixels the plan packs in:
+ *  793.7×1122.5px, rounded. Every adapter cuts the sheet itself to A4 exactly
+ *  — 595.28×841.89pt in the PDF, 11906×16838 twips in DOCX, `A4` in print's
+ *  `@page` — so the plan's half-pixel never reaches paper. The Exam Board
+ *  Paper Style prints on it (ADR-0045). */
+export const A4_WIDTH = 794
+export const A4_HEIGHT = 1123
 /** The margin of an Exam that never set its own, on every side. */
 export const PAGE_MARGIN = marginPx(DEFAULT_MARGIN)
 
@@ -596,6 +839,19 @@ export const HEADER_HEIGHT: Record<PageHeader, number> = {
 
 export const FOOTER_HEIGHT = 36
 
+/** The row a page number printed at the top takes, above the header line, so
+ *  it never stands over the line's blanks: a line of body type and the gap
+ *  below it. Only a Paper Style that prints the number there (ADR-0045) adds
+ *  it, to each of its test pages. */
+export const RUNNING_HEAD_HEIGHT = 22
+
+/** How much taller a Paper Style's test pages' headers are than their
+ *  variant's band: a row for the page number, where the style prints it at
+ *  the top. */
+export function runningHeadHeight(style: PaperStyle | undefined): number {
+  return paperStyleRules(style).running.pageNumber === 'top' ? RUNNING_HEAD_HEIGHT : 0
+}
+
 /** How much taller than its one-line band a header grows for a title that
  *  wraps onto `lines` lines at `size`: one title line for each line past the
  *  first, rounded up to a whole pixel. The band itself, `HEADER_HEIGHT`, holds
@@ -604,30 +860,38 @@ export function titleGrowth(lines: number, size: HeadingSize | undefined): numbe
   return lines > 1 ? Math.ceil((lines - 1) * TITLE_PX[size ?? 'normal'] * TITLE_LINE_HEIGHT) : 0
 }
 
-/** How tall a page's header is: its variant's, grown for a title that wraps.
- *  Print, the PDF and the sheet all size the header by this. */
-export function headerHeightOf(header: PageHeader, furniture: Pick<PageFurniture, 'titleLines' | 'titleSize'>): number {
-  return HEADER_HEIGHT[header] + titleGrowth(furniture.titleLines ?? 1, furniture.titleSize)
+/** How tall a page's header is: its variant's, grown for a title that wraps
+ *  and for a page number printed above it. Print, the PDF and the sheet all
+ *  size the header by this. */
+export function headerHeightOf(
+  header: PageHeader,
+  furniture: Pick<PageFurniture, 'titleLines' | 'titleSize' | 'pageNumberAt'>,
+): number {
+  return HEADER_HEIGHT[header]
+    + titleGrowth(furniture.titleLines ?? 1, furniture.titleSize)
+    + (furniture.pageNumberAt === 'top' ? RUNNING_HEAD_HEIGHT : 0)
 }
 
 /** How much vertical space packing may fill on a page carrying `header`, on a
  *  sheet with `pageSize`'s margins, less what a wrapping title grows its
- *  header by on the pages that print the title. */
+ *  header by on the pages that print the title, and less `headExtra` — the
+ *  row a page number printed at the top takes (`runningHeadHeight`). */
 export function pageContentHeight(
   header: PageHeader,
   pageSize: PageSize = US_LETTER,
   titleExtra = 0,
+  headExtra = 0,
 ): number {
   const box = pageSize.height - pageSize.margins.top - pageSize.margins.bottom
-  return box - HEADER_HEIGHT[header] - (REPEATS_TITLE[header] ? titleExtra : 0) - FOOTER_HEIGHT
+  return box - HEADER_HEIGHT[header] - (REPEATS_TITLE[header] ? titleExtra : 0) - headExtra - FOOTER_HEIGHT
 }
 
 /** The most room a teacher can drag a work space to: a whole later page less
  *  an inch for the question itself, so a question and its space still fit on
  *  one sheet. Filling the rest of a page is the way to ask for more. Deeper
  *  margins leave a shorter page, and so a shorter most. */
-export function maxWorkSpaceHeight(pageSize: PageSize = US_LETTER): number {
-  return pageContentHeight('later', pageSize) - 96
+export function maxWorkSpaceHeight(pageSize: PageSize = US_LETTER, headExtra = 0): number {
+  return pageContentHeight('later', pageSize, 0, headExtra) - 96
 }
 
 export const MAX_WORK_SPACE_HEIGHT = maxWorkSpaceHeight()
@@ -642,7 +906,7 @@ export const MAX_WORK_SPACE_HEIGHT = maxWorkSpaceHeight()
 // On a Standard Exam the column holds the number alone, as wide as a
 // three-digit number. A True/False question also prints the T and F a student
 // circles, so its column is wider — `.question-number--marks` in styles.css. A
-// Question Style that prints an answer blank before the number widens it
+// Paper Style that prints an answer blank before the number widens it
 // again: `.question-number--blank`.
 const QUESTION_NUMBER_COLUMN_WIDTH = 34
 const MARKS_QUESTION_NUMBER_COLUMN_WIDTH = 64
@@ -651,7 +915,7 @@ const QUESTION_NUMBER_COLUMN_GAP = 6
 
 /** The answer blank a Multiple Choice or True/False question printed before
  *  its number until Sections were stored (ADR-0029). An Export Record made
- *  before then carries it and reprints exactly as it was; a Question Style
+ *  before then carries it and reprints exactly as it was; a Paper Style
  *  that prints a blank there prints this same one (ADR-0041). */
 export const LEGACY_ANSWER_BLANK = ANSWER_BLANK
 
@@ -676,7 +940,7 @@ export function numberColumnOf(
 }
 
 /** Whether a planned question prints an answer blank before its number, to
- *  write a letter or a word on rather than circle one: under a Question Style
+ *  write a letter or a word on rather than circle one: under a Paper Style
  *  that asks for one, or on an Export Record kept from before Sections were
  *  stored. */
 export function hasAnswerBlank(question: { marks?: readonly string[] }): boolean {
@@ -692,14 +956,14 @@ export function questionIndentOf(
 }
 
 /** Whether a question's number column carries something before its number
- *  whatever the Question Style: only True/False, whose answer is one of two
+ *  whatever the Paper Style: only True/False, whose answer is one of two
  *  fixed letters, circled or written on a blank. */
 export function hasMarks(type: QuestionType): boolean {
   return type === 'true-false'
 }
 
 /** The letters a True/False question's student circles, in the order they print. */
-export { TRUE_FALSE_MARKS } from './question-style'
+export { TRUE_FALSE_MARKS } from './paper-style'
 
 // A matching set's prompts keep their own column: a blank for the letter a
 // student writes, then the number (`.matching-prompt` in styles.css,
@@ -729,7 +993,7 @@ export const CHOICE_INDENT = 18
 
 /** The width a Multiple Choice question's choice grid is laid out in, on a
  *  page `contentWidth` wide: past the question's number column — which its
- *  Question Style may widen with an answer blank — set in from the stem.
+ *  Paper Style may widen with an answer blank — set in from the stem.
  *  Without a question, the plain number column of a Standard Exam. */
 export function choiceAreaWidth(
   contentWidth: number,
@@ -748,8 +1012,19 @@ export function partChoiceAreaWidth(
   return contentWidth - questionIndentOf(question) - PART_INDENT - CHOICE_INDENT
 }
 
-/** Both, on today's sheet. */
+/** The width a Multiple Choice Subpart's choice grid is laid out in: its Part's
+ *  less the Subpart's own label column, which is a Part's letter column one
+ *  level further in. */
+export function subpartChoiceAreaWidth(
+  contentWidth: number,
+  question: Pick<PlannedQuestion, 'type'> & { marks?: readonly string[] } = { type: 'multipart' },
+): number {
+  return partChoiceAreaWidth(contentWidth, question) - PART_INDENT
+}
+
+/** Each, on today's sheet. */
 export const PART_CHOICE_AREA_WIDTH = partChoiceAreaWidth(PAGE_CONTENT_WIDTH)
+export const SUBPART_CHOICE_AREA_WIDTH = subpartChoiceAreaWidth(PAGE_CONTENT_WIDTH)
 export const CHOICE_AREA_WIDTH = choiceAreaWidth(PAGE_CONTENT_WIDTH)
 
 // A matching set spans the whole content width — its prompts carry their own
@@ -770,6 +1045,25 @@ const TRUE_FALSE_LETTERS = ['T', 'F']
  *  from a choice's capital letter at a glance. */
 function partLetterAt(index: number): string {
   return letterAt(index).toLowerCase()
+}
+
+const ROMAN: readonly [number, string][] = [
+  [1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'],
+  [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i'],
+]
+
+/** The label a Subpart prints under its Part — 'i', 'ii', 'iii', 'iv', … — a
+ *  lowercase roman numeral, told apart from its Part's letter at a glance. */
+export function subpartLabelAt(index: number): string {
+  let label = ''
+  let remaining = index + 1
+  for (const [value, numeral] of ROMAN) {
+    while (remaining >= value) {
+      label += numeral
+      remaining -= value
+    }
+  }
+  return label
 }
 
 /** The letter of the choice at `index` — 'A', 'B', … then 'AA', 'AB', …. */
@@ -807,13 +1101,28 @@ function layOutGrid(
   return { columns, ...layOutColumns(choices, columns) }
 }
 
-/** The answers as the test prints them: lower-cased under a Question Style
+/** The answers as the test prints them: lower-cased under a Paper Style
  *  that letters "a.", and otherwise the very same choices. Copies, so the
  *  question's own choices keep the capitals its Answer Key records. */
-function printedChoices(choices: PlannedChoice[], rules: QuestionStyleRules): PlannedChoice[] {
-  return rules.lettering === 'lower'
+function printedChoices(choices: PlannedChoice[], rules: PaperStyleRules): PlannedChoice[] {
+  const lettered = rules.lettering === 'lower'
     ? choices.map((choice) => ({ ...choice, letter: choice.letter.toLowerCase() }))
     : choices
+  return labelledChoices(lettered, rules)
+}
+
+/** Answers as the style labels them on the test — `A` rather than `A.` under
+ *  Exam Board — copied; the very same answers under every style that labels
+ *  with a full stop. */
+function labelledChoices(choices: PlannedChoice[], rules: PaperStyleRules): PlannedChoice[] {
+  if (rules.labels.answer === PERIOD_LABELS.answer) return choices
+  return choices.map((choice) => ({ ...choice, ...printedBy(rules.labels.answer, choice.letter) }))
+}
+
+/** What an answer with Points prints after itself under this style, if anything. */
+function pointsAfterOf(rules: PaperStyleRules, points: number | undefined): { pointsAfter: string } | Record<string, never> {
+  const template = rules.points.pointsAfterAnswer
+  return template && points !== undefined ? { pointsAfter: labelled(template, points) } : {}
 }
 
 // A matching set under this arrangement: the Word Bank in the arrangement's
@@ -821,7 +1130,7 @@ function printedChoices(choices: PlannedChoice[], rules: QuestionStyleRules): Pl
 // given the letter its answer now carries. A prompt that names no answer, or
 // one the bank no longer holds, is unmatched and gets no letter.
 //
-// The Question Style decides how the bank is lettered on the test. Where it
+// The Paper Style decides how the bank is lettered on the test. Where it
 // sits is the position's own stored layout, beside or above, decided when the
 // question arrived on the Exam or its style last changed (`wordBankLayoutFor`)
 // and never again at layout time. A prompt's letter, the key's, is a capital
@@ -830,16 +1139,15 @@ function deriveMatching(
   question: Question,
   arrangement: Arrangement,
   number: number,
-  rules: QuestionStyleRules,
+  rules: PaperStyleRules,
   layout: WordBankLayout,
 ): MatchingSet {
   const ordered = orderedChoices(question, arrangement)
   const letters = new Map(ordered.map((answer, index) => [answer.id, letterAt(index)]))
-  const bank: PlannedBankAnswer[] = ordered.map((answer, index) => ({
-    id: answer.id,
-    letter: rules.lettering === 'lower' ? letterAt(index).toLowerCase() : letterAt(index),
-    node: answer.node,
-  }))
+  const bank: PlannedBankAnswer[] = ordered.map((answer, index) => {
+    const letter = rules.lettering === 'lower' ? letterAt(index).toLowerCase() : letterAt(index)
+    return { id: answer.id, letter, node: answer.node, ...printedBy(rules.labels.answer, letter) }
+  })
   const above = layout === 'above'
   return {
     prompts: promptsOf(question).map((prompt, index) => ({
@@ -847,6 +1155,7 @@ function deriveMatching(
       number: number + index,
       letter: letters.get(prompt.answerId) ?? null,
       node: prompt.node,
+      ...printedBy(rules.labels.question, number + index),
     })),
     bank,
     bankGrid: above && bank.length > 0
@@ -873,38 +1182,79 @@ function blankBlocks(blocks: readonly ProseMirrorJSON[]): boolean {
   )
 }
 
-// A Multipart question's Parts under this arrangement: each lettered by position, each
-// Multiple Choice Part's answers in the order recorded under its own id, and
-// each Short Answer Part's work space as this Exam sets it for that Part.
+// A Part that answers, or a Subpart, under this arrangement: a Multiple Choice
+// one's answers in the order recorded under its own id, and a Short Answer
+// one's work space as this Exam sets it for that id.
+function deriveAnswering(
+  exam: Exam,
+  part: Subpart,
+  arrangement: Arrangement,
+): Omit<PlannedSubpart, 'label'> {
+  const rules = paperStyleRules(exam.paperStyle)
+  const choices: PlannedChoice[] = orderedPartChoices(part, arrangement).map(
+    (choice, choiceIndex) => ({
+      id: choice.id,
+      letter: letterAt(choiceIndex),
+      correct: choice.correct,
+      ...(choice.locked ? { locked: true as const } : {}),
+      node: choice.node,
+    }),
+  )
+  const multipleChoice = part.type === 'multiple-choice'
+  const suggested = part.suggestedAnswer?.content
+  const suggestedBlocks = Array.isArray(suggested) ? (suggested as ProseMirrorJSON[]) : []
+  return {
+    id: part.id,
+    type: part.type,
+    stem: part.stem,
+    choices,
+    grid: multipleChoice ? layOutGrid(labelledChoices(choices, rules), part.columns) : null,
+    workSpace: multipleChoice
+      ? null
+      : plannedWorkSpace(workSpaceOf(exam, part.id), workSpaceRowsOf(exam.paperStyle), rules),
+    ...(!multipleChoice && suggestedBlocks.length > 0 && !blankBlocks(suggestedBlocks)
+      ? { suggestedAnswer: structuredClone(suggestedBlocks) }
+      : {}),
+    ...(part.points !== undefined ? { points: part.points } : {}),
+    ...pointsAfterOf(rules, part.points),
+  }
+}
+
+// A Multipart question's Parts under this arrangement, each lettered by position, and
+// each Part's Subparts numbered by theirs beneath it.
 function deriveParts(
   exam: Exam,
   question: Question,
   arrangement: Arrangement,
 ): PlannedPart[] {
-  return partsOf(question).map((part, index) => {
-    const choices: PlannedChoice[] = orderedPartChoices(part, arrangement).map(
-      (choice, choiceIndex) => ({
-        id: choice.id,
-        letter: letterAt(choiceIndex),
-        correct: choice.correct,
-        ...(choice.locked ? { locked: true as const } : {}),
-        node: choice.node,
-      }),
-    )
-    const multipleChoice = part.type === 'multiple-choice'
-    const suggested = part.suggestedAnswer?.content
-    const suggestedBlocks = Array.isArray(suggested) ? (suggested as ProseMirrorJSON[]) : []
+  const { labels } = paperStyleRules(exam.paperStyle)
+  return partsOf(question).map((part, index): PlannedPart => {
+    const letter = partLetterAt(index)
+    const printed = printedBy(labels.part, letter)
+    if (part.type !== 'subparts') {
+      return {
+        ...deriveAnswering(exam, { ...part, type: part.type }, arrangement),
+        letter,
+        ...printed,
+        subparts: [],
+      }
+    }
     return {
       id: part.id,
-      letter: partLetterAt(index),
-      type: part.type,
-      stem: part.stem,
-      choices,
-      grid: multipleChoice ? layOutGrid(choices, part.columns) : null,
-      workSpace: multipleChoice ? null : plannedWorkSpace(workSpaceOf(exam, part.id), workSpaceRowsOf(exam.questionStyle)),
-      ...(!multipleChoice && suggestedBlocks.length > 0 && !blankBlocks(suggestedBlocks)
-        ? { suggestedAnswer: structuredClone(suggestedBlocks) }
-        : {}),
+      letter,
+      ...printed,
+      type: 'subparts',
+      // A lead-in of only empty paragraphs is none: Subpart (i) then opens
+      // on the Part's own line (`subpartsOpenLabelLine`).
+      stem: blankBlocks(part.stem) ? [] : part.stem,
+      choices: [],
+      grid: null,
+      workSpace: null,
+      subparts: part.subparts.map((subpart, subpartIndex) => ({
+        ...deriveAnswering(exam, subpart, arrangement),
+        label: subpartLabelAt(subpartIndex),
+        ...printedBy(labels.subpart, subpartLabelAt(subpartIndex)),
+      })),
     }
   })
 }
@@ -915,7 +1265,7 @@ function deriveQuestion(
   arrangement: Arrangement,
   number: number,
 ): PlannedQuestion {
-  const rules = questionStyleRules(exam.questionStyle)
+  const rules = paperStyleRules(exam.paperStyle)
   const trueFalse = question.type === 'true-false'
   const matching = question.type === 'matching'
   const multipart = question.type === 'multipart'
@@ -928,6 +1278,7 @@ function deriveQuestion(
   const answerVisibility = question.type === 'multiple-choice'
     ? answerVisibilityOf(question, arrangement)
     : undefined
+  const totalPoints = pointsOfQuestion(question)
   const choices: PlannedChoice[] = ordered.map((choice, index) => ({
     id: choice.id,
     // A True/False answer is written the way the student circles it, so the
@@ -944,7 +1295,9 @@ function deriveQuestion(
     marks: trueFalse
       ? rules.trueFalseMarks
       : question.type === 'multiple-choice' ? rules.multipleChoiceMarks : [],
-    stem: stemNodesOf(question.doc),
+    // A Multipart question whose stem is only empty paragraphs has none: its
+    // Part (a) opens on its number's line (`partsOpenNumberLine`).
+    stem: multipart && blankBlocks(stemNodesOf(question.doc)) ? [] : stemNodesOf(question.doc),
     choices,
     // A True/False question never prints its pair as lettered answers: its
     // marks are the T and F a student circles beside its number, or the blank
@@ -957,7 +1310,7 @@ function deriveQuestion(
       : null,
     ...(matching ? { wordBankLayout: wordBankLayoutOf(exam, question) } : {}),
     workSpace: takesWorkSpace(question.type)
-      ? plannedWorkSpace(workSpaceOf(exam, question.id), workSpaceRowsOf(exam.questionStyle))
+      ? plannedWorkSpace(workSpaceOf(exam, question.id), workSpaceRowsOf(exam.paperStyle), rules)
       : null,
     ...(question.difficulty ? { difficulty: question.difficulty } : {}),
     ...(topicsOf(question).length > 0 ? { topics: [...topicsOf(question)] } : {}),
@@ -966,7 +1319,29 @@ function deriveQuestion(
       ? { suggestedAnswer: suggestedAnswerOf(question) }
       : {}),
     parts: multipart ? deriveParts(exam, question, arrangement) : null,
+    ...(totalPoints !== undefined ? { totalPoints } : {}),
+    // A matching set's numbers print on its Items.
+    ...(matching ? {} : printedNumberBy(rules, number)),
+    ...(multipart ? {} : pointsAfterOf(rules, totalPoints)),
+    ...closingPointsOf(rules, multipart, totalPoints),
   }
+}
+
+function printedNumberBy(rules: PaperStyleRules, number: number): { printedNumber: string } | Record<string, never> {
+  const printed = printedBy(rules.labels.question, number)
+  return 'printed' in printed ? { printedNumber: printed.printed } : {}
+}
+
+/** The total a question prints after itself under this style: a Multipart
+ *  question's. Any other question's Points print after its answer instead
+ *  (`pointsAfter`). */
+function closingPointsOf(
+  rules: PaperStyleRules,
+  multipart: boolean,
+  totalPoints: number | undefined,
+): { closingPoints: string[] } | Record<string, never> {
+  const template = multipart ? rules.points.questionTotal : undefined
+  return template && totalPoints !== undefined ? { closingPoints: [labelled(template, totalPoints)] } : {}
 }
 
 // The Exam's Sections in their own order. A Section with no questions still
@@ -974,6 +1349,7 @@ function deriveQuestion(
 // every question lands on the same page in both — a Section that showed on the
 // sheet but vanished from the export would move questions between pages.
 function deriveItems(exam: Exam, arrangement: Arrangement): PageItem[] {
+  const rules = paperStyleRules(exam.paperStyle)
   const items: PageItem[] = []
   let number = 1
   for (const section of sectionsOf(exam)) {
@@ -992,11 +1368,23 @@ function deriveItems(exam: Exam, arrangement: Arrangement): PageItem[] {
         ? { size: exam.headingSize }
         : {}),
     })
-    for (const question of questions) {
-      const planned = deriveQuestion(exam, question, arrangement, number)
-      items.push(wholeQuestion(planned))
-      number += numbersTakenBy(planned)
+    const planned = questions.map((question) => {
+      const derived = deriveQuestion(exam, question, arrangement, number)
+      number += numbersTakenBy(derived)
+      return derived
+    })
+    // A Section's total prints after its last question, under a style that
+    // prints one, when anything in the Section has points.
+    const sectionTotal = rules.points.sectionTotal
+    const sectionPoints = sumOfPoints(planned.map((question) => question.totalPoints))
+    const last = planned.at(-1)
+    if (sectionTotal && sectionPoints !== undefined && last) {
+      planned[planned.length - 1] = {
+        ...last,
+        closingPoints: [...(last.closingPoints ?? []), labelled(sectionTotal, sectionPoints)],
+      }
     }
+    items.push(...planned.map(wholeQuestion))
   }
   return items
 }
@@ -1012,13 +1400,15 @@ function wholeQuestion(question: PlannedQuestion): QuestionItem {
     matching: question.matching,
     workSpace: question.workSpace,
     parts: question.parts,
+    ...(question.pointsAfter ? { pointsAfter: question.pointsAfter } : {}),
+    ...(question.closingPoints ? { closingPoints: question.closingPoints } : {}),
   }
 }
 
 // The indivisible segments a question may be broken between: its number line
-// glued to the first stem block, so a split can never strand a bare number at
-// the foot of a page; then one segment per remaining top-level block; then the
-// choice grid whole, since a grid is never split. A question with no stem at
+// glued to the first run of its stem (`stemRuns`), so a split can never strand
+// a bare number at the foot of a page; then one segment per remaining run;
+// then the choice grid whole, since a grid is never split. A question with no stem at
 // all is a single segment, so it moves rather than coming apart. A matching set
 // and a Multipart question have segments of their own (see `matchingSegmentsOf` and
 // `multipartSegmentsOf`).
@@ -1028,18 +1418,29 @@ type Segment = {
   grid: ChoiceGrid | null
   matching: MatchingSet | null
   workSpace: PlannedWorkSpace | null
-  /** A Multipart question's Parts carried by this segment, whole. */
+  /** A Multipart question's Parts carried by this segment: a Part that answers
+   *  whole, and a Part that holds Subparts one Subpart at a time. */
   parts: PlannedPart[]
+  /** Set on the question's last segment: the piece that carries it prints the
+   *  question's closing Points. */
+  closes?: true
 }
 
 // A work space is glued to the last segment rather than being one of its own:
 // room for an answer at the top of a page, with its question at the foot of
 // the one before, is room nobody would think to use.
 function segmentsOf(question: PlannedQuestion, measure: Measure, fullPage: number): Segment[] {
+  const segments = segmentsWithin(question, measure, fullPage)
+  const last = segments.at(-1)
+  if (last) segments[segments.length - 1] = { ...last, closes: true }
+  return segments
+}
+
+function segmentsWithin(question: PlannedQuestion, measure: Measure, fullPage: number): Segment[] {
   const workSpace = question.workSpace
   if (question.matching) return matchingSegmentsOf(question, question.matching, workSpace)
   if (question.parts) return multipartSegmentsOf(question, question.parts, measure, fullPage)
-  const [first, ...rest] = question.stem
+  const [first, ...rest] = stemRuns(question.stem)
   if (first === undefined) {
     return [
       {
@@ -1053,11 +1454,11 @@ function segmentsOf(question: PlannedQuestion, measure: Measure, fullPage: numbe
     ]
   }
   const segments: Segment[] = [
-    { stem: [first], numbered: true, grid: null, matching: null, workSpace: null, parts: [] },
+    { stem: first, numbered: true, grid: null, matching: null, workSpace: null, parts: [] },
   ]
-  for (const block of rest) {
+  for (const run of rest) {
     segments.push({
-      stem: [block], numbered: false, grid: null, matching: null, workSpace: null, parts: [],
+      stem: run, numbered: false, grid: null, matching: null, workSpace: null, parts: [],
     })
   }
   if (question.grid) {
@@ -1069,12 +1470,76 @@ function segmentsOf(question: PlannedQuestion, measure: Measure, fullPage: numbe
   return segments
 }
 
-// A Multipart question breaks only between its Parts: its number and its stem
-// glued to Part a, then one segment per Part after it, so a student never
-// turns a page to find the first question about what they have just read.
-// Only when the stem and Part a together are taller than a whole page does the
-// stem itself come apart between its blocks, as any oversized stem does —
-// there is then no page that could hold them together.
+/** Whether a top-level block is a picture: a block picture, a paragraph of
+ *  nothing but pictures, or a Side-by-Side with a picture in a Panel. */
+function isPicture(block: ProseMirrorJSON): boolean {
+  const content = Array.isArray(block.content) ? (block.content as ProseMirrorJSON[]) : []
+  switch (block.type) {
+    case 'image-block':
+    case 'image':
+      return true
+    case 'paragraph':
+      return content.some((node) => node.type === 'image')
+        && content.every((node) => node.type === 'image' || (node.type === 'text' && !String(node.text ?? '').trim()))
+    case 'sideBySide':
+      return content.some((panel) =>
+        (Array.isArray(panel.content) ? (panel.content as ProseMirrorJSON[]) : []).some(isPicture))
+    default:
+      return false
+  }
+}
+
+/**
+ * A stem's top-level blocks in the runs a page may break between (ADR-0048):
+ * one block each — a paragraph, a picture, a table, a Side-by-Side, a
+ * Blockquote, never anything inside one — except that a paragraph directly
+ * after a picture is its caption and goes with it, so a page never ends
+ * between a figure and the line that names it.
+ */
+export function stemRuns(stem: readonly ProseMirrorJSON[]): ProseMirrorJSON[][] {
+  const runs: ProseMirrorJSON[][] = []
+  stem.forEach((block, index) => {
+    const previous = stem[index - 1]
+    const caption = previous !== undefined && isPicture(previous) && block.type === 'paragraph' && !isPicture(block)
+    if (caption) runs.at(-1)!.push(block)
+    else runs.push([block])
+  })
+  return runs
+}
+
+/** A Part or Subpart that answers, as the pieces its stem breaks into
+ *  between runs: the first printing its label, the rest `continued`; then
+ *  its choice grid whole as a piece of its own, since a grid is never split.
+ *  Its room and its Points go with its last piece, as a question's do. Itself
+ *  alone when there is nothing to break it between. */
+function answeringPieces<T extends PlannedSubpart | PlannedPart>(answering: T): T[] {
+  const runs = stemRuns(answering.stem)
+  if (runs.length + (answering.grid ? 1 : 0) < 2) return [answering]
+  const { pointsAfter, ...rest } = answering
+  const bare = { ...rest, grid: null, workSpace: null } as unknown as T
+  const end = {
+    grid: answering.grid,
+    workSpace: answering.workSpace,
+    ...(pointsAfter !== undefined ? { pointsAfter } : {}),
+  }
+  const pieces: T[] = runs.map((run, index) => ({ ...bare, stem: run, ...(index > 0 ? { continued: true as const } : {}) }))
+  if (answering.grid) pieces.push({ ...bare, stem: [], continued: true })
+  pieces[pieces.length - 1] = { ...pieces[pieces.length - 1]!, ...end }
+  return pieces
+}
+
+// A Multipart question breaks between its Parts and between a Part's Subparts:
+// its number and its stem glued to Part a — and, when Part a holds Subparts,
+// to its lead-in and Subpart (i) — then one segment per Part or Subpart after
+// it, so a student never turns a page to find the first question about what
+// they have just read, nor a lead-in apart from its first Subpart.
+// A Part, a lead-in with its Subpart (i), or a Subpart that is taller than a
+// whole page on its own breaks between the runs of its stem as a question's
+// stem does (ADR-0048); one a page would hold moves whole.
+// Only when the stem and Part a's first piece together are taller than a
+// whole page does the stem itself come apart between its runs — there is
+// then no page that could hold them together — and when the stem cannot,
+// Part a breaks so that its first run can stay with the number.
 function multipartSegmentsOf(
   question: PlannedQuestion,
   parts: readonly PlannedPart[],
@@ -1084,33 +1549,125 @@ function multipartSegmentsOf(
   const partSegment = (part: PlannedPart): Segment => ({
     stem: [], numbered: false, grid: null, matching: null, workSpace: null, parts: [part],
   })
-  const [firstPart, ...laterParts] = parts
-  const lead: Segment = {
+  const fits = (segment: Segment) => measure.itemHeight(pieceOf(question, [segment])) <= fullPage
+  // A Part that holds Subparts is its letter and lead-in glued to Subpart
+  // (i), then each later Subpart as a continuation of the same Part.
+  const unitsOf = (part: PlannedPart): PlannedPart[] => {
+    const [first, ...later] = part.subparts
+    if (!first) return [part]
+    return [
+      { ...part, subparts: [first] },
+      ...later.map((subpart): PlannedPart => ({ ...part, stem: [], subparts: [subpart], continued: true })),
+    ]
+  }
+  // A unit too tall for a page, broken between its runs: an answering Part's
+  // own; or a lead-in's, its last run glued to its Subpart's first piece, and
+  // the Subpart's own when it too is taller than a page.
+  const brokenUnit = (unit: PlannedPart): PlannedPart[] => {
+    const [subpart] = unit.subparts
+    if (!subpart) return answeringPieces(unit)
+    const holder: PlannedPart = { ...unit, stem: [], continued: true }
+    const subpieces = fits(partSegment({ ...holder, subparts: [subpart] })) ? [subpart] : answeringPieces(subpart)
+    const later = subpieces.slice(1).map((piece): PlannedPart => ({ ...holder, subparts: [piece] }))
+    if (unit.continued) return [{ ...holder, subparts: [subpieces[0]!] }, ...later]
+    const runs = stemRuns(unit.stem)
+    if (runs.length === 0) return [{ ...unit, subparts: [subpieces[0]!] }, ...later]
+    const leadIn = runs.map((run, index): PlannedPart => ({
+      ...unit,
+      stem: run,
+      subparts: [],
+      ...(index > 0 ? { continued: true as const } : {}),
+    }))
+    // The lead-in's last run goes with the Subpart's first piece where a page
+    // holds both; otherwise the Subpart, which a page holds, moves whole.
+    const glued = { ...leadIn.at(-1)!, subparts: [subpieces[0]!] }
+    if (fits(partSegment(glued))) return [...leadIn.slice(0, -1), glued, ...later]
+    return [...leadIn, { ...holder, subparts: [subpieces[0]!] }, ...later]
+  }
+  const units = parts.flatMap(unitsOf)
+  const pieces = units.flatMap((unit) => (fits(partSegment(unit)) ? [unit] : brokenUnit(unit)))
+  const leadOf = (first: PlannedPart | undefined): Segment => ({
     stem: question.stem,
     numbered: true,
     grid: null,
     matching: null,
     workSpace: null,
-    parts: firstPart ? [firstPart] : [],
+    parts: first ? [first] : [],
+  })
+  const lead = leadOf(pieces[0])
+  if (fits(lead)) return [lead, ...pieces.slice(1).map(partSegment)]
+  const runs = stemRuns(question.stem)
+  if (runs.length >= 2) {
+    const [first, ...rest] = runs
+    return [
+      { stem: first!, numbered: true, grid: null, matching: null, workSpace: null, parts: [] },
+      ...rest.map((run): Segment => ({
+        stem: run, numbered: false, grid: null, matching: null, workSpace: null, parts: [],
+      })),
+      ...pieces.map(partSegment),
+    ]
   }
-  if (measure.itemHeight(pieceOf(question, [lead])) <= fullPage || question.stem.length < 2) {
-    return [lead, ...laterParts.map(partSegment)]
+  // A stem that cannot break keeps the number with Part a's first run.
+  const [firstUnit] = units
+  if (firstUnit && pieces[0] === firstUnit) {
+    const finer = brokenUnit(firstUnit)
+    return [leadOf(finer[0]), ...[...finer.slice(1), ...pieces.slice(1)].map(partSegment)]
   }
-  const [first, ...rest] = question.stem
-  return [
-    { stem: [first!], numbered: true, grid: null, matching: null, workSpace: null, parts: [] },
-    ...rest.map((block): Segment => ({
-      stem: [block], numbered: false, grid: null, matching: null, workSpace: null, parts: [],
-    })),
-    ...parts.map(partSegment),
-  ]
+  return [lead, ...pieces.slice(1).map(partSegment)]
 }
 
-/** Whether a Part short of a Multipart question's last fills the rest of its page. The
- *  Parts after it cannot then share that page, so the Multipart question cannot move
- *  whole and has to be broken up after it. */
+/** A piece of a Part or Subpart and the piece continuing it on the same
+ *  page, joined back into one: the stem runs of both, and the answers, room
+ *  and Points the later one ends with. */
+function joinedAnswering<T extends PlannedSubpart | PlannedPart>(earlier: T, later: T): T {
+  const pointsAfter = later.pointsAfter ?? earlier.pointsAfter
+  const rest = { ...earlier }
+  delete rest.pointsAfter
+  return {
+    ...rest,
+    stem: [...earlier.stem, ...later.stem],
+    grid: later.grid ?? earlier.grid,
+    workSpace: later.workSpace ?? earlier.workSpace,
+    ...(pointsAfter !== undefined ? { pointsAfter } : {}),
+  }
+}
+
+/** Consecutive pieces of the same Subpart, joined back into one. */
+function joinedSubparts(pieces: readonly PlannedSubpart[]): PlannedSubpart[] {
+  const joined: PlannedSubpart[] = []
+  for (const piece of pieces) {
+    const last = joined.at(-1)
+    if (last && last.id === piece.id && piece.continued) joined[joined.length - 1] = joinedAnswering(last, piece)
+    else joined.push(piece)
+  }
+  return joined
+}
+
+/** Consecutive pieces of the same Part, joined back into one: a Part broken
+ *  between its runs, or one that holds Subparts, travels one piece to a
+ *  segment, but the pieces a page holds print together. */
+function joinedParts(pieces: readonly PlannedPart[]): PlannedPart[] {
+  const joined: PlannedPart[] = []
+  for (const piece of pieces) {
+    const last = joined.at(-1)
+    if (last && last.id === piece.id && piece.continued) {
+      joined[joined.length - 1] = {
+        ...joinedAnswering(last, piece),
+        subparts: joinedSubparts([...last.subparts, ...piece.subparts]),
+      }
+    } else joined.push(piece)
+  }
+  return joined
+}
+
+/** Whether a Part or Subpart short of a Multipart question's last fills the rest of its
+ *  page. The ones after it cannot then share that page, so the Multipart question
+ *  cannot move whole and has to be broken up after it. */
 function fillsBeforeItsEnd(question: PlannedQuestion): boolean {
-  return (question.parts ?? []).slice(0, -1).some((part) => part.workSpace?.fill === true)
+  const spaces = (question.parts ?? []).flatMap((part) =>
+    part.subparts.length > 0 ? part.subparts.map((subpart) => subpart.workSpace) : [part.workSpace],
+  )
+  return spaces.slice(0, -1).some((space) => space?.fill === true)
 }
 
 // A matching set breaks only between its items: the directions glued to the
@@ -1157,17 +1714,24 @@ function pieceOf(
     matching:
       sets.length === 0 ? null : { ...sets[0]!, prompts: sets.flatMap((set) => set.prompts) },
     workSpace: segments.find((segment) => segment.workSpace !== null)?.workSpace ?? null,
-    parts: question.parts ? segments.flatMap((segment) => segment.parts) : null,
+    parts: question.parts ? joinedParts(segments.flatMap((segment) => segment.parts)) : null,
+    ...(question.pointsAfter && segments.some((segment) => segment.closes)
+      ? { pointsAfter: question.pointsAfter }
+      : {}),
+    ...(question.closingPoints && segments.some((segment) => segment.closes)
+      ? { closingPoints: question.closingPoints }
+      : {}),
   }
 }
 
 /** The work space that fills the rest of the page this piece lands on, if
- *  any: a Short Answer question's own, or — for a Multipart question — its last Part's,
- *  since a piece of a Multipart question ends at any Part that fills. */
+ *  any: a Short Answer question's own, or — for a Multipart question — its last Part's
+ *  or Subpart's, since a piece of a Multipart question ends at any that fills. */
 function fillingSpaceOf(item: QuestionItem): PlannedWorkSpace | null {
   if (item.workSpace?.fill) return item.workSpace
   const last = item.parts?.at(-1)
-  return last?.workSpace?.fill ? last.workSpace : null
+  const space = last ? closingWorkSpaceOf(last) : null
+  return space?.fill ? space : null
 }
 
 /** The piece with its filling work space grown to `height`. */
@@ -1180,8 +1744,8 @@ function withFillHeight(item: QuestionItem, height: number): QuestionItem {
   if (item.workSpace?.fill) return { ...item, workSpace: grow(item.workSpace) }
   const parts = item.parts ?? []
   const last = parts.at(-1)
-  if (!last?.workSpace) return item
-  return { ...item, parts: [...parts.slice(0, -1), { ...last, workSpace: grow(last.workSpace) }] }
+  if (!last) return item
+  return { ...item, parts: [...parts.slice(0, -1), withClosingWorkSpace(last, grow)] }
 }
 
 // Packing: fill a page until the next item does not fit, then start another.
@@ -1209,9 +1773,10 @@ function paginate(
   initialHeader: PageHeader,
   continuedHeader: PageHeader,
   titleExtra = 0,
+  headExtra = 0,
 ): PackedPage[] {
   const pages: PackedPage[] = []
-  const contentHeight = (header: PageHeader) => pageContentHeight(header, pageSize, titleExtra)
+  const contentHeight = (header: PageHeader) => pageContentHeight(header, pageSize, titleExtra, headExtra)
   let header: PageHeader = initialHeader
   let box = contentHeight(header)
   let current: PageItem[] = []
@@ -1258,10 +1823,12 @@ function paginate(
   // on ahead of it only when a fresh page would actually hold it, and an
   // oversized piece overflows under the heading instead.
   const fullPage = contentHeight(continuedHeader)
-  // A Part that fills its page ends the piece it is in: nothing may follow it
-  // on that page.
-  const endsPiece = (segment: Segment) =>
-    segment.parts.at(-1)?.workSpace?.fill === true
+  // A Part or Subpart that fills its page ends the piece it is in: nothing may
+  // follow it on that page.
+  const endsPiece = (segment: Segment) => {
+    const last = segment.parts.at(-1)
+    return last ? closingWorkSpaceOf(last)?.fill === true : false
+  }
   const split = (question: PlannedQuestion) => {
     const segments = segmentsOf(question, measure, fullPage)
     let start = 0
@@ -1352,6 +1919,22 @@ function paginate(
   return pages
 }
 
+/** The Answer Key's line for a Part or Subpart that answers. */
+function answerKeyPartLine(
+  letter: string,
+  part: Pick<PlannedSubpart, 'type' | 'choices' | 'suggestedAnswer' | 'points'>,
+): AnswerKeyPartLine {
+  return {
+    letter,
+    answer:
+      part.type === 'multiple-choice'
+        ? part.choices.find((choice) => choice.correct)?.letter ?? null
+        : null,
+    ...(part.suggestedAnswer ? { suggestedAnswer: part.suggestedAnswer } : {}),
+    ...(part.points !== undefined ? { points: part.points } : {}),
+  }
+}
+
 // Derive the key from the exact rendered questions that students see, so its
 // numbering and arrangement-relative choice letters cannot drift from the test. A
 // question that later splits across pages still contributes exactly one answer
@@ -1364,7 +1947,12 @@ function deriveAnswerKey(testItems: readonly PageItem[]): PageItem[] {
   // names its group here: the key is a teacher's reference, and a run of
   // answers with no label is not one. A Section with no questions has no
   // group.
-  const items: PageItem[] = [{ kind: 'answer-key-heading' }]
+  // The paper's total is counted from the very questions the key lists, so
+  // it is the sum of the Points printed beneath it.
+  const totalPoints = totalPointsIn(testItems)
+  const items: PageItem[] = [
+    { kind: 'answer-key-heading', ...(totalPoints !== undefined ? { totalPoints } : {}) },
+  ]
   const seen = new Set<string>()
   let heading: SectionHeadingItem | null = null
   let grouped: string | null = null
@@ -1393,26 +1981,28 @@ function deriveAnswerKey(testItems: readonly PageItem[]): PageItem[] {
         number: item.question.number,
         letter: null,
         ...metadata,
-        parts: item.question.parts.map((part) => ({
-          letter: part.letter,
-          answer:
-            part.type === 'multiple-choice'
-              ? part.choices.find((choice) => choice.correct)?.letter ?? null
-              : null,
-          ...(part.suggestedAnswer ? { suggestedAnswer: part.suggestedAnswer } : {}),
+        // A Part that holds Subparts answers nothing itself: its line is one
+        // per Subpart, each labelled with its place under the Part.
+        parts: answeringPartsIn(item.question.parts).map(({ name, part, subpart }) => ({
+          ...answerKeyPartLine(name, part),
+          ...(subpart ? { subpart: true as const } : {}),
         })),
       })
       continue
     }
+    const points = item.question.totalPoints !== undefined ? { points: item.question.totalPoints } : {}
     if (item.question.matching) {
-      for (const prompt of item.question.matching.prompts) {
+      // A Matching set takes its Points as a whole, so its Points print once, on
+      // its first Item's line.
+      item.question.matching.prompts.forEach((prompt, index) => {
         items.push({
           kind: 'answer-key-entry',
           number: prompt.number,
           letter: prompt.letter,
           ...metadata,
+          ...(index === 0 ? points : {}),
         })
-      }
+      })
       continue
     }
     items.push({
@@ -1420,6 +2010,7 @@ function deriveAnswerKey(testItems: readonly PageItem[]): PageItem[] {
       number: item.question.number,
       letter: item.question.choices.find((choice) => choice.correct)?.letter ?? null,
       ...metadata,
+      ...points,
       ...(item.question.suggestedAnswer
         ? { suggestedAnswer: item.question.suggestedAnswer }
         : {}),
@@ -1465,10 +2056,11 @@ export type ExportDocument = {
   textSize?: TextSize
   /** The Exam's Page Margins in inches, where not the default. */
   margins?: PageMargins
-  /** The Exam's Question Style, where not Standard. Its rules are already in
+  /** The Exam's Paper Style, where not Standard. Its rules are already in
    *  the items; layout reads it for what packing alone decides — how far apart
-   *  questions stand, and whether answers fit across the line. */
-  questionStyle?: QuestionStyle
+   *  questions stand, and whether answers fit across the line — and for the
+   *  sheet and the running furniture its pages carry. */
+  paperStyle?: PaperStyle
 }
 
 /** Semantic derivation, on its own. Exposed so tests and fingerprints can read
@@ -1479,7 +2071,9 @@ export function buildExportDocument(
   selection: ExportContentSelection,
   version?: string,
 ): ExportDocument {
-  const test = deriveItems(exam, arrangement)
+  const questions = deriveItems(exam, arrangement)
+  const total = paperTotalOf(paperStyleRules(exam.paperStyle), questions)
+  const test = total ? [total, ...questions] : questions
   return {
     title: exam.title,
     arrangement: {
@@ -1496,10 +2090,29 @@ export function buildExportDocument(
       : {}),
     ...(exam.textSize && exam.textSize !== DEFAULT_TEXT_SIZE ? { textSize: exam.textSize } : {}),
     ...(exam.margins && !sameMargins(exam.margins, undefined) ? { margins: { ...exam.margins } } : {}),
-    ...(exam.questionStyle && exam.questionStyle !== DEFAULT_QUESTION_STYLE
-      ? { questionStyle: exam.questionStyle }
+    ...(exam.paperStyle && exam.paperStyle !== DEFAULT_PAPER_STYLE
+      ? { paperStyle: exam.paperStyle }
       : {}),
   }
+}
+
+/** The paper's total Points, counted once per question from the very questions
+ *  the test prints; `undefined` when none has points. */
+function totalPointsIn(items: readonly PageItem[]): number | undefined {
+  return sumOfPoints(
+    [...new Map(
+      items.flatMap((item) => (item.kind === 'question' ? [[item.question.id, item.question.totalPoints] as const] : [])),
+    ).values()],
+  )
+}
+
+/** The paper's total a style prints beneath the title, opening the test;
+ *  `undefined` under a style that prints none there, or when nothing on the
+ *  paper has Points. */
+function paperTotalOf(rules: PaperStyleRules, questions: readonly PageItem[]): PaperTotalItem | undefined {
+  const template = rules.points.paperTotalUnderTitle
+  const total = totalPointsIn(questions)
+  return template && total !== undefined ? { kind: 'paper-total', text: labelled(template, total) } : undefined
 }
 
 // ---------------------------------------------------------------------------
@@ -1509,9 +2122,14 @@ export function buildExportDocument(
 // adapter that has a plan needs neither the exam, the arrangement, nor a `Measure`.
 
 export type PageSize = {
-  /** CSS pixels at 96dpi — US Letter, the geometry both outputs are cut to. */
+  /** CSS pixels at 96dpi — US Letter, or A4 under a Paper Style that prints
+   *  on it — the geometry every output is cut to. */
   width: number
   height: number
+  /** Set on an A4 sheet, so an adapter cuts it to A4 exactly rather than to
+   *  the whole pixels it was packed in. Absent is US Letter, as every plan
+   *  recorded before a style could choose. */
+  paper?: 'a4'
   /** How far in from each edge the page prints: the Exam's Page Margins. */
   margins: Record<MarginSide, number>
   /** The width left between the left and right margins — what every item on
@@ -1519,8 +2137,9 @@ export type PageSize = {
   contentWidth: number
 }
 
-/** US Letter with an Exam's Page Margins, in the pixels the plan packs in. */
-export function pageSizeOf(margins: PageMargins | undefined): PageSize {
+/** The sheet a Paper Style names — US Letter unless it says A4 — with an
+ *  Exam's Page Margins, in the pixels the plan packs in. */
+export function pageSizeOf(margins: PageMargins | undefined, paper: PaperSize = 'letter'): PageSize {
   const inches = marginsOf(margins)
   const px = {
     top: marginPx(inches.top),
@@ -1528,11 +2147,14 @@ export function pageSizeOf(margins: PageMargins | undefined): PageSize {
     bottom: marginPx(inches.bottom),
     left: marginPx(inches.left),
   }
+  const a4 = paper === 'a4'
+  const width = a4 ? A4_WIDTH : PAGE_WIDTH
   return {
-    width: PAGE_WIDTH,
-    height: PAGE_HEIGHT,
+    width,
+    height: a4 ? A4_HEIGHT : PAGE_HEIGHT,
+    ...(a4 ? { paper: 'a4' as const } : {}),
     margins: px,
-    contentWidth: Math.round((PAGE_WIDTH - px.left - px.right) * 100) / 100,
+    contentWidth: Math.round((width - px.left - px.right) * 100) / 100,
   }
 }
 
@@ -1568,8 +2190,11 @@ export function readStoredLayoutPlan(plan: LayoutPlan): LayoutPlan {
     }
     return item
   }
+  // A plan recorded before ADR-0044 names its Paper Style by the old name.
+  const { questionStyle: legacyStyle, ...current } = plan as LayoutPlan & { questionStyle?: PaperStyle }
   return {
-    ...plan,
+    ...current,
+    ...(current.paperStyle === undefined && legacyStyle !== undefined ? { paperStyle: legacyStyle } : {}),
     pageSize,
     pages: plan.pages.map((page) => ({ ...page, items: page.items.map(upgraded) })),
   }
@@ -1583,10 +2208,10 @@ export type LayoutPlan = {
   /** How large the pages' content prints, when not normal. Every adapter sets
    *  its body type from this; it is what the items were measured at. */
   textSize?: TextSize
-  /** The Question Style the pages were laid out in, when not Standard. What
+  /** The Paper Style the pages were laid out in, when not Standard. What
    *  it prints is in the items; adapters read this only for the space each
    *  question leaves below itself, which is what packing measured. */
-  questionStyle?: QuestionStyle
+  paperStyle?: PaperStyle
   pages: PlannedPage[]
 }
 
@@ -1600,7 +2225,7 @@ export type PlanRequest = {
   version?: string
 }
 
-/** The column counts a Question Style may widen answers to, widest first. */
+/** The column counts a Paper Style may widen answers to, widest first. */
 const ACROSS_COLUMNS: readonly ColumnCount[] = [4, 2]
 
 /** Whether an answer is text alone — paragraphs of text, marks and math —
@@ -1637,7 +2262,7 @@ function acrossGrid(
   return columns ? layOutGrid(ordered, columns) : grid
 }
 
-// A Question Style that lays answers across the line (Condensed) decides how
+// A Paper Style that lays answers across the line (Condensed) decides how
 // far once the items are known and before they pack, since how many columns an
 // answer fits in is a measurement: each Multiple Choice question's and Part's
 // grid widens as far as every answer still holds one line. The answer key is
@@ -1657,7 +2282,13 @@ function fitAnswersAcross(
     const grid = acrossGrid(question.grid, lane, measure, textSize)
     const parts = question.parts?.map((part) => {
       const partGrid = acrossGrid(part.grid, partChoiceAreaWidth(contentWidth, question), measure, textSize)
-      return partGrid === part.grid ? part : { ...part, grid: partGrid }
+      const subparts = part.subparts.map((subpart) => {
+        const subpartGrid = acrossGrid(subpart.grid, subpartChoiceAreaWidth(contentWidth, question), measure, textSize)
+        return subpartGrid === subpart.grid ? subpart : { ...subpart, grid: subpartGrid }
+      })
+      return partGrid === part.grid && subparts.every((subpart, index) => subpart === part.subparts[index])
+        ? part
+        : { ...part, grid: partGrid, subparts }
     }) ?? null
     if (grid === question.grid && parts?.every((part, index) => part === question.parts![index]) !== false) {
       return item
@@ -1701,7 +2332,7 @@ function fitWordBanks(
 export type BankAnswerWidth = NonNullable<Measure['bankAnswerWidth']>
 
 /** What an Exam's choice of Word Bank layout reads beside the question. */
-export type WordBankSettings = Pick<Exam, 'questionStyle' | 'textSize' | 'margins'>
+export type WordBankSettings = Pick<Exam, 'paperStyle' | 'textSize' | 'margins'>
 
 /** The width a column beside the Items needs to hold every answer of a Word
  *  Bank on one line, its inset included. */
@@ -1714,16 +2345,16 @@ function bankNeeds(
 }
 
 /** The least room a style leaves a matching set's prompts beside its bank. */
-function promptsMinWidthOf(style: QuestionStyle | undefined): number {
+function promptsMinWidthOf(style: PaperStyle | undefined): number {
   return style === 'condensed' ? CONDENSED_MATCHING_PROMPTS_MIN_WIDTH : MATCHING_PROMPTS_MIN_WIDTH
 }
 
 /**
  * The Word Bank layout a Matching question takes when it arrives on an Exam —
- * added, dragged, imported without one — or when the Exam's Question Style
- * changes: the style's own placement, and where the style leaves it to fit,
- * beside its Items when its widest answer, measured on one line at the Exam's
- * text size, fits a column that still leaves the Items their least width on a
+ * added, dragged, imported without one — or when the Exam's Paper Style
+ * changes and the teacher has not chosen it (ADR-0044): the style's own
+ * placement, and where the style leaves it to fit, beside its Items when its
+ * widest answer, measured on one line at the Exam's text size, fits a column that still leaves the Items their least width on a
  * page as wide as the Exam's margins leave, and above them otherwise. A bank
  * with more than twice as many answers as there are Items, and more than
  * `MATCHING_BESIDE_LIMIT`, goes above: beside, the set would stand as tall as
@@ -1739,7 +2370,7 @@ export function wordBankLayoutFor(
   settings: WordBankSettings,
   widthOf?: BankAnswerWidth,
 ): WordBankLayout {
-  const rules = questionStyleRules(settings.questionStyle)
+  const rules = paperStyleRules(settings.paperStyle)
   if (rules.bankPlacement === 'above') return 'above'
   const answers = choicesOf(question)
   if (answers.length === 0) return 'beside'
@@ -1750,9 +2381,9 @@ export function wordBankLayoutFor(
     letter: rules.lettering === 'lower' ? letterAt(index).toLowerCase() : letterAt(index),
     node: answer.node,
   }))
-  const widest = pageSizeOf(settings.margins).contentWidth
+  const widest = pageSizeOf(settings.margins, rules.pageSize).contentWidth
     - MATCHING_INDENT
-    - promptsMinWidthOf(settings.questionStyle)
+    - promptsMinWidthOf(settings.paperStyle)
   return bankNeeds(bank, widthOf, settings.textSize) <= widest ? 'beside' : 'above'
 }
 
@@ -1773,15 +2404,16 @@ function resolveLayout(
   document: ExportDocument,
   measure: Measure,
 ): LayoutPlan {
-  const { textSize, questionStyle } = document
-  const pageSize = pageSizeOf(document.margins)
+  const { textSize, paperStyle } = document
+  const rules = paperStyleRules(paperStyle)
+  const pageSize = pageSizeOf(document.margins, rules.pageSize)
   // Every item is measured at the Exam's text size, at the width its margins
-  // leave and in its Question Style; an Exam with none of them asks exactly as
+  // leave and in its Paper Style; an Exam with none of them asks exactly as
   // it always did.
   const layout: ItemLayout = {
     ...(textSize ? { textSize } : {}),
     ...(pageSize.contentWidth !== PAGE_CONTENT_WIDTH ? { contentWidth: pageSize.contentWidth } : {}),
-    ...(questionStyle ? { questionStyle } : {}),
+    ...(paperStyle ? { paperStyle } : {}),
   }
   const sized: Measure = Object.keys(layout).length > 0
     ? { itemHeight: (item) => measure.itemHeight(item, layout) }
@@ -1796,7 +2428,6 @@ function resolveLayout(
   const titleExtra = titleGrowth(titleLines, document.headingSize)
   const pages: PackedPage[] = []
   if (document.selection.test) {
-    const rules = questionStyleRules(questionStyle)
     const across = rules.answersAcross
       ? fitAnswersAcross(document.test, measure, textSize, pageSize.contentWidth)
       : document.test
@@ -1805,9 +2436,13 @@ function resolveLayout(
       measure,
       textSize,
       pageSize.contentWidth,
-      promptsMinWidthOf(questionStyle),
+      promptsMinWidthOf(paperStyle),
     )
-    pages.push(...paginate(test, sized, pageSize, 'test', 'first', 'later', titleExtra))
+    // The test's pages carry its Paper Style's running head; the Answer
+    // Key's keep the sheet's own.
+    pages.push(
+      ...paginate(test, sized, pageSize, 'test', 'first', 'later', titleExtra, runningHeadHeight(paperStyle)),
+    )
   }
   if (document.selection.answerKey) {
     pages.push(
@@ -1828,7 +2463,7 @@ function resolveLayout(
     selection: document.selection,
     pageSize,
     ...(textSize ? { textSize } : {}),
-    ...(questionStyle ? { questionStyle } : {}),
+    ...(paperStyle ? { paperStyle } : {}),
     // Every page but the first of the serialized document is preceded by an
     // explicit break. A linear format must reproduce the plan's pagination
     // rather than rediscover one of its own.
@@ -1841,6 +2476,14 @@ function resolveLayout(
         document.header,
         document.headingSize,
         titleLines,
+        // The test's running furniture is its Paper Style's; the Answer Key
+        // keeps the sheet's own under every style.
+        page.stream === 'test'
+          ? {
+              rules,
+              continues: pages[index + 1]?.stream === 'test',
+            }
+          : undefined,
       ),
       breakBefore: index > 0,
     })),

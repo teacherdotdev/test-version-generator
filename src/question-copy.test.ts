@@ -189,6 +189,29 @@ describe('Copy', () => {
     expect(forWord).not.toContain('base64,MATH')
   })
 
+  test('a Centred figure, caption and table paste centred, and a left paragraph does not', () => {
+    const centred = { align: 'center' }
+    const value = question(
+      'open',
+      paragraph(text('Study the figure.')),
+      { type: 'image-block', attrs: { src: '/local-images/abc', caption: 'Fig. 1.1', align: 'center' } },
+      { ...paragraph(text('Table 1.1')), attrs: centred },
+      {
+        type: 'table',
+        attrs: centred,
+        content: [{ type: 'table_row', content: [{ type: 'table_cell', content: [{ ...paragraph(text('42')), attrs: centred }] }] }],
+      },
+    )
+    const html = pasted(value)
+    expect(html).toContain('<p style="margin:0 0 0 0in">Study the figure.</p>')
+    expect(html).toContain('<p style="margin:0 0 0 0in;text-align:center"><i>Fig. 1.1</i></p>')
+    expect(html).toContain('<p style="margin:0 0 0 0in;text-align:center">Table 1.1</p>')
+    expect(html).toContain('<table align="center"')
+    expect(html).toContain('<p style="margin:0 0 0 0in;text-align:center">42</p>')
+    // The picture's own line is centred too.
+    expect(html).toContain('<p style="margin:0 0 0 0in;text-align:center">[Fig. 1.1]</p>')
+  })
+
   test('a picture pastes at its Authored Image Size against the page, never wider than the page', () => {
     expect(copyImageWidth(400, {})).toBe(400)
     expect(copyImageWidth(2000, {})).toBe(624)

@@ -33,14 +33,26 @@ const MIN_CURVES = 10
 /** The smallest structure, two bonds and an atom label, has two slanted
  *  lines; a rule, a table or a box has none. */
 const MIN_DIAGONALS = 2
+/** Level and plumb lines this close meet, as a table's rules do. */
+const MEETING = 3
 /** A path this thin is one line. */
 const THIN = 2
 /** A filled shape no larger than this is the size of a letter. */
 const GLYPH = 15
+/** A radio button, check box or oval to fill in is no larger than this; a
+ *  structure's ring is larger, and has slanted bonds besides. */
+const CONTROL = 40
+/** A drawing whose lines reach no further than this is an icon or a drawn
+ *  character, such as a menu's arrow or an asterisk; the smallest structure's
+ *  bonds span about 35. */
+const ICON = 30
 /** A letter's neighbours in a word are this close; a dot has none. */
 const LETTER_GAP = 3
 /** A dot is about as wide as it is tall: within this of a log ratio of 0. */
 const ROUND = 0.25
+/** A box with this many lines or shaded cells reaching its sides is divided
+ *  into a diagram; one line could be a form's header rule. */
+const DIVISIONS = 2
 /** Words this close along a line are one phrase. */
 const WORD_GAP = 10
 /** A phrase wider than this is a line of the question, not a label: the
@@ -57,6 +69,8 @@ const FULL_PAGE = 0.7
 const REACTION_GAP = 80
 /** An arrow is a level shaft this share of its width, with a head. */
 const ARROW_SHAFT = 0.6
+/** A reaction arrow, even an equilibrium's pair, is no taller than this. */
+const ARROW_HEIGHT = 20
 const ARROW_TEXT = /^[→⟶⇌⇄⇋↔⟷]$/
 
 const overlaps = (a: PageBox, b: PageBox, gap = 0) =>
@@ -71,6 +85,7 @@ const union = (a: PageBox, b: PageBox): PageBox => ({
 
 const widthOf = (box: PageBox) => box.right - box.left
 const heightOf = (box: PageBox) => box.bottom - box.top
+const spanOf = (box: PageBox) => Math.max(widthOf(box), heightOf(box))
 
 const isRule = (path: DrawnPath) =>
   !path.diagonals && !path.curves && Math.min(widthOf(path.box), heightOf(path.box)) <= THIN
@@ -80,8 +95,10 @@ const isRule = (path: DrawnPath) =>
 const isBox = (path: DrawnPath) => path.straights >= 3 && path.diagonals * 20 <= path.straights && !isRule(path)
 /** A path that only clips, which paints nothing. */
 const isClip = (path: DrawnPath) => !path.curves && !path.diagonals && !path.straights
+/** A form's control, or a piece of one: a small shape with nothing slanted. */
+const isControl = (path: DrawnPath) => !path.diagonals && spanOf(path.box) <= CONTROL
 /** A filled shape no bigger than a letter. */
-const isGlyph = (path: DrawnPath) => !path.stroked && Math.max(widthOf(path.box), heightOf(path.box)) <= GLYPH
+const isGlyph = (path: DrawnPath) => !path.stroked && spanOf(path.box) <= GLYPH
 
 /** Merges sets of indexes, each named by its smallest member. */
 function disjointSets(size: number) {
@@ -129,20 +146,51 @@ function phrasesOf(words: readonly Phrase[]): Phrase[] {
 /** A drawing and the labels on it, or labels on nothing. */
 type Part = { paths: DrawnPath[]; labels: Phrase[]; box: PageBox }
 
-/** Whether a part is only rules and boxes, and if so whether they rule the
- *  cells of a table: at least three edges across and three down. */
+/** Whether a part is only rules and boxes, and whether its rules and boxes
+ *  make a table — at least three edges across and three down — or divide a
+ *  box into a diagram. */
 function frameOf({ paths }: Part): { frame: boolean; table: boolean } {
   const painted = paths.filter((path) => !isClip(path))
-  if (!painted.length || !painted.every((path) => isRule(path) || isBox(path))) return { frame: false, table: false }
+  const straight = painted.filter((path) => isRule(path) || isBox(path))
   const across: number[] = []
   const down: number[] = []
-  for (const { box } of painted) {
+  for (const { box } of straight) {
     if (widthOf(box) > THIN) down.push(box.top, ...(heightOf(box) > THIN ? [box.bottom] : []))
     if (heightOf(box) > THIN) across.push(box.left, ...(widthOf(box) > THIN ? [box.right] : []))
   }
   const distinct = (edges: number[]) =>
     edges.sort((a, b) => a - b).filter((edge, index) => index === 0 || edge - edges[index - 1]! > THIN).length
-  return { frame: true, table: distinct(across) >= 3 && distinct(down) >= 3 }
+  // A box divided from side to side, or with a cell shaded in a corner, is a
+  // diagram, such as an area model; a box's own fill is not a division.
+  const divided = straight.some(
+    (outer) =>
+      isBox(outer) && straight.filter((inner) => inner !== outer && divides(inner.box, outer.box)).length >= DIVISIONS,
+  )
+  return {
+    frame: painted.length > 0 && straight.length === painted.length,
+    table: (distinct(across) >= 3 && distinct(down) >= 3) || divided,
+  }
+}
+
+/** Whether `inner` lies within `outer` and reaches one or two of its
+ *  sides: a dividing line or a shaded cell, not a box drawn over it. */
+function divides(inner: PageBox, outer: PageBox): boolean {
+  const within =
+    inner.left >= outer.left - THIN &&
+    inner.right <= outer.right + THIN &&
+    inner.top >= outer.top - THIN &&
+    inner.bottom <= outer.bottom + THIN
+  const sides = [
+    Math.abs(inner.left - outer.left),
+    Math.abs(inner.right - outer.right),
+    Math.abs(inner.top - outer.top),
+    Math.abs(inner.bottom - outer.bottom),
+  ].filter((gap) => gap <= THIN).length
+  // A line along one of the box's sides is its border, drawn separately.
+  const border =
+    (heightOf(inner) <= THIN && (inner.top <= outer.top + THIN || inner.bottom >= outer.bottom - THIN)) ||
+    (widthOf(inner) <= THIN && (inner.left <= outer.left + THIN || inner.right >= outer.right - THIN))
+  return within && !border && sides >= 1 && sides <= 2
 }
 
 /** Whether a part is a reaction arrow: a level shaft most of its width, with
@@ -152,7 +200,9 @@ function isArrow({ paths, labels }: Part): boolean {
   const ink = paths.map((path) => path.box).reduce(union)
   return (
     widthOf(ink) >= 3 * heightOf(ink) &&
-    (paths.some((path) => path.diagonals + path.curves > 0) || labels.some((label) => label.shapes === 1)) &&
+    heightOf(ink) <= ARROW_HEIGHT &&
+    (paths.some((path) => !isBox(path) && path.diagonals + path.curves > 0) ||
+      labels.some((label) => label.shapes === 1)) &&
     paths.some((path) => isRule(path) && heightOf(path.box) <= THIN && widthOf(path.box) >= ARROW_SHAFT * widthOf(ink))
   )
 }
@@ -193,16 +243,22 @@ export function drawnFigures(
     if (!frame || !isBox(frame)) return false
     const within = boxes[j]!
     return (
-      within.left > frame.box.left + TOUCHING &&
-      within.right < frame.box.right - TOUCHING &&
-      within.top > frame.box.top + TOUCHING &&
-      within.bottom < frame.box.bottom - TOUCHING
+      within.left > frame.box.left + THIN &&
+      within.right < frame.box.right - THIN &&
+      within.top > frame.box.top + THIN &&
+      within.bottom < frame.box.bottom - THIN
     )
   }
+  // A table's rules meet; two tables set one under the other, as answer
+  // choices, only come close. A dashed line's dashes, being short, join as
+  // any strokes do.
+  const straight = (index: number) =>
+    !!inked[index] && (isRule(inked[index]!) || isBox(inked[index]!)) && spanOf(boxes[index]!) > GLYPH
+  const reach = (i: number, j: number) => (straight(i) && straight(j) ? MEETING : TOUCHING)
   const touching = disjointSets(boxes.length)
   for (let i = 0; i < boxes.length; i += 1)
     for (let j = i + 1; j < boxes.length; j += 1)
-      if (overlaps(boxes[i]!, boxes[j]!, TOUCHING) && !inside(i, j) && !inside(j, i)) touching.join(i, j)
+      if (overlaps(boxes[i]!, boxes[j]!, reach(i, j)) && !inside(i, j) && !inside(j, i)) touching.join(i, j)
   let parts: Part[] = touching.groups(boxes.map((box, index) => ({ box, path: inked[index] }))).map((members) => ({
     paths: members.flatMap(({ path }) => (path ? [path] : [])),
     labels: members.flatMap(({ box, path }) => (path ? [] : [box])),
@@ -275,11 +331,19 @@ export function drawnFigures(
       const diagonals = part.paths.filter((path) => !isBox(path)).reduce((sum, path) => sum + path.diagonals, 0)
       const painted = part.paths.filter((path) => !isClip(path))
       if (!painted.length || arrows[index] || (frame && !table)) continue
-      // A drawn asterisk or tick beside a word, even on a box, is a
-      // character, not a figure.
+      // A drawn icon, asterisk or tick, even on a box, is a character, not a
+      // figure; a small filled shape, such as a page's arrow, reaches no
+      // further than itself.
       const lines = painted.filter((path) => !isBox(path))
-      const ink = lines.length ? lines.map((path) => path.box).reduce(union) : undefined
-      if (!table && (!ink || Math.max(widthOf(ink), heightOf(ink)) <= GLYPH)) continue
+      const reaching = lines.filter((path) => path.stroked || spanOf(path.box) > CONTROL)
+      const ink = reaching.length ? reaching.map((path) => path.box).reduce(union) : undefined
+      if (!table && (!ink || spanOf(ink) <= ICON)) continue
+      // Strokes no longer than a letter's, such as a triangle sign drawn in
+      // a line of text, are characters however far apart they stand.
+      if (!table && lines.every((path) => spanOf(path.box) <= GLYPH)) continue
+      // Radio buttons, check boxes and ovals to fill in are small closed
+      // shapes with nothing slanted, alone or in a row: a choice list.
+      if (!table && painted.every(isControl)) continue
       if (curves >= MIN_CURVES || diagonals >= MIN_DIAGONALS || table) figures.push([part])
     }
   }

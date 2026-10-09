@@ -12,7 +12,7 @@
       "instructions": "Answer on the lines."
     }
   ],
-  "questionStyle": "classic",
+  "paperStyle": "classic",
   "positions": [
     {
       "question": {

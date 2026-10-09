@@ -3,7 +3,7 @@ import type { ColumnSetting, WordBankLayout, WorkSpace } from './exam'
 import type { HeadingSize, SectionHeadings, TextSize } from './section-headings'
 import type { ExamHeader } from './page-header'
 import type { PageMargins } from './page-margins'
-import type { QuestionStyle } from './question-style'
+import type { PaperStyle } from './paper-style'
 import examSchema010 from './exam-record-0.1.0.schema.json'
 import examSchema020 from './exam-record-0.2.0.schema.json'
 import examSchema030 from './exam-record-0.3.0.schema.json'
@@ -76,6 +76,9 @@ export type ExamRecordPosition = {
   /** From Exam Record 0.4.0: where a Matching position's Word Bank prints,
    *  when not left to the fit rule. */
   wordBankLayout?: WordBankLayout
+  /** From Exam Record 0.4.0: whether the teacher chose that layout, so a
+   *  change of Paper Style leaves it (ADR-0044). Absent means false. */
+  wordBankLayoutSet?: boolean
 }
 
 /**
@@ -126,7 +129,7 @@ export type ExamRecord = {
   textSize?: TextSize
   /** From 0.4.0: how every question on the Exam prints; only when not
    *  Standard. */
-  questionStyle?: QuestionStyle
+  paperStyle?: PaperStyle
   /** The Exam's own test-page header lines; only departures from the default. */
   header?: ExamHeader
   /** From 0.4.0: the Exam's Page Margins in inches, every side; only when they
@@ -175,7 +178,7 @@ export type ProposedExam = {
   sectionHeadings?: SectionHeadings
   headingSize?: HeadingSize
   textSize?: TextSize
-  questionStyle?: QuestionStyle
+  paperStyle?: PaperStyle
   header?: ExamHeader
   margins?: PageMargins
   /** Positions regrouped Section by Section — in `sections` order, or for an
@@ -262,7 +265,7 @@ function localHeadingsOf(
   sectionHeadings?: SectionHeadings
   headingSize?: HeadingSize
   textSize?: TextSize
-  questionStyle?: QuestionStyle
+  paperStyle?: PaperStyle
   header?: ExamHeader
   margins?: PageMargins
 } {
@@ -280,8 +283,8 @@ function localHeadingsOf(
     ...(entries.length > 0 ? { sectionHeadings } : {}),
     ...(exam.headingSize && exam.headingSize !== 'normal' ? { headingSize: exam.headingSize } : {}),
     ...(exam.textSize && exam.textSize !== 'normal' ? { textSize: exam.textSize } : {}),
-    ...(exam.questionStyle && exam.questionStyle !== 'standard'
-      ? { questionStyle: exam.questionStyle }
+    ...(exam.paperStyle && exam.paperStyle !== 'standard'
+      ? { paperStyle: exam.paperStyle }
       : {}),
     ...(exam.header && Object.keys(exam.header).length > 0 ? { header: { ...exam.header } } : {}),
     ...(exam.margins ? { margins: { ...exam.margins } } : {}),
@@ -353,23 +356,27 @@ const examParser030: ExamParser = sectionedParser(validateExam030, '0.3.0')
 
 // 0.4.0 adds to 0.3.0 a Multiple Choice position's `hiddenAnswers`, the
 // incorrect answers it leaves off (ADR-0038); a Matching position's
-// `wordBankLayout`; the Exam's Page Margins (ADR-0039); and its
-// `questionStyle` (ADR-0041) — and nothing else. A record without them hides
-// nothing, prints today's margins and prints in the standard style; a Matching
-// position without a `wordBankLayout` takes one on import, from its style and
-// the fit rule (`planImport`).
+// `wordBankLayout`, and whether the teacher chose it (`wordBankLayoutSet`,
+// ADR-0044); the Exam's Page Margins (ADR-0039); and its `paperStyle`
+// (ADR-0041) — and nothing else. A record without them hides nothing, prints
+// today's margins and prints in the standard style; a Matching position
+// without a `wordBankLayout` takes one on import, from its style and the fit
+// rule (`planImport`), and is not the teacher's choice.
 const sectionedParser040: ExamParser = sectionedParser(validateExam040, '0.4.0', (position) => ({
   ...(position.hiddenAnswers !== undefined ? { hiddenAnswers: [...position.hiddenAnswers] } : {}),
   ...(position.wordBankLayout !== undefined ? { wordBankLayout: position.wordBankLayout } : {}),
+  ...(position.wordBankLayout !== undefined && position.wordBankLayoutSet === true
+    ? { wordBankLayoutSet: true }
+    : {}),
 }))
 
 const examParser040: ExamParser = (value) => {
   const parsed = sectionedParser040(value)
-  const { questionStyle, margins } = value as ExamRecord
+  const { paperStyle, margins } = value as ExamRecord
   const { top, right, bottom, left } = margins ?? {}
   return {
     ...parsed,
-    ...(questionStyle ? { questionStyle } : {}),
+    ...(paperStyle ? { paperStyle } : {}),
     ...(margins ? { margins: { top: top!, right: right!, bottom: bottom!, left: left! } } : {}),
   }
 }
@@ -486,7 +493,8 @@ function proposedExam(
         `${where} sets answer columns, which only a Multiple Choice Question has.`,
       )
     }
-    if (position.wordBankLayout !== undefined && question.type !== 'matching') {
+    if ((position.wordBankLayout !== undefined || position.wordBankLayoutSet !== undefined)
+      && question.type !== 'matching') {
       throw new QuestionBankImportError(
         'invalid-position',
         `${where} sets a Word Bank layout, which only a Matching Question has.`,

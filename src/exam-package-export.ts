@@ -1,13 +1,11 @@
 import {
   choicesOf,
   columnsOf,
-  hasWorkSpace,
   orderedChoices,
   orderedQuestions,
   sectionIdOf,
   sectionsOf,
   takesWorkSpace,
-  defaultWorkSpaceOf,
   isWorkSpace,
   type Arrangement,
   type Exam,
@@ -114,9 +112,11 @@ export async function examPackage({
   const sectionIndex = new Map(sections.map((section, index) => [section.id, index]))
   const positions = printed.map((question): ExamRecordPosition => {
     const ids = recordIds.get(question.id)!
-    // Only a Work Space the teacher set travels, "None" included where the
-    // Question Style would rule lines; the room the style rules is the
-    // style's, and the record's `questionStyle` carries it.
+    // Only a Work Space the teacher set travels, and every one they set,
+    // "None" included whatever the Exam's Paper Style now rules there: a
+    // lining style taken after import must not rule lines over it (ADR-0044).
+    // The room a style rules is the style's, and the record's `paperStyle`
+    // carries it.
     const space = exam.workSpace?.[question.id]
     return {
       question: { bank: ids.bank, question: ids.question },
@@ -128,10 +128,13 @@ export async function examPackage({
       ...(hiddenAnswerIdsOf(question, arrangement).length > 0
         ? { hiddenAnswers: hiddenAnswerIdsOf(question, arrangement).map((id) => ids.answers.get(id)!) }
         : {}),
-      // Every Matching position says where its Word Bank prints.
+      // Every Matching position says where its Word Bank prints, and whether
+      // the teacher chose it.
       ...(question.type === 'matching' ? { wordBankLayout: wordBankLayoutOf(exam, question) } : {}),
+      ...(question.type === 'matching' && exam.wordBankLayoutSet?.[question.id] === true
+        ? { wordBankLayoutSet: true }
+        : {}),
       ...(takesWorkSpace(question.type) && space && isWorkSpace(space)
-        && (hasWorkSpace(space) || hasWorkSpace(defaultWorkSpaceOf(exam.questionStyle)))
         ? { workSpace: { ...space } }
         : {}),
     }
@@ -143,8 +146,8 @@ export async function examPackage({
     sections: sections.map(({ title, instructions }): ExamRecordSection => ({ title, instructions })),
     ...(exam.headingSize && exam.headingSize !== 'normal' ? { headingSize: exam.headingSize } : {}),
     ...(exam.textSize && exam.textSize !== 'normal' ? { textSize: exam.textSize } : {}),
-    ...(exam.questionStyle && exam.questionStyle !== 'standard'
-      ? { questionStyle: exam.questionStyle }
+    ...(exam.paperStyle && exam.paperStyle !== 'standard'
+      ? { paperStyle: exam.paperStyle }
       : {}),
     ...(exam.header ? { header: { ...exam.header } } : {}),
     ...(exam.margins ? { margins: { ...exam.margins } } : {}),

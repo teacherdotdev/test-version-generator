@@ -18,7 +18,7 @@
 
 import { isExamHeader, sameExamHeader } from './page-header'
 import { isPageMargins, sameMargins } from './page-margins'
-import { DEFAULT_QUESTION_STYLE, isQuestionStyle } from './question-style'
+import { DEFAULT_PAPER_STYLE, isPaperStyle } from './paper-style'
 import {
   DEFAULT_HEADING_SIZE,
   isHeadingSize,
@@ -34,7 +34,7 @@ import {
   isWorkSpace,
   sameSectionOf,
   sameSections,
-  partsOf,
+  answeringPartsOf,
   presentationIdsOf,
   type ColumnSetting,
   type Exam,
@@ -47,8 +47,8 @@ import type { ProseMirrorJSON } from './question-doc'
 import { bankQuestionById, type ExamWorkingCopy, type QuestionBank } from './question-bank'
 
 function sameStrings(
-  left: Readonly<Record<string, string>> | undefined,
-  right: Readonly<Record<string, string>> | undefined,
+  left: Readonly<Record<string, string | true>> | undefined,
+  right: Readonly<Record<string, string | true>> | undefined,
 ): boolean {
   const entries = Object.entries(left ?? {})
   return entries.length === Object.keys(right ?? {}).length
@@ -72,17 +72,33 @@ function sameWorkSpace(
 }
 
 /** A Multipart question with this Exam's answer columns written onto its Multiple
- *  Choice Parts, as a question's own `columns` is overridden: the Part nodes
- *  carry the layout each Part starts with, and the Working Copy the layout this
+ *  Choice Parts and Subparts, as a question's own `columns` is overridden: the
+ *  nodes carry the layout each starts with, and the Working Copy the layout this
  *  Exam gives it. The same question comes back when nothing differs, so a
  *  consumer comparing by identity sees no change. */
 function withPartColumns(
   question: Question,
   columns: Record<string, ColumnSetting>,
 ): Question {
-  const parts = partsOf(question)
+  const parts = answeringPartsOf(question)
   if (!parts.some((part) => columns[part.id] !== undefined && columns[part.id] !== part.columns)) {
     return question
+  }
+  const withColumns = (node: ProseMirrorJSON): ProseMirrorJSON => {
+    const attrs = (node.attrs ?? {}) as Record<string, unknown>
+    const id = typeof attrs.id === 'string' ? attrs.id : ''
+    const own = columns[id] === undefined ? node : { ...node, attrs: { ...attrs, columns: columns[id] } }
+    // A Part that holds Subparts has its columns set on each Subpart.
+    return !Array.isArray(own.content)
+      ? own
+      : {
+          ...own,
+          content: (own.content as ProseMirrorJSON[]).map((child) =>
+            child.type !== 'multipartSubparts' || !Array.isArray(child.content)
+              ? child
+              : { ...child, content: (child.content as ProseMirrorJSON[]).map(withColumns) },
+          ),
+        }
   }
   const content = Array.isArray(question.doc.content)
     ? (question.doc.content as ProseMirrorJSON[])
@@ -96,13 +112,7 @@ function withPartColumns(
           ? node
           : {
               ...node,
-              content: (node.content as ProseMirrorJSON[]).map((part) => {
-                const attrs = (part.attrs ?? {}) as Record<string, unknown>
-                const id = typeof attrs.id === 'string' ? attrs.id : ''
-                return columns[id] === undefined
-                  ? part
-                  : { ...part, attrs: { ...attrs, columns: columns[id] } }
-              }),
+              content: (node.content as ProseMirrorJSON[]).map(withColumns),
             },
       ),
     },
@@ -166,6 +176,12 @@ export function selectedExam(
     if (matchingIds.has(id) && isWordBankLayout(layout)) wordBankLayout[id] = layout
   }
   const hasAnyWordBankLayout = Object.keys(wordBankLayout).length > 0
+  // And which of them the teacher chose: only a referenced Matching question's.
+  const wordBankLayoutSet: Record<string, true> = {}
+  for (const [id, set] of Object.entries(draft.wordBankLayoutSet ?? {})) {
+    if (matchingIds.has(id) && set === true) wordBankLayoutSet[id] = true
+  }
+  const hasAnyWordBankLayoutSet = Object.keys(wordBankLayoutSet).length > 0
   // Section wording and size are this Exam's presentation too, carried only
   // when readable and only when they say something other than the default.
   const sectionHeadings =
@@ -192,9 +208,9 @@ export function selectedExam(
       : undefined
   const textSize =
     isTextSize(draft.textSize) && draft.textSize !== DEFAULT_TEXT_SIZE ? draft.textSize : undefined
-  const questionStyle =
-    isQuestionStyle(draft.questionStyle) && draft.questionStyle !== DEFAULT_QUESTION_STYLE
-      ? draft.questionStyle
+  const paperStyle =
+    isPaperStyle(draft.paperStyle) && draft.paperStyle !== DEFAULT_PAPER_STYLE
+      ? draft.paperStyle
       : undefined
   const header =
     isExamHeader(draft.header) && Object.keys(draft.header).length > 0 ? draft.header : undefined
@@ -207,6 +223,7 @@ export function selectedExam(
     && previous.exam.questions.every((question, index) => question === questions[index])
     && sameWorkSpace(previous.exam.workSpace, hasAnyWorkSpace ? workSpace : undefined)
     && sameStrings(previous.exam.wordBankLayout, hasAnyWordBankLayout ? wordBankLayout : undefined)
+    && sameStrings(previous.exam.wordBankLayoutSet, hasAnyWordBankLayoutSet ? wordBankLayoutSet : undefined)
     && sameSections(previous.exam.sections, sections)
     && (previous.exam.sections === undefined) === (sections === undefined)
     && sameSectionOf(previous.exam.sectionOf, hasAnySectionOf ? sectionOf : undefined)
@@ -214,7 +231,7 @@ export function selectedExam(
     && previous.exam.headingSize === headingSize
     && sameExamHeader(previous.exam.header, header)
     && previous.exam.textSize === textSize
-    && previous.exam.questionStyle === questionStyle
+    && previous.exam.paperStyle === paperStyle
     && previous.exam.margins === margins
       ? previous.exam
       : {
@@ -222,12 +239,13 @@ export function selectedExam(
           questions,
           ...(hasAnyWorkSpace ? { workSpace } : {}),
           ...(hasAnyWordBankLayout ? { wordBankLayout } : {}),
+          ...(hasAnyWordBankLayoutSet ? { wordBankLayoutSet } : {}),
           ...(sections ? { sections } : {}),
           ...(hasAnySectionOf ? { sectionOf } : {}),
           ...(sectionHeadings ? { sectionHeadings } : {}),
           ...(headingSize ? { headingSize } : {}),
           ...(textSize ? { textSize } : {}),
-          ...(questionStyle ? { questionStyle } : {}),
+          ...(paperStyle ? { paperStyle } : {}),
           ...(header ? { header } : {}),
           ...(margins ? { margins } : {}),
         }

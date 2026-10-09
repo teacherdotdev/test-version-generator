@@ -10,6 +10,7 @@
 // diagnostic; see `docs/export-testing.md`.
 
 import { describe, expect, test } from 'bun:test'
+import JSZip from 'jszip'
 import { createExamDocx } from './docx-export'
 import type { MediaLoader } from './export-media'
 import { docxFingerprint } from './docx-fingerprint'
@@ -35,7 +36,7 @@ import {
   prepareExport,
 } from './export-preparation'
 import { printFingerprint } from './print-fingerprint'
-import { QUESTION_STYLES } from './question-style'
+import { PAPER_STYLES } from './paper-style'
 import {
   SUPPORTED_MARKS,
   SUPPORTED_NODES,
@@ -110,6 +111,207 @@ describe('the DOCX Export Adapter carries the planned document', () => {
     // The question after the filled space starts the next page.
     expect(test[1]!.content.some((line) => line.includes('Starts a new page'))).toBe(true)
     expectSameDocument(planned, await docxOf(fixture))
+  })
+
+  test('carries Subparts beneath their Part’s lead-in, and a key line for each', async () => {
+    const fixture = FIXTURES.find((item) => item.name === 'a multipart whose part holds subparts')!
+    const planned = layoutFingerprint(planOf(fixture))
+    const lines = planned.pages.flatMap((page) => page.content)
+    const at = (start: string) => lines.findIndex((line) => line.startsWith(`para ${start}`))
+    // The lead-in, then each Subpart labelled beneath it, in order.
+    expect(at('b. The count was highest')).toBeGreaterThan(at('a. Name one thing'))
+    expect(at('i. In which season')).toBeGreaterThan(at('b. The count was highest'))
+    expect(at('ii. Suggest why')).toBeGreaterThan(at('i. In which season'))
+    expect(lines).toContain('space:lines:2')
+    // Spring is the second answer under this arrangement.
+    expect(lines).toContain('para b (i). «strong»B«/»')
+    expect(lines.some((line) => line.startsWith('para b (ii).'))).toBe(true)
+    expectSameDocument(planned, await docxOf(fixture))
+    expectSameDocument(planned, printFingerprint(planOf(fixture)))
+  })
+
+  test('puts a stemless Multipart question’s Part (a) on its number’s line, and a lead-in-less Part’s Subpart (i) on its letter’s, under every Paper Style', async () => {
+    const stemless = FIXTURES.find((item) => item.name === 'a multipart with no stem, and a part with no lead-in')!
+    for (const paperStyle of PAPER_STYLES) {
+      const fixture = { ...stemless, exam: { ...stemless.exam, paperStyle } }
+      const plans = planOf(fixture)
+      // A stem of only empty paragraphs is no stem, and so is such a lead-in.
+      const item = plans[0]!.pages.flatMap((page) => page.items).find((candidate) => candidate.kind === 'question')
+      expect(item?.kind === 'question' && item.stem).toEqual([])
+      expect(item?.kind === 'question' && item.parts![1]!.stem).toEqual([])
+      const planned = layoutFingerprint(plans)
+      const lines = layoutFingerprint([plans[0]!]).pages.flatMap((page) => page.content)
+      // `1 (a) Fig. 1.1…` under Exam Board, `1. a. Fig. 1.1…` under the rest.
+      const [number, a, b, i, ii] = paperStyle === 'exam-board'
+        ? ['1', '(a)', '(b)', '(i)', '(ii)']
+        : ['1.', 'a.', 'b.', 'i.', 'ii.']
+      expect(lines).toContain(`para ${number} ${a} Fig. 1.1 shows a ball rolling down a ramp. State the energy it gains.`)
+      expect(lines).toContain(`para ${b} ${i} Name the force that slows the ball.`)
+      expect(lines).toContain(`para ${ii} Which unit is energy measured in?`)
+      // Neither the number nor a letter is left on a line of its own.
+      expect(lines).not.toContain(`para ${number}`)
+      expect(lines).not.toContain(`para ${b}`)
+      expectSameDocument(planned, await docxOf(fixture))
+      expectSameDocument(planned, printFingerprint(plans))
+    }
+  })
+
+  test('carries Points on the Answer Key under every Paper Style, and on the test only where its style prints them', async () => {
+    const pointed = FIXTURES.find((item) => item.name === 'a paper with points')!
+    for (const paperStyle of PAPER_STYLES.filter((style) => style !== 'exam-board')) {
+      const fixture = { ...pointed, exam: { ...pointed.exam, paperStyle } }
+      const plans = planOf(fixture)
+      const planned = layoutFingerprint(plans)
+      const [test, key] = [0, 1].map((stream) =>
+        layoutFingerprint([plans[stream]!]).pages.flatMap((page) => page.content))
+      // The test says nothing of Points under a style that prints none.
+      expect(test!.some((line) => /\[\d+\]|points?\b/.test(line))).toBe(false)
+      // The key gives the paper's total, each line with Points its `[n]`, a
+      // Matching set's once on its first Item, and an unpointed line none.
+      expect(key).toContain('heading:1 Answer Section Total: 9 points')
+      expect(key).toContain('para 1. «strong»A«/» [1] Easy Rivers')
+      expect(key).toContain('para 2. «strong»F«/»')
+      expect(key).toContain('para 3. «strong»A«/» [2]')
+      expect(key).toContain('para 4. «strong»B«/»')
+      expect(key).toContain('para a. [1]')
+      expect(key).toContain('para b (i). [2]')
+      expect(key).toContain('para b (ii). [3]')
+      expectSameDocument(planned, await docxOf(fixture))
+      expectSameDocument(planned, printFingerprint(plans))
+    }
+  })
+
+  test('carries an Exam Board paper: its paper total, labels, dotted lines and Points, on A4', async () => {
+    const fixture = FIXTURES.find((item) => item.name === 'a paper with points in the exam board paper style')!
+    const plans = planOf(fixture)
+    const [test, key] = plans
+    const planned = layoutFingerprint(plans)
+    const testPages = layoutFingerprint([test!]).pages
+    const lines = testPages.flatMap((page) => page.content)
+
+    // A4, every page of the test and the key.
+    for (const page of planned.pages) expect([page.width, page.height]).toEqual([794, 1123])
+
+    // Page 1 is a test page as every style prints one: the page number above
+    // the header line, the title, then the paper's total opening the content,
+    // ahead of its first Section's heading. No page is the style's own.
+    expect(testPages[0]!.header).toEqual([
+      'para 1',
+      'para Name: __________________ Class: ___________ Date: ___________',
+      'heading:title Plant Biology',
+    ])
+    expect(testPages[0]!.content[0]).toBe('para The total mark for this paper is 16.')
+    expect(testPages[0]!.content[1]).toBe('heading:1 Multiple Choice')
+    expect(lines.filter((line) => line.startsWith('para The total mark'))).toHaveLength(1)
+    // …and never part of the Answer Key.
+    expect(layoutFingerprint([key!]).pages.flatMap((page) => page.content))
+      .not.toContain('para The total mark for this paper is 16.')
+
+    // `1` before the stem, `A` before an answer, `(a)` and `(i)` before Parts
+    // and Subparts, the Points after each answer and the Multipart total.
+    expect(lines).toContain('para 1 Which gas do leaves give out in sunlight?')
+    expect(lines).toContain('para B Oxygen')
+    expect(lines).toContain('para 5 Explain why a plant kept in the dark loses mass.')
+    expect(lines).toContain('para (a) State one condition seeds need to germinate.')
+    expect(lines).toContain('para (i) Which colour are the cupboard seedlings?')
+    expect(lines).toContain('para (ii) Explain the difference in their height.')
+    // The style's three dotted lines, the answer's Points on the last of
+    // them, at its right end.
+    const shortAnswer = lines.indexOf('para 5 Explain why a plant kept in the dark loses mass.')
+    expect(lines[shortAnswer + 1]).toBe('space:lines:3:dotted [3]')
+    expect(lines).not.toContain('para [3]')
+    // The teacher's own two lines on Part (a) win over the style's three.
+    const partA = lines.indexOf('para (a) State one condition seeds need to germinate.')
+    expect(lines[partA + 1]).toBe('space:lines:2:dotted [2]')
+    expect(lines.at(-2)).toBe('space:lines:3:dotted [6]')
+    expect(lines.at(-1)).toBe('para [Total: 9]')
+    // A Multiple Choice and a Matching set print their Points after their answers.
+    expect(lines).toContain('para [1]')
+    expect(lines.indexOf('para [2]')).toBeGreaterThan(lines.findIndex((line) => line.includes('Receives pollen')))
+
+    // The page number at the top, centred, above the later pages' Name line;
+    // and "Turn over" on every test page another test page follows.
+    expect(testPages[1]!.header).toEqual(['para 2', 'para Name: __________________'])
+    expect(testPages.map((page) => page.footer[0])).toEqual([
+      ...Array.from({ length: testPages.length - 1 }, () => 'para Turn over'),
+      'para',
+    ])
+    // The Answer Key keeps the sheet's own furniture.
+    expect(layoutFingerprint([key!]).pages[0]!.footer).toEqual(['para 1'])
+
+    expectSameDocument(planned, await docxOf(fixture))
+    expectSameDocument(planned, printFingerprint(plans))
+  })
+
+  test('keeps an answer’s Points on a line of their own where no ruled Work Space ends it', async () => {
+    const pointed = FIXTURES.find((item) => item.name === 'a paper with points in the exam board paper style')!
+    // The teacher gives the Short Answer question blank room, and Part (a) none.
+    const fixture = {
+      ...pointed,
+      exam: {
+        ...pointed.exam,
+        workSpace: {
+          'eb-sa': { height: 64, style: 'blank' as const, fill: false },
+          'eb-mp-a': { height: 0, style: 'lines' as const, fill: false },
+        },
+      },
+    }
+    const plans = planOf(fixture)
+    const lines = layoutFingerprint([plans[0]!]).pages.flatMap((page) => page.content)
+    const shortAnswer = lines.indexOf('para 5 Explain why a plant kept in the dark loses mass.')
+    expect(lines.slice(shortAnswer + 1, shortAnswer + 3)).toEqual(['space:blank', 'para [3]'])
+    const partA = lines.indexOf('para (a) State one condition seeds need to germinate.')
+    expect(lines[partA + 1]).toBe('para [2]')
+    expectSameDocument(layoutFingerprint(plans), await docxOf(fixture))
+    expectSameDocument(layoutFingerprint(plans), printFingerprint(plans))
+  })
+
+  test('carries a Centred figure, its caption and a Centred table centred, and keeps the number at the left', async () => {
+    const fixture = FIXTURES.find((item) => item.name === 'a centred figure, caption and table')!
+    const plans = planOf(fixture)
+    const lines = layoutFingerprint([plans[0]!]).pages.flatMap((page) => page.content)
+    const figure = lines.indexOf('para:center ⟨image:1⟩')
+    expect(lines[figure - 1]).toBe('para 1. Fig. 1.1 shows a leaf seen through a hand lens.')
+    expect(lines.slice(figure + 1, figure + 3)).toEqual(['para:center «strong»Fig. 1.1«/»', 'table:2x2:center'])
+    expect(lines).toContain('para:center Length / mm')
+    expect(lines).toContain('para Leaf')
+    expect(lines).toContain('para:center Table 1.1')
+    expect(lines).toContain('para Describe the leaf.')
+    // A Centred paragraph that opens its question carries the number.
+    expect(lines).toContain('para:center 2. Table 2.1')
+    expect(lines).toContain('para:center «emphasis»A captioned figure«/»')
+    expectSameDocument(layoutFingerprint(plans), await docxOf(fixture))
+    expectSameDocument(layoutFingerprint(plans), printFingerprint(plans))
+    // In Word the number stays at the left, and a centre tab sets the line.
+    const blob = await createExamDocx(plans, pixel)
+    const xml = await (await JSZip.loadAsync(await blob.arrayBuffer())).file('word/document.xml')!.async('string')
+    const opening = xml.split('<w:p>').find((paragraph) => paragraph.includes('Table 2.1'))!
+    expect(opening).toContain('w:val="center" w:pos=')
+    expect(opening).toContain('<w:jc w:val="left"/>')
+  })
+
+  test('cuts an A4 plan to A4 exactly in Word', async () => {
+    const fixture = FIXTURES.find((item) => item.name === 'a paper with points in the exam board paper style')!
+    const blob = await createExamDocx(planOf(fixture), noImages)
+    const xml = await (await JSZip.loadAsync(await blob.arrayBuffer())).file('word/document.xml')!.async('string')
+    const sizes = [...xml.matchAll(/<w:pgSz [^>]*w:w="(\d+)"[^>]*w:h="(\d+)"/g)].map((match) => `${match[1]}x${match[2]}`)
+    expect(sizes.length).toBeGreaterThan(0)
+    expect(new Set(sizes)).toEqual(new Set(['11906x16838']))
+    // Dotted lines are dotted borders.
+    expect(xml).toContain('w:val="dotted"')
+  })
+
+  test('continues a Part’s later Subparts on the next page without its letter or lead-in', async () => {
+    const fixture = FIXTURES.find((item) => item.name === 'a part whose later subparts continue on the next page')!
+    const planned = layoutFingerprint(planOf(fixture))
+    const test = planned.pages.filter((page) => page.content.some((line) => line.includes('Question (')))
+    expect(test).toHaveLength(2)
+    const second = test[1]!.content.join('\n')
+    expect(second).not.toContain('The notice is about a lost cat.')
+    expect(second).not.toContain('a. ')
+    expect(second).toContain('iii. Question (iii)')
+    expectSameDocument(planned, await docxOf(fixture))
+    expectSameDocument(planned, printFingerprint(planOf(fixture)))
   })
 
   test('packages the canonical student test before its answer key', async () => {
@@ -243,9 +445,9 @@ describe('the supported document vocabulary', () => {
     expect([...types].sort()).toEqual([...SECTION_ORDER].sort())
   })
 
-  test('every Question Style appears in a fixture', () => {
-    const styles = new Set(FIXTURES.map((fixture) => fixture.exam.questionStyle ?? 'standard'))
-    expect([...styles].sort()).toEqual([...QUESTION_STYLES].sort())
+  test('every Paper Style appears in a fixture', () => {
+    const styles = new Set(FIXTURES.map((fixture) => fixture.exam.paperStyle ?? 'standard'))
+    expect([...styles].sort()).toEqual([...PAPER_STYLES].sort())
   })
 
   test('every page-header variant appears in a fixture', () => {
@@ -394,6 +596,15 @@ describe('the comparison detects the discrepancies it exists for', () => {
     const [difference] = compareFingerprints(expected, raw)
     expect(difference?.what).toBe('content')
     expect(difference?.expected).toContain('⟨math:E = mc^2⟩')
+  })
+
+  test('a Centred block drawn at the left', () => {
+    const fixture = FIXTURES.find((item) => item.name === 'a centred figure, caption and table')!
+    const expected = layoutFingerprint(planOf(fixture))
+    const left = degrade(expected, (lines) => lines.map((line) => line.replace(':center', '')))
+    const [difference] = compareFingerprints(expected, left)
+    expect(difference?.what).toBe('content')
+    expect(difference?.expected).toBe('para:center ⟨image:1⟩')
   })
 
   test('a table flattened into tab-separated paragraphs', () => {

@@ -182,6 +182,59 @@ function relativeTime(prefix: string, iso: string) {
 export function ExamCard({
   exam,
   onOpen,
+  onDelete,
+}: {
+  exam: RecentExam
+  onOpen: (id: string) => void
+  onDelete?: (exam: RecentExam) => void
+}) {
+  // Like a Question Bank card, acting on the Exam lives behind one mark, here
+  // beside its caption: a button cannot nest inside the button that opens it.
+  const [menu, setMenu] = useState<MenuPoint | null>(null)
+  const card = <ExamCardButton exam={exam} onOpen={onOpen} />
+  if (!onDelete) return card
+  const items: MenuItem[] = [
+    { kind: 'action', label: 'Open', icon: <FolderOpen />, onSelect: () => onOpen(exam.id) },
+    { kind: 'separator' },
+    {
+      kind: 'action',
+      label: 'Delete',
+      icon: <Trash2 />,
+      destructive: true,
+      onSelect: () => onDelete(exam),
+    },
+  ]
+  return (
+    <div className="exam-card-frame">
+      {card}
+      <button
+        type="button"
+        className="bank-card-menu exam-card-menu"
+        aria-label={`${exam.title} actions`}
+        aria-haspopup="menu"
+        onClick={(event) => {
+          const bounds = event.currentTarget.getBoundingClientRect()
+          setMenu({ x: bounds.right, y: bounds.bottom + 4 })
+        }}
+      >
+        <EllipsisVertical aria-hidden="true" />
+      </button>
+      {menu && (
+        <ContextMenu
+          point={menu}
+          side="left"
+          ariaLabel={`${exam.title} actions`}
+          items={items}
+          onClose={() => setMenu(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ExamCardButton({
+  exam,
+  onOpen,
 }: {
   exam: RecentExam
   onOpen: (id: string) => void

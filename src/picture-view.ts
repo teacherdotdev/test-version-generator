@@ -4,6 +4,8 @@ import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model'
 import { NodeSelection, Plugin } from '@milkdown/kit/prose/state'
 import type { EditorView, NodeView } from '@milkdown/kit/prose/view'
 import { $prose } from '@milkdown/kit/utils'
+import { CENTRE } from './centring'
+import { centrable } from './centring-editor'
 import { saveImage } from './local-images'
 import {
   clampSize,
@@ -42,8 +44,12 @@ export type PictureMenuRequest = {
   point: { x: number; y: number }
   cropped: boolean
   captioned: boolean
+  /** Whether the picture may be centred where it stands, and whether it is. */
+  centrable: boolean
+  centred: boolean
   resetCrop: () => void
   toggleCaption: () => void
+  toggleCentre: () => void
 }
 
 /** Asks a picture's view to start cropping; sent by Enter on a selected one. */
@@ -405,6 +411,15 @@ export function pictureView(initial: ProseMirrorNode, view: EditorView, getPos: 
       point: { x: event.clientX, y: event.clientY },
       cropped: pictureCropOf(node.attrs) !== null,
       captioned: captionShown || Boolean(node.attrs.caption),
+      centrable: (() => {
+        const pos = positionOf()
+        return pos !== undefined && centrable(view.state, pos, node)
+      })(),
+      centred: node.attrs.align === CENTRE,
+      toggleCentre: () => {
+        setAttrs({ align: node.attrs.align === CENTRE ? null : CENTRE })
+        view.focus()
+      },
       resetCrop: () => {
         const crop = pictureCropOf(node.attrs)
         if (!crop) return

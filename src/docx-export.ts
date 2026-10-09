@@ -54,6 +54,7 @@ import {
   type ParagraphChild,
   type TabStopDefinition,
 } from 'docx'
+import { isCentred } from './centring'
 import { arrangementRange } from './export-preparation'
 import {
   BODY_LINE_HEIGHT,
@@ -63,6 +64,7 @@ import {
   HEADING_LINE_HEIGHT,
   LIST_ITEM_GAP_EM,
   PARAGRAPH_GAP_EM,
+  TABLE_CELL_PADDING_PX,
   TITLE_LINE_HEIGHT,
   halfPointsOf,
   sectionHeadingHalfPoints,
@@ -78,13 +80,21 @@ import {
   type MediaLoader,
 } from './export-media'
 import {
+  answerKeyPointsText,
+  answerKeyTotalText,
   CHOICE_INDENT,
+  printedLabel,
+  printedNumberOf,
+  type PaperTotalItem,
   choiceAreaWidth,
   matchingAreaWidth,
   MATCHING_INDENT,
   questionIndentOf,
   MATCHING_BANK_WIDTH,
+  partsOpenNumberLine,
+  pointsOnLastRule,
   printsNumberLine,
+  subpartsOpenLabelLine,
   PART_INDENT,
   type AnswerKeyEntryItem,
   type AnswerKeySectionItem,
@@ -358,6 +368,13 @@ type BlockContext = {
   /** Blocks that sit close, as a choice's or a list item's do in print: no
    *  paragraph gap opens between them. */
   tight?: boolean
+  /** Tab stops the prefix steps through, in twips: where a Part's letter and
+   *  a Subpart's label stand when they open on the number's line. */
+  tabStops?: number[]
+  /** Where the column the blocks stand in ends, in twips from the margin,
+   *  when it is not `contentWidth`: what a Centred block opening on a
+   *  question's or a Part's line is centred against. */
+  right?: number
 }
 
 // Body text's spacing, from the one table in `export-typography.ts`, at the
@@ -406,6 +423,9 @@ function paragraphOptions(
       ...(context.before ? { before: context.before } : {}),
     },
     indent: indent?.left || indent?.hanging ? indent : undefined,
+    ...(context.prefix && context.tabStops?.length
+      ? { tabStops: context.tabStops.map((position) => ({ type: TabStopType.LEFT, position })) }
+      : {}),
     numbering: context.list
       ? { reference: context.list.reference, level: context.list.level }
       : undefined,
@@ -426,6 +446,40 @@ function inlineParagraph(
   return new Paragraph(
     paragraphOptions(context, { children, includeIfEmpty: true, ...extra }),
   )
+}
+
+/** The paragraph and table styles that mark a Centred block, so a reader of
+ *  the package — the DOCX fingerprint among them — can tell an authored centre
+ *  from a Panel's, which centres its pictures and tables by itself. */
+export const CENTRED_PARAGRAPH_STYLE = 'Centred'
+export const CENTRED_TABLE_STYLE = 'CentredTable'
+
+/**
+ * A Centred block's paragraph: centred in its column. One that opens with a
+ * question's number or a Part's letter keeps that at the left, as print's
+ * number column does, and steps to a centre tab in the middle of the column
+ * to its right — Word would otherwise centre the number with the line.
+ */
+function centredParagraph(
+  context: BlockContext,
+  build: BuildContext,
+): { context: BlockContext; options: IParagraphOptions } {
+  if (!context.prefix) {
+    return { context, options: { style: CENTRED_PARAGRAPH_STYLE, alignment: AlignmentType.CENTER } }
+  }
+  const right = context.right ?? twips(build.contentWidth)
+  const centre = Math.round((context.indent + right) / 2)
+  return {
+    context: { ...context, prefix: [...context.prefix, new TextRun({ text: '\t' })] },
+    options: {
+      style: CENTRED_PARAGRAPH_STYLE,
+      alignment: AlignmentType.LEFT,
+      tabStops: [
+        ...(context.tabStops ?? []).map((position) => ({ type: TabStopType.LEFT, position })),
+        { type: TabStopType.CENTER, position: centre },
+      ],
+    },
+  }
 }
 
 const HEADINGS = [
@@ -481,8 +535,11 @@ function blockOf(
 ): (Paragraph | Table)[] {
   const attrs = attrsOf(node)
   switch (node.type) {
-    case 'paragraph':
-      return [inlineParagraph(node, context, build)]
+    case 'paragraph': {
+      if (context.list || !isCentred(node)) return [inlineParagraph(node, context, build)]
+      const centred = centredParagraph(context, build)
+      return [inlineParagraph(node, centred.context, build, centred.options)]
+    }
 
     case 'heading': {
       const level = Math.min(Math.max(Number(attrs.level) || 1, 1), 6)
@@ -591,11 +648,14 @@ function blockOf(
     case 'image-block': {
       const caption = stringOf(attrs.caption)
       const image = build.images.get(pictureKey(attrs))
+      const centred = isCentred(node) && !context.list ? centredParagraph(context, build) : undefined
+      const figureContext = centred?.context ?? context
       const figure = new Paragraph(
-        paragraphOptions(context, {
+        paragraphOptions(figureContext, {
           alignment: context.centred ? AlignmentType.CENTER : undefined,
+          ...centred?.options,
           children: [
-            ...(context.prefix ?? []),
+            ...(figureContext.prefix ?? []),
             image
               ? imageRun(image, build.contentWidth, attrs)
               : new TextRun({
@@ -613,6 +673,7 @@ function blockOf(
             { ...context, prefix: undefined, hanging: undefined },
             {
               alignment: context.centred ? AlignmentType.CENTER : undefined,
+              ...(centred ? { style: CENTRED_PARAGRAPH_STYLE, alignment: AlignmentType.CENTER } : {}),
               children: [new TextRun({ text: caption, italics: true, size: halfPointsOf('small') })],
             },
           ),
@@ -775,7 +836,8 @@ function documentTable(
   )
   const cellWidth = build.contentWidth / columns
   return new Table({
-    alignment: context.centred ? AlignmentType.CENTER : undefined,
+    ...(isCentred(node) ? { style: CENTRED_TABLE_STYLE } : {}),
+    alignment: context.centred || isCentred(node) ? AlignmentType.CENTER : undefined,
     width: { size: twips(build.contentWidth), type: WidthType.DXA },
     columnWidths: gridOf(Array.from({ length: columns }, () => cellWidth)),
     indent: context.indent
@@ -798,6 +860,14 @@ function documentTable(
               : []
             return new TableCell({
               width: { size: twips(cellWidth), type: WidthType.DXA },
+              // Print's cell padding; below the last line, the room its
+              // paragraph already leaves is that padding.
+              margins: {
+                top: twips(TABLE_CELL_PADDING_PX.y),
+                bottom: Math.max(0, twips(TABLE_CELL_PADDING_PX.y) - BLOCK_AFTER),
+                left: twips(TABLE_CELL_PADDING_PX.x),
+                right: twips(TABLE_CELL_PADDING_PX.x),
+              },
               shading: header ? { fill: 'F1F1F1' } : undefined,
               borders: {
                 top: CELL_BORDER,
@@ -851,7 +921,7 @@ function choiceGridTable(
                   childrenOf(choice.node),
                   {
                     indent: 288,
-                    prefix: [new TextRun({ text: `${choice.letter}.\t` })],
+                    prefix: [new TextRun({ text: `${printedLabel(choice.letter, choice.printed)}\t` })],
                     hanging: 288,
                     tight: true,
                   },
@@ -893,7 +963,7 @@ function matchingContent(
         {
           indent: twips(MATCHING_INDENT),
           hanging: twips(MATCHING_INDENT),
-          prefix: [new TextRun({ text: `_______  ${prompt.number}.\t` })],
+          prefix: [new TextRun({ text: `_______  ${printedLabel(prompt.number, prompt.printed)}\t` })],
           tight: true,
         },
         { ...build, contentWidth },
@@ -902,7 +972,7 @@ function matchingContent(
   const answer = (item: PlannedBankAnswer, contentWidth: number) =>
     blocks(
       childrenOf(item.node),
-      { indent: 288, prefix: [new TextRun({ text: `${item.letter}.\t` })], hanging: 288, tight: true },
+      { indent: 288, prefix: [new TextRun({ text: `${printedLabel(item.letter, item.printed)}\t` })], hanging: 288, tight: true },
       { ...build, contentWidth },
     )
 
@@ -971,7 +1041,15 @@ export const WORK_SPACE_STYLES = {
 
 const WORK_SPACE_RULE_TWIPS = 10
 
-function workSpaceParagraphs(space: PlannedWorkSpace, indentTwips: number): Paragraph[] {
+// Points on the last rule (`pointsOnLastRule`) are that row's own text, set
+// against `rightTwips` by a right tab whose leader is the rule — dots under a
+// dotted ruling — so the rule stops short of them, as exam papers set
+// `……………… [3]`.
+function workSpaceParagraphs(
+  space: PlannedWorkSpace,
+  indentTwips: number,
+  points?: { text: string; rightTwips: number },
+): Paragraph[] {
   if (space.height <= 0) return []
   const style = WORK_SPACE_STYLES[space.style]
   const exactly = (heightTwips: number) => ({
@@ -984,12 +1062,27 @@ function workSpaceParagraphs(space: PlannedWorkSpace, indentTwips: number): Para
   const ruled = space.style === 'lines' ? space.lines : 0
   const rows = rowsOfPlanned(space)
   const paragraphs = Array.from({ length: ruled }, (_unused, index) =>
-    new Paragraph({
+    points && index === ruled - 1
+      ? new Paragraph({
+          style,
+          indent,
+          spacing: exactly(twips(index === 0 ? rows.first : rows.pitch)),
+          tabStops: [{
+            type: TabStopType.RIGHT,
+            position: points.rightTwips,
+            leader: space.ruling === 'dotted' ? LeaderType.DOT : LeaderType.UNDERSCORE,
+          }],
+          children: [new TextRun({ text: `\t${points.text}` })],
+        })
+      : new Paragraph({
       style,
       indent,
       spacing: exactly(twips(index === 0 ? rows.first : rows.pitch) - WORK_SPACE_RULE_TWIPS),
       border: {
-        bottom: { style: BorderStyle.SINGLE, size: 4, color: '8F847A', space: 0 },
+        // Dotted under a Paper Style that rules dotted lines (ADR-0045).
+        bottom: space.ruling === 'dotted'
+          ? { style: BorderStyle.DOTTED, size: 8, color: '4A4038', space: 0 }
+          : { style: BorderStyle.SINGLE, size: 4, color: '8F847A', space: 0 },
       },
     }),
   )
@@ -1013,7 +1106,7 @@ function questionContent(
   const prefix: ParagraphChild[] = numbered
     ? [
         new TextRun({
-          text: `${[...item.question.marks, `${item.question.number}.`].join('  ')}\t`,
+          text: `${[...item.question.marks, printedNumberOf(item.question)].join('  ')}\t`,
         }),
       ]
     : []
@@ -1021,12 +1114,16 @@ function questionContent(
     indent,
     hanging: numbered ? indent : undefined,
     prefix: numbered ? prefix : undefined,
+    right: twips(build.pageWidth),
   }
 
+  // A Multipart question with no stem opens with Part (a) on its number's
+  // line: the number leads the Part's first paragraph instead.
+  const opening = partsOpenNumberLine(item)
   const stem =
     item.stem.length > 0
       ? blocks(item.stem, context, build)
-      : numbered
+      : numbered && !opening
         ? [new Paragraph(paragraphOptions(context, { children: prefix }))]
         : []
 
@@ -1044,41 +1141,126 @@ function questionContent(
         )]
       : []),
     ...(item.matching ? matchingContent(item.matching, build) : []),
-    ...(item.workSpace ? workSpaceParagraphs(item.workSpace, indent) : []),
-    ...(item.parts ?? []).flatMap((part) =>
-      partContent(part, indentPx, build),
+    ...answerSpaceContent(item.workSpace, item.pointsAfter, indent, build),
+    ...(item.parts ?? []).flatMap((part, index) =>
+      partContent(part, indentPx, build, opening && index === 0 ? { prefix, start: 0, stops: [indent] } : undefined),
     ),
+    ...(item.closingPoints ?? []).map(pointsAfterParagraph),
   ]
 }
 
+/** An answer's room and its Points: on the room's last rule where it has
+ *  one, otherwise a paragraph of their own below it. */
+function answerSpaceContent(
+  space: PlannedWorkSpace | null,
+  pointsAfter: string | undefined,
+  indentTwips: number,
+  build: BuildContext,
+): Paragraph[] {
+  const onRule = pointsAfter !== undefined && pointsOnLastRule(space)
+  return [
+    ...(space
+      ? workSpaceParagraphs(
+          space,
+          indentTwips,
+          onRule ? { text: pointsAfter, rightTwips: twips(build.pageWidth) } : undefined,
+        )
+      : []),
+    ...(pointsAfter && !onRule ? [pointsAfterParagraph(pointsAfter)] : []),
+  ]
+}
+
+/** Points a Paper Style prints after an answer or a question: a paragraph of
+ *  their own against the right margin, as print sets them. */
+function pointsAfterParagraph(text: string): Paragraph {
+  return new Paragraph({
+    alignment: AlignmentType.RIGHT,
+    keepLines: true,
+    spacing: { before: 60, after: 0 },
+    children: [new TextRun({ text })],
+  })
+}
+
 // A Multipart question's Part, one level in: its letter hanging off its own letter column inside the Multipart question's body,
-// then its choice grid or its work space, as a question of its kind prints.
+// then its choice grid or its work space, as a question of its kind prints —
+// or, for a Part that holds Subparts, each Subpart the same way one level
+// further in. A piece continued from an earlier page carries only Subparts.
+// What opens a Part's or Subpart's first line before its own label, when it
+// prints on a line above it: the question's number, or a Part's letter. Its
+// runs, where the line starts in px, and the tab stops (twips) it steps
+// through to reach the label.
+type LineLead = { prefix: ParagraphChild[]; start: number; stops: number[] }
+
+// A Part with no lead-in opens its first Subpart on its own letter's line,
+// handing its letter, after any lead of its own, to that Subpart.
 function partContent(
   part: PlannedPart,
   multipartIndentPx: number,
   build: BuildContext,
+  lead?: LineLead,
 ): (Paragraph | Table)[] {
-  const indentPx = multipartIndentPx + PART_INDENT
-  const indent = twips(indentPx)
-  const prefix: ParagraphChild[] = [
-    new TextRun({
-      text: `${part.letter}.\t`,
-    }),
-  ]
-  const context: BlockContext = {
-    indent,
-    hanging: twips(PART_INDENT),
-    prefix,
+  const label = printedLabel(part.letter, part.printed)
+  const opening = subpartsOpenLabelLine(part)
+  const letterLead: LineLead = {
+    prefix: [...(lead?.prefix ?? []), new TextRun({ text: `${label}\t` })],
+    start: lead?.start ?? multipartIndentPx,
+    stops: [...(lead?.stops ?? []), twips(multipartIndentPx + PART_INDENT)],
   }
+  return [
+    ...(opening
+      ? []
+      : answeringContent(part.continued ? null : label, part, multipartIndentPx, build, lead)),
+    ...part.subparts.flatMap((subpart, index) =>
+      answeringContent(
+        subpart.continued ? null : printedLabel(subpart.label, subpart.printed),
+        subpart,
+        multipartIndentPx + PART_INDENT,
+        build,
+        opening && index === 0 ? letterLead : undefined,
+      ),
+    ),
+  ]
+}
+
+// `label` is `null` on a piece continued from an earlier page (ADR-0048): it
+// prints no label, only the stem blocks it carries and what follows them.
+function answeringContent(
+  label: string | null,
+  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'pointsAfter'>,
+  outerIndentPx: number,
+  build: BuildContext,
+  lead?: LineLead,
+): (Paragraph | Table)[] {
+  const indentPx = outerIndentPx + PART_INDENT
+  const indent = twips(indentPx)
+  const prefix: ParagraphChild[] | undefined = label === null
+    ? undefined
+    : [...(lead?.prefix ?? []), new TextRun({ text: `${label}\t` })]
+  const context: BlockContext = prefix
+    ? {
+        indent,
+        // A lead starts the first line further out, at the number or letter.
+        hanging: lead ? twips(indentPx - lead.start) : twips(PART_INDENT),
+        prefix,
+        ...(lead ? { tabStops: lead.stops } : {}),
+        right: twips(build.pageWidth),
+      }
+    : { indent, right: twips(build.pageWidth) }
   const stem = blocks(part.stem, context, { ...build, contentWidth: build.pageWidth - indentPx })
   return [
-    ...(stem.length > 0 ? stem : [new Paragraph(paragraphOptions(context, { children: prefix }))]),
+    ...(stem.length > 0 || !prefix ? stem : [new Paragraph(paragraphOptions(context, { children: prefix }))]),
     // Set in from the Part's stem as a question's answers are from its own.
     ...(part.grid
       ? [choiceGridTable(part.grid, build, build.pageWidth - indentPx - CHOICE_INDENT, indentPx + CHOICE_INDENT)]
       : []),
-    ...(part.workSpace ? workSpaceParagraphs(part.workSpace, indent) : []),
+    ...answerSpaceContent(part.workSpace, part.pointsAfter, indent, build),
   ]
+}
+
+// The paper's total beneath the title (ADR-0045), as print sets
+// `.paper-total`: a line of body text and its 12px below.
+function paperTotalParagraph(item: PaperTotalItem): Paragraph {
+  return new Paragraph({ children: [new TextRun({ text: item.text })], spacing: { after: twips(12) } })
 }
 
 // The answer key, in Word.
@@ -1098,6 +1280,11 @@ function answerKeySection(item: AnswerKeySectionItem): Paragraph {
   })
 }
 
+/** An Answer Key line's `[n]`, after its answer, when it has points. */
+function pointsRuns(points: number | undefined): TextRun[] {
+  return points === undefined ? [] : [new TextRun({ text: ` ${answerKeyPointsText(points)}` })]
+}
+
 function answerKeyEntry(item: AnswerKeyEntryItem, build: BuildContext): (Paragraph | Table)[] {
   const metadata = [
     ...(item.difficulty ? [{ label: DIFFICULTY_LABELS[item.difficulty], fill: 'E6F0E3' }] : []),
@@ -1109,6 +1296,7 @@ function answerKeyEntry(item: AnswerKeyEntryItem, build: BuildContext): (Paragra
       // A free-response question still takes a line, so the key's numbering
       // matches the paper's; it simply has no letter to print.
       ...(item.letter ? [new TextRun({ text: item.letter, bold: true })] : []),
+      ...pointsRuns(item.points),
       ...metadata.map(({ label, fill }) =>
         new TextRun({ text: ` ${label} `, size: 18, shading: { fill } }),
       ),
@@ -1126,6 +1314,7 @@ function answerKeyEntry(item: AnswerKeyEntryItem, build: BuildContext): (Paragra
       children: [
         new TextRun({ text: `${part.letter}. ` }),
         ...(part.answer ? [new TextRun({ text: part.answer, bold: true })] : []),
+        ...pointsRuns(part.points),
       ],
     }),
     ...(part.suggestedAnswer
@@ -1140,6 +1329,8 @@ function itemContent(
   build: BuildContext,
 ): (Paragraph | Table)[] {
   switch (item.kind) {
+    case 'paper-total':
+      return [paperTotalParagraph(item)]
     case 'section-heading': {
       // Heading 1 already is `'normal'`; any other size is stated on the runs,
       // from the same table print reads. The directions always state theirs:
@@ -1186,7 +1377,21 @@ function itemContent(
       return [
         new Paragraph({
           // Larger than a section title in print, so larger than Heading 1.
-          children: [new TextRun({ text: ANSWER_KEY_TITLE, size: halfPointsOf('answerKeyHeading') })],
+          children: [
+            new TextRun({ text: ANSWER_KEY_TITLE, size: halfPointsOf('answerKeyHeading') }),
+            // The paper's total, on the heading's own line against the right
+            // margin in body type, as print sets it.
+            ...(item.totalPoints !== undefined
+              ? [new TextRun({
+                  children: [new Tab(), answerKeyTotalText(item.totalPoints)],
+                  size: halfPointsOf('body'),
+                  bold: false,
+                })]
+              : []),
+          ],
+          ...(item.totalPoints !== undefined
+            ? { tabStops: [{ type: TabStopType.RIGHT, position: twips(build.contentWidth) }] }
+            : {}),
           heading: HeadingLevel.HEADING_1,
           spacing: { before: 120, after: 60, ...headingLine(halfPointsOf('answerKeyHeading'), HEADING_LINE_HEIGHT) },
         }),
@@ -1217,6 +1422,9 @@ function itemContent(
 // and a right stop at the content width holds the ID.
 const IDENTITY_GAP = 20
 const OUTPUT_ID_STYLE = 'OutputId'
+/** Bold by style, as print sets these by class: a Paper Style's running page
+ *  number and "Turn over" — page furniture, not an authored strong mark. */
+const FURNITURE_BOLD_STYLE = 'FurnitureBold'
 /** Room kept for the bold output ID and the gap before it. */
 const IDENTITY_ID_RESERVE = 64
 
@@ -1267,6 +1475,17 @@ function identityLine(furniture: PageFurniture, contentWidth: number): Paragraph
 
 function headerParagraphs(furniture: PageFurniture, contentWidth: number): Paragraph[] {
   return [
+    // The page number, centred on a row of its own above the header line,
+    // under a style that prints it at the top (ADR-0045).
+    ...(furniture.pageNumberAt === 'top'
+      ? [new Paragraph({
+          children: [
+            new TextRun({ text: String(furniture.pageNumber), style: FURNITURE_BOLD_STYLE, size: halfPointsOf('body') }),
+          ],
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 60 },
+        })]
+      : []),
     identityLine(furniture, contentWidth),
     ...(furniture.title === null
       ? []
@@ -1293,12 +1512,35 @@ function headerParagraphs(furniture: PageFurniture, contentWidth: number): Parag
 // The plan already numbered the page — including restarting at 1 for the answer
 // key — so the footer prints that number rather than asking Word for a field
 // whose count would be the whole document's.
-function footerParagraph(furniture: PageFurniture): Paragraph {
+function footerParagraph(furniture: PageFurniture, contentWidth: number): Paragraph {
+  if (furniture.footRight === undefined) {
+    return new Paragraph({
+      children: furniture.pageNumberAt === undefined
+        ? [new TextRun({ text: String(furniture.pageNumber), size: halfPointsOf('small') })]
+        : [],
+      alignment: AlignmentType.CENTER,
+    })
+  }
+  // A running foot (ADR-0045): "Turn over" against a right stop, in body
+  // type, as print sets it.
   return new Paragraph({
-    children: [new TextRun({ text: String(furniture.pageNumber), size: halfPointsOf('small') })],
-    alignment: AlignmentType.CENTER,
+    children: [
+      ...(furniture.pageNumberAt === undefined
+        ? [new TextRun({ text: `${furniture.pageNumber} `, size: halfPointsOf('body') })]
+        : []),
+      ...(furniture.footRight
+        ? [
+            new TextRun({ children: [new Tab()] }),
+            new TextRun({ text: furniture.footRight, style: FURNITURE_BOLD_STYLE, size: halfPointsOf('body') }),
+          ]
+        : []),
+    ],
+    tabStops: [{ type: TabStopType.RIGHT, position: twips(contentWidth) }],
   })
 }
+
+/** A4 exactly, in twips: 210×297mm. */
+const A4_TWIPS = { width: 11906, height: 16838 }
 
 // ---------------------------------------------------------------------------
 // The document
@@ -1314,10 +1556,10 @@ function sectionOf(
   return {
     properties: {
       page: {
-        size: {
-          width: twips(plan.pageSize.width),
-          height: twips(plan.pageSize.height),
-        },
+        // An A4 plan is cut to A4 exactly, not to the whole pixels it packed in.
+        size: plan.pageSize.paper === 'a4'
+          ? A4_TWIPS
+          : { width: twips(plan.pageSize.width), height: twips(plan.pageSize.height) },
         margin: {
           top: twips(plan.pageSize.margins.top),
           right: twips(plan.pageSize.margins.right),
@@ -1327,7 +1569,7 @@ function sectionOf(
       },
     },
     headers: { default: new Header({ children: headerParagraphs(page.furniture, plan.pageSize.contentWidth) }) },
-    footers: { default: new Footer({ children: [footerParagraph(page.furniture)] }) },
+    footers: { default: new Footer({ children: [footerParagraph(page.furniture, plan.pageSize.contentWidth)] }) },
     children: page.items.flatMap((item) => itemContent(item, build)),
   }
 }
@@ -1378,10 +1620,19 @@ export function createExamDocxDocument(
         heading1: { run: { font: EXAM_FONT, size: halfPointsOf('sectionTitle'), bold: true } },
         heading2: { run: { font: EXAM_FONT, size: halfPointsOf('sectionTitle'), bold: true } },
       },
-      characterStyles: [{ id: OUTPUT_ID_STYLE, name: 'Output ID', run: { bold: true } }],
+      characterStyles: [
+        { id: OUTPUT_ID_STYLE, name: 'Output ID', run: { bold: true } },
+        { id: FURNITURE_BOLD_STYLE, name: 'Furniture Bold', run: { bold: true } },
+      ],
       paragraphStyles: [
         { id: WORK_SPACE_STYLES.blank, name: 'Work Space', basedOn: 'Normal' },
         { id: WORK_SPACE_STYLES.lines, name: 'Work Space Lines', basedOn: 'Normal' },
+        {
+          id: CENTRED_PARAGRAPH_STYLE,
+          name: 'Centred',
+          basedOn: 'Normal',
+          paragraph: { alignment: AlignmentType.CENTER },
+        },
       ],
     },
     sections: sections.length > 0 ? sections : [{ children: [] }],

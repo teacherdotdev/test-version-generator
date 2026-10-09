@@ -95,6 +95,45 @@ describe('figures drawn with lines', () => {
     expect(drawnFigures(cells, [], [])).toEqual([box(100, 500, 340, 590)])
   })
 
+  test('include a grid ruled with dashes drawn one by one', () => {
+    const dashed = (from: number, to: number, place: (at: number) => DrawnPath) =>
+      Array.from({ length: Math.floor((to - from) / 10) }, (_, at) => place(from + at * 10))
+    const across = [500, 530, 560, 590].flatMap((y) => dashed(100, 340, (x) => path(x, y, x + 6, y)))
+    const down = [100, 180, 260, 340].flatMap((x) => dashed(500, 590, (y) => path(x, y, x, y + 6)))
+    expect(drawnFigures([...across, ...down], [], [])).toEqual([box(100, 500, 340, 590)])
+  })
+
+  test('keep apart tables set one under another, as answer choices', () => {
+    const table = (top: number) =>
+      [0, 1].flatMap((row) =>
+        [0, 1, 2].map((column) => frame(100 + column * 80, top + row * 30, 180 + column * 80, top + 30 + row * 30)),
+      )
+    expect(drawnFigures([...table(500), ...table(567)], [], [])).toEqual([
+      box(100, 500, 340, 560),
+      box(100, 567, 340, 627),
+    ])
+  })
+
+  test('include an area model: a square divided by lines, a cell shaded, braces and labels beside it', () => {
+    const square = frame(300, 700, 480, 840)
+    const shaded = { ...frame(420, 700, 455, 770), stroked: false }
+    const lines = [349, 385, 420, 455].map((x) => path(x, 700, x, 840))
+    const half = path(300, 770, 480, 770)
+    const braces = [
+      { ...path(290, 700, 298, 840, 4), straights: 2 },
+      { ...path(300, 690, 480, 697, 4), straights: 2 },
+    ]
+    const ones = [words(282, 765, 287, 775, '1'), words(388, 678, 392, 688, '1')]
+    expect(drawnFigures([square, shaded, ...lines, half, ...braces], ones, [])).toEqual([box(282, 678, 480, 840)])
+  })
+
+  test('are not an empty box with words in it, or a row of ovals to fill in', () => {
+    const answer = frame(100, 100, 400, 200, 8)
+    const ovals = [0, 1, 2, 3, 4].map((at) => ({ ...path(200 + at * 40, 500, 226 + at * 40, 516, 32), straights: 2 }))
+    const scale = [words(150, 502, 180, 514, 'Not'), words(410, 502, 470, 514, 'Very')]
+    expect(drawnFigures([answer, ...ovals], [words(120, 150, 200, 162, 'pH 3.87'), ...scale], [])).toEqual([])
+  })
+
   test('are a structure of straight bonds, joined through the atom label between them', () => {
     // An ester: a chain, its O as text, and the chain beyond it, with no
     // curves at all.

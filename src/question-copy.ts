@@ -14,12 +14,13 @@
 // keeps what it made, so a drag — which must hand over its content the moment
 // it starts — can be written from what is already here.
 
+import { isCentred } from './centring'
 import { bankLetter } from './matching'
 import { encoded } from './export-media'
 import { keptPixels, legacyRatioOf, pictureCropOf, pictureKey, pictureSizeOf, printedPictureWidth, type CropBox } from './picture-geometry'
-import { layOutColumns, MATCHING_BESIDE_LIMIT, TRUE_FALSE_MARKS } from './export-plan'
+import { layOutColumns, MATCHING_BESIDE_LIMIT, subpartLabelAt, TRUE_FALSE_MARKS } from './export-plan'
 import { pendingImageOf, stemNodesOf, type ProseMirrorJSON } from './question-doc'
-import { choicesOf, partsOf, promptsOf, type ColumnSetting, type Question } from './exam'
+import { choicesOf, partsOf, promptsOf, type ColumnSetting, type Part, type Question } from './exam'
 import { mathJaxTools } from './mathjax'
 
 /** One paragraph's worth of a copied Question: blocks of Question Content,
@@ -150,12 +151,26 @@ export function copyBlocksOf(question: Question, format: CopyFormat = {}): CopyB
       return [
         ...(stem.length > 0 ? [line(stem)] : []),
         ...partsOf(question).flatMap((part, index) => {
-          const partFormat = format.parts?.[part.id] ?? {}
+          // Answers and lines one level in under what they answer: a Part's
+          // under the Part, a Subpart's under the Subpart, itself one level in
+          // under its Part's lead-in. Each is formatted under its own id.
+          const answering = (
+            one: Pick<Part, 'id' | 'type' | 'choices' | 'columns'>,
+            level: number,
+          ): CopyBlock[] => {
+            const own = format.parts?.[one.id] ?? {}
+            if (one.type === 'subparts') return []
+            return one.type === 'multiple-choice'
+              ? answersOf(one.choices.map(({ node }) => content(node)), own.columns ?? one.columns, level)
+              : rulesOf(own.lines, level)
+          }
           return [
             line(part.stem, `${bankLetter(index).toLowerCase()}. `),
-            ...(part.type === 'multiple-choice'
-              ? answersOf(part.choices.map(({ node }) => content(node)), partFormat.columns ?? part.columns, 1)
-              : rulesOf(partFormat.lines, 1)),
+            ...answering(part, 1),
+            ...part.subparts.flatMap((subpart, subpartIndex) => [
+              line(subpart.stem, `${subpartLabelAt(subpartIndex)}. `, 1),
+              ...answering(subpart, 2),
+            ]),
           ]
         }),
       ]
@@ -320,7 +335,10 @@ const LAYOUT_TABLE = 'border="0" cellpadding="0" cellspacing="0" style="width:10
 const LAYOUT_CELL = 'style="border:none;padding:0 6pt 0 0;vertical-align:top"'
 
 function nodeHtml(node: ProseMirrorJSON, writer: Writer, lead: string, indent: number): string {
-  const open = `<p style="${paragraphStyle(indent)}">${escapeHtml(lead)}`
+  // A Centred block pastes centred: Word and Google Docs read text-align.
+  const centred = isCentred(node)
+  const style = `${paragraphStyle(indent)}${centred ? ';text-align:center' : ''}`
+  const open = `<p style="${style}">${escapeHtml(lead)}`
   switch (node.type) {
     case 'paragraph':
     case 'heading':
@@ -330,7 +348,7 @@ function nodeHtml(node: ProseMirrorJSON, writer: Writer, lead: string, indent: n
       const picture = pendingImageOf(node)
         ? '[Picture needed]'
         : pictureHtml(writer.media.pictures.get(copyPictureKey(node)), caption)
-      return `${open}${picture}</p>${caption ? `<p style="${paragraphStyle(indent)}"><i>${escapeHtml(caption)}</i></p>` : ''}`
+      return `${open}${picture}</p>${caption ? `<p style="${style}"><i>${escapeHtml(caption)}</i></p>` : ''}`
     }
     case 'code_block': {
       const source = sourceOf(node)
@@ -356,7 +374,10 @@ function nodeHtml(node: ProseMirrorJSON, writer: Writer, lead: string, indent: n
           return `<${tag} style="border:1px solid #000;padding:2pt 4pt">${childrenOf(cell).map((child) => nodeHtml(child, writer, '', 0)).join('')}</${tag}>`
         }).join('')}</tr>`,
       ).join('')
-      return `${lead ? `${open}</p>` : ''}<table style="width:100%;border-collapse:collapse;table-layout:fixed"><tbody>${rows}</tbody></table>`
+      const table = centred
+        ? '<table align="center" style="width:100%;border-collapse:collapse;table-layout:fixed;margin:0 auto">'
+        : '<table style="width:100%;border-collapse:collapse;table-layout:fixed">'
+      return `${lead ? `<p style="${paragraphStyle(indent)}">${escapeHtml(lead)}</p>` : ''}${table}<tbody>${rows}</tbody></table>`
     }
     default:
       // Anything unrecognised gives up its children rather than disappearing,

@@ -3,12 +3,15 @@
 // It consumes retained Layout Plans exactly like the DOCX adapter: one PDF page
 // per planned page, in selected-plan order, with no measurement or pagination.
 // Text is emitted as font-backed PDF text, links as annotations, and Media
-// Assets as image XObjects. Any content that would escape its planned content
-// box stops publication instead of being clipped, shrunk, or repaginated.
+// Assets as image XObjects. Content that runs past its planned content box is
+// still drawn where the plan put it, into the bottom margin, rather than
+// clipped, shrunk or repaginated, and the pages it does so on are reported so
+// the teacher is told to check them (ADR-0046).
 
 import fontkit from '@pdf-lib/fontkit'
 import {
   AFRelationship,
+  LineCapStyle,
   PDFArray,
   PDFDocument,
   PDFName,
@@ -30,11 +33,19 @@ import {
 } from './export-media'
 import {
   CHOICE_INDENT,
+  closingWorkSpaceOf,
   MATCHING_BANK_INSET,
   headerHeightOf,
   MATCHING_BANK_WIDTH,
   PART_INDENT,
+  answerKeyPointsText,
+  answerKeyTotalText,
+  printedLabel,
+  printedNumberOf,
+  partsOpenNumberLine,
+  pointsOnLastRule,
   printsNumberLine,
+  subpartsOpenLabelLine,
   questionIndentOf,
   MATCHING_INDENT,
   type AnswerKeyEntryItem,
@@ -44,11 +55,14 @@ import {
   type PlannedBankAnswer,
   type PageFurniture,
   type PageItem,
+  type PaperTotalItem,
+  RUNNING_HEAD_HEIGHT,
   type PlannedPart,
   type PlannedWorkSpace,
   type QuestionItem,
   rowsOfPlanned,
 } from './export-plan'
+import { isCentred } from './centring'
 import { DIFFICULTY_LABELS } from './exam'
 import {
   BODY_LINE_HEIGHT,
@@ -56,13 +70,14 @@ import {
   TITLE_LINE_HEIGHT,
   LIST_ITEM_GAP_EM,
   PARAGRAPH_GAP_EM,
+  TABLE_CELL_PADDING_PX,
   bodyScale,
   pointsOf,
   sectionHeadingPoints,
   titlePoints,
 } from './export-typography'
 import type { ProseMirrorJSON } from './question-doc'
-import { STANDARD_QUESTION_GAP, questionStyleRules } from './question-style'
+import { STANDARD_QUESTION_GAP, paperStyleRules } from './paper-style'
 import { MATH_SIZE, drawTypesetMath, mathTypesetter } from './pdf-math-draw'
 import {
   mathPieces as writtenMath,
@@ -88,7 +103,7 @@ const SHEET_BODY_LINE = SHEET_BODY_SIZE * BODY_LINE_HEIGHT
 let BODY_SIZE = SHEET_BODY_SIZE
 let BODY_LINE = SHEET_BODY_LINE
 // The room below each question: this adapter's own 10pt on a Standard sheet,
-// scaled by how much nearer the plan's Question Style stands its questions
+// scaled by how much nearer the plan's Paper Style stands its questions
 // than print's 26px — so a Condensed page fits what packing put on it. Set
 // for each plan in `createPdf`, like the body type.
 const SHEET_QUESTION_GAP = 10
@@ -134,24 +149,29 @@ export class PdfUnsupportedCharacterError extends Error {
   }
 }
 
-export class PdfLayoutError extends Error {
-  constructor(pageNumber: number) {
-    super(
-      `PDF content does not fit its planned page ${pageNumber}. `
-      + 'Shorten the affected content or change its layout, then try again.',
-    )
-    this.name = 'PdfLayoutError'
-  }
-}
-
 export function isPdfUnsupportedCharacterError(
   error: unknown,
 ): error is PdfUnsupportedCharacterError {
   return error instanceof PdfUnsupportedCharacterError
 }
 
-export function isPdfLayoutError(error: unknown): error is PdfLayoutError {
-  return error instanceof PdfLayoutError
+/** A PDF for publication, and the pages of it — counted from 1 across the
+ *  whole file, as a PDF viewer counts them — whose content runs past their
+ *  planned bottom margin. */
+export type PublicationPdf = {
+  bytes: Uint8Array
+  pagesPastMargin: number[]
+}
+
+/** What to tell the teacher about pages that run past their bottom margin,
+ *  or null when none do. */
+export function pastMarginWarning(pages: readonly number[]): string | null {
+  if (pages.length === 0) return null
+  if (pages.length === 1) {
+    return `Page ${pages[0]} of the PDF runs past its bottom margin. Check it before printing.`
+  }
+  const named = `${pages.slice(0, -1).join(', ')} and ${pages.at(-1)}`
+  return `Pages ${named} of the PDF run past their bottom margin. Check them before printing.`
 }
 
 type EmbeddedFonts = {
@@ -171,7 +191,9 @@ type DrawContext = {
   y: number
   width: number
   bottom: number
-  pageNumber: number
+  /** Where a page that draws past `bottom` is recorded: its place in the
+   *  whole file, counted from 1. */
+  pastMargin: { pages: Set<number>; page: number }
   /** An equation typeset, or null when MathJax cannot typeset it. */
   typeset: (source: string, display: boolean) => TypesetMath | null
 }
@@ -221,9 +243,11 @@ function assertSupported(text: string, font: PDFFont): void {
   }
 }
 
+// Content the plan put on a page is drawn on it, even where it runs past the
+// foot of the content box; the page is recorded so the teacher can be told.
 function ensureRoom(context: DrawContext, height: number): void {
   if (context.y - height < context.bottom - 0.5) {
-    throw new PdfLayoutError(context.pageNumber)
+    context.pastMargin.pages.add(context.pastMargin.page)
   }
 }
 
@@ -381,7 +405,7 @@ type PlacedPiece = { piece: InlinePiece; x: number; width: number }
 function drawInline(
   context: DrawContext,
   pieces: readonly InlinePiece[],
-  options: { x?: number; width?: number; size?: number; line?: number } = {},
+  options: { x?: number; width?: number; size?: number; line?: number; centred?: boolean } = {},
 ): void {
   const x0 = options.x ?? context.x
   const width = options.width ?? context.width
@@ -418,7 +442,6 @@ function drawInline(
     x += pieceWidth
   }
 
-  const top = context.y
   for (const placed of lines) {
     // Text sits `size` below the top of its line, with the rest of the line
     // below its baseline; an equation that reaches past either pushes the
@@ -430,9 +453,17 @@ function drawInline(
       ? piece.typeset.descent * piece.size * MATH_SIZE - (line - piece.size)
       : 0))
     const height = above + line + below
-    if (placed.length > 0) ensureRoom(context, top - context.y + height)
+    // Room for this line alone: the lines above it have already moved
+    // `context.y` past themselves, and counting them again from the
+    // paragraph's top asked a line of n for 2n - 1 lines of room.
+    if (placed.length > 0) ensureRoom(context, height)
     const lineTop = context.y - above
-    for (const { piece, x, width: pieceWidth } of placed) drawPiece(context, piece, x, pieceWidth, lineTop, line)
+    // A Centred paragraph's line stands in the middle of its column, by what
+    // it shows: a space it ends on is not part of it.
+    const shown = placed.filter(({ piece }) => piece.typeset !== undefined || piece.text.trim() !== '')
+    const end = Math.max(x0, ...shown.map(({ x, width: pieceWidth }) => x + pieceWidth))
+    const shift = options.centred ? Math.max(0, (width - (end - x0)) / 2) : 0
+    for (const { piece, x, width: pieceWidth } of placed) drawPiece(context, piece, x + shift, pieceWidth, lineTop, line)
     context.y -= height
   }
 }
@@ -547,7 +578,7 @@ function drawBlocks(
     previous = node.type as string
     switch (node.type) {
       case 'paragraph':
-        drawInline(context, textPieces(node), { x, width })
+        drawInline(context, textPieces(node), { x, width, centred: isCentred(node) })
         context.y -= BLOCK_AFTER
         break
       case 'heading': {
@@ -598,11 +629,12 @@ function drawBlocks(
         drawImage(context, { src: attrs.src }, x, width, options.centred)
         break
       case 'image-block': {
-        drawImage(context, attrs, x, width, options.centred)
+        const centred = options.centred || isCentred(node)
+        drawImage(context, attrs, x, width, centred)
         const caption = stringOf(attrs.caption)
         if (caption) {
           const captionWidth = context.fonts.regular.widthOfTextAtSize(caption, SMALL_SIZE)
-          const inset = options.centred ? Math.max(0, (width - captionWidth) / 2) : 0
+          const inset = centred ? Math.max(0, (width - captionWidth) / 2) : 0
           drawTextLine(context, caption, { size: SMALL_SIZE, x: x + inset, width: width - inset })
         }
         break
@@ -631,17 +663,21 @@ function drawTable(context: DrawContext, table: ProseMirrorJSON, x: number, widt
   const rows = childrenOf(table).filter((row) => row.type === 'table_row' || row.type === 'table_header_row')
   const columns = Math.max(1, ...rows.map((row) => childrenOf(row).length))
   const cellWidth = width / columns
+  // Print's `.doc-table` cell padding, and the rule between two rows.
+  const padY = pt(TABLE_CELL_PADDING_PX.y)
+  const padX = pt(TABLE_CELL_PADDING_PX.x)
+  const rule = pt(1)
   for (const row of rows) {
     const top = context.y
-    let bottom = top - BODY_LINE - 8
+    let bottom = top - BODY_LINE - 2 * padY - rule
     for (let column = 0; column < columns; column += 1) {
       const cell = childrenOf(row)[column]
       if (!cell) continue
       const cellContext = {
         ...context,
-        x: x + column * cellWidth + 4,
-        y: top - 4,
-        width: cellWidth - 8,
+        x: x + column * cellWidth + padX,
+        y: top - padY,
+        width: cellWidth - 2 * padX,
       }
       // A cell carries the same rich document vocabulary as a stem: links,
       // marks, math, images, lists, and nested blocks remain semantic content.
@@ -649,7 +685,10 @@ function drawTable(context: DrawContext, table: ProseMirrorJSON, x: number, widt
         x: cellContext.x,
         width: cellContext.width,
       })
-      bottom = Math.min(bottom, cellContext.y - 4)
+      // Its last paragraph opens no room below itself, as print's cells
+      // trim it: the padding is the room.
+      const end = cellContext.y + (childrenOf(cell).at(-1)?.type === 'paragraph' ? BLOCK_AFTER : 0)
+      bottom = Math.min(bottom, end - padY - rule)
     }
     ensureRoom(context, top - bottom)
     for (let column = 0; column < columns; column += 1) {
@@ -759,7 +798,7 @@ function drawChoiceGrid(context: DrawContext, grid: ChoiceGrid, x: number, width
     for (const [column, choice] of row.entries()) {
       if (!choice) continue
       const copy = { ...context, x: x + column * cellWidth, y: top, width: cellWidth - 8 }
-      drawTextLine(copy, `${choice.letter}.`, { width: 16 })
+      drawTextLine(copy, printedLabel(choice.letter, choice.printed), { width: 16 })
       copy.y = top
       drawBlocks(copy, childrenOf(choice.node), { x: copy.x + 18, width: copy.width - 18, tight: true })
       rowBottom = Math.min(rowBottom, copy.y)
@@ -779,22 +818,63 @@ function drawWorkSpace(
   space: PlannedWorkSpace,
   x: number,
   width: number,
+  /** Room to keep below the space for the Points printed after it. */
+  reserve = 0,
+  /** The answer's Points, set on the last rule at its right end, the rule
+   *  stopping short of them (`pointsOnLastRule`). */
+  points?: string,
 ): void {
   if (space.height <= 0) return
-  const height = Math.max(0, Math.min(pt(space.height), context.y - context.bottom))
+  const height = Math.max(0, Math.min(pt(space.height), context.y - context.bottom - reserve))
   const top = context.y
   const rows = rowsOfPlanned(space)
+  const dotted = space.ruling === 'dotted'
+  const font = context.fonts.regular
+  if (points) assertSupported(points, font)
+  const pointsWidth = points ? font.widthOfTextAtSize(points, BODY_SIZE) : 0
   for (let rule = 1; rule <= space.lines; rule += 1) {
     const y = top - pt(rows.first + rows.pitch * (rule - 1))
     if (y < top - height - 0.01) break
+    // Print's 8px between the shortened rule and the Points, which sit with
+    // the foot of their line on the rule.
+    const last = points !== undefined && rule === space.lines
+    if (last) {
+      context.page.drawText(points, {
+        x: x + width - pointsWidth,
+        y: y + (BODY_LINE - BODY_SIZE) / 2 + BODY_SIZE * 0.2,
+        font,
+        size: BODY_SIZE,
+        color: INK,
+      })
+    }
     context.page.drawLine({
       start: { x, y },
-      end: { x: x + width, y },
-      thickness: 0.75,
-      color: RULE,
+      end: { x: last ? x + width - pointsWidth - pt(8) : x + width, y },
+      // A dotted line is round dots, a dot's width and two more apart.
+      ...(dotted
+        ? { thickness: 1.1, color: INK, dashArray: [0, 2.6], lineCap: LineCapStyle.Round }
+        : { thickness: 0.75, color: RULE }),
     })
   }
   context.y = top - height
+}
+
+/** How tall a line of Points printed after an answer comes out: a body line
+ *  and print's 4px above it. */
+function pointsLineHeight(): number {
+  return BODY_LINE + pt(4)
+}
+
+/** Points a Paper Style prints after an answer or a question, each on a line
+ *  of its own against the right margin of `x`..`x + width`. */
+function drawPointsAfter(context: DrawContext, texts: readonly string[], x: number, width: number): void {
+  for (const text of texts) {
+    context.y -= pt(4)
+    const font = context.fonts.regular
+    assertSupported(text, font)
+    const textWidth = font.widthOfTextAtSize(text, BODY_SIZE)
+    drawTextLine(context, text, { x: x + Math.max(0, width - textWidth), width: Math.min(width, textWidth + 1) })
+  }
 }
 
 // A matching set as print lays it out (`.matching-*` in styles.css), across the
@@ -808,7 +888,7 @@ const MATCHING_GAP = 10
 
 function drawMatchingAnswer(context: DrawContext, answer: PlannedBankAnswer): void {
   const top = context.y
-  drawTextLine(context, `${answer.letter}.`, { width: 16 })
+  drawTextLine(context, printedLabel(answer.letter, answer.printed), { width: 16 })
   context.y = top
   drawBlocks(context, childrenOf(answer.node), { x: context.x + 18, width: context.width - 18, tight: true })
 }
@@ -817,7 +897,7 @@ function drawMatchingPrompts(context: DrawContext, set: MatchingSet): void {
   const column = pt(MATCHING_NUMBER_COLUMN)
   for (const prompt of set.prompts) {
     const top = context.y
-    drawTextLine(context, `_______  ${prompt.number}.`, { font: 'bold', width: column - 5 })
+    drawTextLine(context, `_______  ${printedLabel(prompt.number, prompt.printed)}`, { font: 'bold', width: column - 5 })
     context.y = top
     drawBlocks(context, childrenOf(prompt.node), {
       x: context.x + column,
@@ -871,20 +951,76 @@ function drawMatching(context: DrawContext, set: MatchingSet): void {
 const PARTS_GAP_ABOVE = 14
 const PARTS_GAP_BETWEEN = 18
 
-function drawPart(context: DrawContext, part: PlannedPart, x: number, width: number): void {
+// A Part draws its letter and stem, then its grid or work space — or, for a
+// Part that holds Subparts, each Subpart the same way one level further in,
+// spaced as Parts are (`.multipart-subparts-print`). A piece continued from an
+// earlier page draws only its Subparts, where they would stand under the lead-in.
+function drawPart(
+  context: DrawContext,
+  part: PlannedPart,
+  x: number,
+  width: number,
+  /** Room the question keeps below its last Part for its own closing Points. */
+  reserve = 0,
+): void {
   const indent = pt(PART_INDENT)
   const bodyX = x + indent
   const bodyWidth = width - indent
-  drawTextLine(
-    context,
-    `${part.letter}.`,
-    { font: 'bold', x, width: indent - 5 },
-  )
-  context.y += BODY_LINE
+  const last = part.subparts.length - 1
+  // A Part with no lead-in prints its letter on Subpart (i)'s line.
+  const opening = subpartsOpenLabelLine(part)
+  if (opening) {
+    drawTextLine(context, printedLabel(part.letter, part.printed), { font: 'bold', x, width: indent - 5 })
+    context.y += BODY_LINE
+  } else {
+    // A continued piece draws no letter, only the stem blocks it carries.
+    drawAnswering(
+      context, part.continued ? null : printedLabel(part.letter, part.printed), part, x, width,
+      last < 0 ? reserve : 0,
+    )
+  }
+  // Above Subpart (i), the gap a lead-in or a letter line leaves, as print's.
+  const above = !opening && (!part.continued || part.stem.length > 0)
+  for (const [index, subpart] of part.subparts.entries()) {
+    if (index > 0 || above) {
+      context.y -= pt(index === 0 ? PARTS_GAP_ABOVE : PARTS_GAP_BETWEEN)
+    }
+    drawAnswering(
+      context, subpart.continued ? null : printedLabel(subpart.label, subpart.printed), subpart, bodyX, bodyWidth,
+      index === last ? reserve : 0,
+    )
+  }
+}
+
+function drawAnswering(
+  context: DrawContext,
+  /** `null` on a piece continued from an earlier page (ADR-0048). */
+  label: string | null,
+  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'pointsAfter'>,
+  x: number,
+  width: number,
+  reserve = 0,
+): void {
+  const indent = pt(PART_INDENT)
+  const bodyX = x + indent
+  const bodyWidth = width - indent
+  if (label !== null) {
+    drawTextLine(context, label, { font: 'bold', x, width: indent - 5 })
+    context.y += BODY_LINE
+  }
   if (part.stem.length > 0) drawBlocks(context, part.stem, { x: bodyX, width: bodyWidth })
-  else context.y -= BODY_LINE
+  else if (label !== null) context.y -= BODY_LINE
   if (part.grid) drawChoiceGrid(context, part.grid, bodyX + pt(CHOICE_INDENT), bodyWidth - pt(CHOICE_INDENT))
-  if (part.workSpace) drawWorkSpace(context, part.workSpace, bodyX, bodyWidth)
+  const onRule = part.pointsAfter !== undefined && pointsOnLastRule(part.workSpace)
+  const points = part.pointsAfter && !onRule ? [part.pointsAfter] : []
+  if (part.workSpace) {
+    drawWorkSpace(
+      context, part.workSpace, bodyX, bodyWidth,
+      reserve + points.length * pointsLineHeight(),
+      onRule ? part.pointsAfter : undefined,
+    )
+  }
+  drawPointsAfter(context, points, bodyX, bodyWidth)
 }
 
 function drawQuestion(context: DrawContext, item: QuestionItem): void {
@@ -892,7 +1028,7 @@ function drawQuestion(context: DrawContext, item: QuestionItem): void {
   const bodyX = context.x + indent
   const bodyWidth = context.width - indent
   if (printsNumberLine(item)) {
-    const prefix = [...item.question.marks, `${item.question.number}.`].join('  ')
+    const prefix = [...item.question.marks, printedNumberOf(item.question)].join('  ')
     drawTextLine(context, prefix, { font: 'bold', width: indent - 5 })
     context.y += BODY_LINE
   }
@@ -900,22 +1036,42 @@ function drawQuestion(context: DrawContext, item: QuestionItem): void {
   // Set in from the stem, as print's `.choice-grid` is.
   if (item.grid) drawChoiceGrid(context, item.grid, bodyX + pt(CHOICE_INDENT), bodyWidth - pt(CHOICE_INDENT))
   if (item.matching) drawMatching(context, item.matching)
+  // Points printed after the question keep their room below a space that
+  // fills the page, as packing kept it.
+  const closing = item.closingPoints ?? []
+  const onRule = item.pointsAfter !== undefined && pointsOnLastRule(item.workSpace)
+  const own = item.pointsAfter && !onRule ? [item.pointsAfter] : []
+  const reserve = (own.length + closing.length) * pointsLineHeight()
   if (item.workSpace) {
-    drawWorkSpace(context, item.workSpace, bodyX, bodyWidth)
-    // Nothing follows a space that fills its page, so it keeps the foot.
-    if (item.workSpace.fill) return
+    drawWorkSpace(context, item.workSpace, bodyX, bodyWidth, reserve, onRule ? item.pointsAfter : undefined)
   }
+  drawPointsAfter(context, own, context.x, context.width)
   const parts = item.parts ?? []
+  // With no stem above them, Part (a) prints on the number's line.
+  const opening = partsOpenNumberLine(item)
   for (const [index, part] of parts.entries()) {
-    context.y -= pt(index === 0 ? PARTS_GAP_ABOVE : PARTS_GAP_BETWEEN)
-    drawPart(context, part, bodyX, bodyWidth)
+    if (index > 0 || !opening) context.y -= pt(index === 0 ? PARTS_GAP_ABOVE : PARTS_GAP_BETWEEN)
+    drawPart(context, part, bodyX, bodyWidth, index === parts.length - 1 ? reserve : 0)
   }
-  if (parts.at(-1)?.workSpace?.fill) return
+  drawPointsAfter(context, closing, context.x, context.width)
+  // Nothing follows a space that fills its page, so it keeps the foot.
+  const last = parts.at(-1)
+  if (item.workSpace?.fill || (last && closingWorkSpaceOf(last)?.fill)) return
   context.y -= QUESTION_GAP
+}
+
+// The paper's total beneath the title (ADR-0045), as print sets
+// `.paper-total`: a line of body text and its 12px below.
+function drawPaperTotal(context: DrawContext, item: PaperTotalItem): void {
+  drawTextLine(context, item.text)
+  context.y -= pt(12)
 }
 
 function drawItem(context: DrawContext, item: PageItem): void {
   switch (item.kind) {
+    case 'paper-total':
+      drawPaperTotal(context, item)
+      return
     case 'section-heading': {
       // A cleared part draws nothing, and a heading cleared of both draws
       // nothing at all — the plan packed it at no height.
@@ -931,10 +1087,13 @@ function drawItem(context: DrawContext, item: PageItem): void {
         })
       }
       if (item.instructions) {
-        // Body text, under the 4px (3pt) print opens above the directions.
+        // Body text, under the 4px (3pt) print opens once above the
+        // directions — below a title, since without one it folds into the
+        // heading's own gap above.
+        if (item.title) context.y -= 3
         drawTextLine(context, item.instructions, {
           size: size.instructions,
-          line: size.instructions * BODY_LINE_HEIGHT + 3,
+          line: size.instructions * BODY_LINE_HEIGHT,
         })
       }
       context.y -= 8
@@ -943,14 +1102,25 @@ function drawItem(context: DrawContext, item: PageItem): void {
     case 'question':
       drawQuestion(context, item)
       return
-    case 'answer-key-heading':
-      drawTextLine(context, 'Answer Section', {
-        font: 'bold',
-        size: ANSWER_KEY_HEADING_SIZE,
-        line: ANSWER_KEY_HEADING_SIZE * HEADING_LINE_HEIGHT,
-      })
+    case 'answer-key-heading': {
+      const line = ANSWER_KEY_HEADING_SIZE * HEADING_LINE_HEIGHT
+      drawTextLine(context, 'Answer Section', { font: 'bold', size: ANSWER_KEY_HEADING_SIZE, line })
+      // The paper's total, on the heading's own baseline against the right
+      // margin in body type, as print sets it.
+      if (item.totalPoints !== undefined) {
+        const total = answerKeyTotalText(item.totalPoints)
+        assertSupported(total, context.fonts.regular)
+        context.page.drawText(total, {
+          x: context.x + context.width - context.fonts.regular.widthOfTextAtSize(total, BODY_SIZE),
+          y: context.y + line - ANSWER_KEY_HEADING_SIZE,
+          font: context.fonts.regular,
+          size: BODY_SIZE,
+          color: INK,
+        })
+      }
       context.y -= 8
       return
+    }
     case 'answer-key-section':
       drawTextLine(context, item.title, { font: 'bold', size: HEADING_SIZE, line: HEADING_SIZE * HEADING_LINE_HEIGHT })
       context.y -= 4
@@ -961,13 +1131,31 @@ function drawItem(context: DrawContext, item: PageItem): void {
   }
 }
 
+/** An Answer Key line's `[n]`, just past its blank at `x`, on the line that
+ *  starts at `rowY`; the line has already been drawn, so it moves nothing. */
+function drawAnswerKeyPoints(context: DrawContext, points: number | undefined, x: number, rowY: number): void {
+  if (points === undefined) return
+  const text = answerKeyPointsText(points)
+  context.page.drawText(text, {
+    x,
+    y: rowY - BODY_SIZE,
+    font: context.fonts.regular,
+    size: BODY_SIZE,
+    color: INK,
+  })
+}
+
 function drawAnswerKeyEntry(context: DrawContext, item: AnswerKeyEntryItem): void {
   const metadata = [
     ...(item.difficulty ? [DIFFICULTY_LABELS[item.difficulty]] : []),
     ...(item.topics ?? []),
   ]
-  const tagStart = context.x + 88
-  const tagWidth = context.width - 88
+  // An entry's `[n]`, when it has Points, follows its blank, and its tags follow that.
+  const pointsWidth = item.points === undefined
+    ? 0
+    : context.fonts.regular.widthOfTextAtSize(answerKeyPointsText(item.points), BODY_SIZE) + 6
+  const tagStart = context.x + 88 + pointsWidth
+  const tagWidth = context.width - 88 - pointsWidth
   const gap = 5
   const padding = 5
   let tagX = tagStart
@@ -994,6 +1182,7 @@ function drawAnswerKeyEntry(context: DrawContext, item: AnswerKeyEntryItem): voi
   context.y = rowY
   if (item.letter) drawTextLine(context, item.letter, { font: 'bold', x: context.x + ANSWER_KEY_ANSWER_X, width: 42 })
   else context.y -= BODY_LINE
+  drawAnswerKeyPoints(context, item.points, context.x + 84, rowY)
   context.page.drawLine({
     start: { x: context.x + 36, y: rowY - BODY_LINE + 3 },
     end: { x: context.x + 78, y: rowY - BODY_LINE + 3 },
@@ -1031,25 +1220,29 @@ function drawAnswerKeyEntry(context: DrawContext, item: AnswerKeyEntryItem): voi
   }
   // A Multipart question's Parts each take a line under its number, the Part's letter
   // where a question's number goes and its answer on the blank beside it.
+  // An entry with a Subpart's line, labelled `b (iii)`, sets every line's
+  // blank further along, as print's `.answer-key-parts--subparts` does.
+  const label = (item.parts ?? []).some((part) => part.subpart) ? pt(56) : 18
   for (const part of item.parts ?? []) {
     ensureRoom(context, BODY_LINE + 2)
     const partY = context.y
     const partX = context.x + ANSWER_KEY_ANSWER_X
-    drawTextLine(context, `${part.letter}.`, { x: partX, width: 18 })
+    drawTextLine(context, `${part.letter}.`, { x: partX, width: label })
     context.y = partY
-    if (part.answer) drawTextLine(context, part.answer, { font: 'bold', x: partX + 24, width: 42 })
+    if (part.answer) drawTextLine(context, part.answer, { font: 'bold', x: partX + label + 6, width: 42 })
     else context.y -= BODY_LINE
+    drawAnswerKeyPoints(context, part.points, partX + label + 52, partY)
     context.page.drawLine({
-      start: { x: partX + 22, y: partY - BODY_LINE + 3 },
-      end: { x: partX + 64, y: partY - BODY_LINE + 3 },
+      start: { x: partX + label + 4, y: partY - BODY_LINE + 3 },
+      end: { x: partX + label + 46, y: partY - BODY_LINE + 3 },
       thickness: 0.6,
       color: INK,
     })
     context.y = partY - BODY_LINE - 2
     if (part.suggestedAnswer) {
       drawBlocks(context, part.suggestedAnswer, {
-        x: partX + 24,
-        width: context.width - ANSWER_KEY_ANSWER_X - 24,
+        x: partX + label + 6,
+        width: context.width - ANSWER_KEY_ANSWER_X - label - 6,
       })
       context.y -= 4
     }
@@ -1087,6 +1280,22 @@ function drawFurniture(
   pageTop: number,
   headerBottom: number,
 ): void {
+  // The page number, centred at the top under a style that prints it there,
+  // on its own row above the header line, which moves down by that row.
+  const head = furniture.pageNumberAt === 'top' ? pt(RUNNING_HEAD_HEIGHT) : 0
+  if (head > 0) {
+    const number = String(furniture.pageNumber)
+    const bold = context.fonts.bold
+    assertSupported(number, bold)
+    context.page.drawText(number, {
+      x: context.x + (context.width - bold.widthOfTextAtSize(number, SHEET_BODY_SIZE)) / 2,
+      y: context.y - SHEET_BODY_SIZE,
+      size: SHEET_BODY_SIZE,
+      font: bold,
+      color: INK,
+    })
+    context.y -= head
+  }
   if (furniture.identityLine !== undefined) {
     drawIdentityLine(context, furniture.identityLine, furniture.arrangementLabel)
   } else {
@@ -1098,12 +1307,44 @@ function drawFurniture(
     drawInline(context, pieces, { x: context.x, width: context.width, line: 13 })
   }
   if (furniture.title !== null) {
-    const titleContext = { ...context, y: pageTop - 36, bottom: headerBottom }
+    const titleContext = { ...context, y: pageTop - head - 36, bottom: headerBottom }
     drawInline(
       titleContext,
       [{ text: furniture.title, font: 'bold', size: titlePoints(furniture.titleSize) }],
       { x: context.x, width: context.width, line: titlePoints(furniture.titleSize) * TITLE_LINE_HEIGHT },
     )
+  }
+}
+
+/** A4 exactly, in points: 210×297mm. */
+const A4_POINTS = { width: 595.28, height: 841.89 }
+
+// The foot of a page: its number centred on the content box, as print centres
+// it between the margins — and, under a style that prints it, "Turn over"
+// against the right margin, in body type.
+function drawFoot(context: DrawContext, furniture: PageFurniture, y: number): void {
+  const { page, fonts } = context
+  if (furniture.pageNumberAt === undefined) {
+    const footer = String(furniture.pageNumber)
+    assertSupported(footer, fonts.regular)
+    const footerWidth = fonts.regular.widthOfTextAtSize(footer, SMALL_SIZE)
+    page.drawText(footer, {
+      x: context.x + (context.width - footerWidth) / 2,
+      y,
+      size: SMALL_SIZE,
+      font: fonts.regular,
+      color: INK,
+    })
+  }
+  if (furniture.footRight) {
+    assertSupported(furniture.footRight, fonts.bold)
+    page.drawText(furniture.footRight, {
+      x: context.x + context.width - fonts.bold.widthOfTextAtSize(furniture.footRight, SHEET_BODY_SIZE),
+      y,
+      size: SHEET_BODY_SIZE,
+      font: fonts.bold,
+      color: INK,
+    })
   }
 }
 
@@ -1143,7 +1384,7 @@ async function createPdf(
   fontLoader: PdfFontLoader,
   strictMedia: boolean,
   attachment?: Uint8Array | string,
-): Promise<Uint8Array> {
+): Promise<PublicationPdf> {
   if (typeof Uint8Array === 'undefined' || typeof Promise === 'undefined') {
     throw new Error('This browser does not support local PDF generation. Choose DOCX instead.')
   }
@@ -1172,6 +1413,7 @@ async function createPdf(
   const typeset = await mathTypesetterFor(plans)
   document.setTitle(plans[0]?.title ?? '')
   document.setCreator('Test Parrot')
+  const pastMargin = new Set<number>()
 
   try {
     for (const plan of plans) {
@@ -1179,10 +1421,12 @@ async function createPdf(
       BODY_SIZE = SHEET_BODY_SIZE * scale
       BODY_LINE = SHEET_BODY_LINE * scale
       QUESTION_GAP = SHEET_QUESTION_GAP
-        * (questionStyleRules(plan.questionStyle).questionGap / STANDARD_QUESTION_GAP)
+        * (paperStyleRules(plan.paperStyle).questionGap / STANDARD_QUESTION_GAP)
       for (const planned of plan.pages) {
-        const width = pt(plan.pageSize.width)
-        const height = pt(plan.pageSize.height)
+        // An A4 plan is cut to A4 exactly, not to the whole pixels it packed in.
+        const a4 = plan.pageSize.paper === 'a4'
+        const width = a4 ? A4_POINTS.width : pt(plan.pageSize.width)
+        const height = a4 ? A4_POINTS.height : pt(plan.pageSize.height)
         const margins = plan.pageSize.margins
         const page = document.addPage([width, height])
         const top = height - pt(margins.top)
@@ -1198,23 +1442,13 @@ async function createPdf(
           y: top,
           width: pt(plan.pageSize.contentWidth),
           bottom: pt(margins.bottom) + footerHeight,
-          pageNumber: planned.number,
+          pastMargin: { pages: pastMargin, page: document.getPageCount() },
           typeset,
         }
         drawFurniture(context, planned.furniture, top, top - headerHeight)
         context.y = top - headerHeight
         for (const item of planned.items) drawItem(context, item)
-        const footer = String(planned.furniture.pageNumber)
-        assertSupported(footer, fonts.regular)
-        const footerWidth = fonts.regular.widthOfTextAtSize(footer, SMALL_SIZE)
-        // Centred on the content box, as print centres it between the margins.
-        page.drawText(footer, {
-          x: pt(margins.left) + (pt(plan.pageSize.contentWidth) - footerWidth) / 2,
-          y: pt(margins.bottom),
-          size: SMALL_SIZE,
-          font: fonts.regular,
-          color: INK,
-        })
+        drawFoot(context, planned.furniture, pt(margins.bottom))
       }
     }
   } finally {
@@ -1232,7 +1466,10 @@ async function createPdf(
       afRelationship: AFRelationship.Source,
     })
   }
-  return document.save({ useObjectStreams: false })
+  return {
+    bytes: await document.save({ useObjectStreams: false }),
+    pagesPastMargin: [...pastMargin].sort((a, b) => a - b),
+  }
 }
 
 /** Tolerant adapter entry point for diagnostics. Publication uses the strict
@@ -1242,7 +1479,7 @@ export function createExamPdf(
   media: MediaLoader = browserMedia,
   fonts: PdfFontLoader = browserPdfFonts,
 ): Promise<Uint8Array> {
-  return createPdf(plans, media, fonts, false)
+  return createPdf(plans, media, fonts, false).then((pdf) => pdf.bytes)
 }
 
 export function createPublicationPdf(
@@ -1251,7 +1488,7 @@ export function createPublicationPdf(
   fonts: PdfFontLoader = browserPdfFonts,
   /** The Test Parrot Package to embed, as `exam-package-export` made it. */
   examPackage?: Uint8Array | string,
-): Promise<Uint8Array> {
+): Promise<PublicationPdf> {
   return createPdf(plans, media, fonts, true, examPackage)
 }
 

@@ -243,6 +243,10 @@ button { cursor: pointer; }
 }
 .storage-notice p { flex: 1; margin: 0; line-height: 1.45; }
 .storage-notice .toolbar-icon-button { flex: none; width: 26px; height: 26px; margin: -3px -4px -3px 0; }
+/* A PDF that ran past a page's bottom margin (ADR-0046): it stays until
+   dismissed, and a notice shown with it stands above it. */
+.storage-notice--warning { border-color: #d9a441; background: #fff6e0; }
+.storage-notice--warning ~ .storage-notice { bottom: 96px; }
 .export-dialog-body {
   min-height: 0; padding: 16px 18px; display: grid; gap: 16px; overflow-y: auto;
 }
@@ -768,9 +772,15 @@ button { cursor: pointer; }
 .page-header--answer-key { height: var(--page-header-answer-key); }
 .page-header--answer-key-later { height: var(--page-header-answer-key-later); }
 .page-identity {
+  position: relative;
   flex: none; height: var(--page-header-later);
   display: flex; align-items: baseline; gap: 20px;
 }
+/* The page number, centred at the top of a page under a Paper Style that
+   prints it there (ADR-0045), on a row of its own above the header line so
+   it never stands over the line's blanks: `RUNNING_HEAD_HEIGHT`, which the
+   plan adds to the header. */
+.page-running-head { flex: none; height: 22px; text-align: center; font-weight: 700; }
 .identity-field { flex: 1 1 0; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .identity-blank { flex: 1 1 auto; min-width: 48px; border-bottom: 1px solid #332a24; }
 .page-id { flex: none; font-weight: 700; white-space: nowrap; }
@@ -823,6 +833,18 @@ button { cursor: pointer; }
   display: flex; align-items: flex-end; justify-content: center;
   font-size: 13px;
 }
+/* A running foot: "Turn over" against the right margin, in the body's own
+   type. */
+.page-footer--running { justify-content: space-between; font-size: 15px; }
+.page-foot-right { margin-left: auto; font-weight: 700; }
+
+/* The paper's total, beneath the title on the test's first page (ADR-0045). */
+.paper-total { margin: 0 0 12px; }
+
+/* Points a Paper Style prints on the test: `[2]` after an answer, `[Total: 9]`
+   after a question, against the right margin on a line of their own. */
+.points-after { margin: 4px 0 0; text-align: right; }
+.question-closing { grid-column: 1 / -1; }
 
 /* Where `dom-measure.ts` lays a page item out to find its height: off-screen,
    at the content width, and `flow-root` so a child's margin is contained and
@@ -877,6 +899,13 @@ button { cursor: pointer; }
   color: #b3a498; font: italic 11px/1 Arial, Helvetica, sans-serif; letter-spacing: 0.02em;
 }
 .answer-key-heading { margin: 0 0 18px; font: 700 20px/1.2 Georgia, serif; white-space: nowrap; }
+/* The paper's total, at the right of the heading's line in body type, so the
+   heading is no taller with it. The PDF and DOCX adapters right-align it too. */
+.answer-key-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
+.answer-key-total { font: 400 15px/1.2 Georgia, serif; }
+/* An entry's `[n]`, when it has Points, follows its blank, before any Question Metadata. */
+.answer-key-entry--pointed { grid-template-columns: 42px 56px auto minmax(0, 1fr); }
+.answer-key-points { white-space: nowrap; }
 .answer-key-section { margin: 0 0 10px; font: 700 17px/1.2 Georgia, serif; }
 .answer-key-entry {
   display: grid; grid-template-columns: 42px 56px minmax(0, 1fr);
@@ -896,6 +925,10 @@ button { cursor: pointer; }
   align-items: center; gap: 8px;
 }
 .answer-key-part .answer-key-suggested { grid-column: 3 / -1; }
+/* A Subpart's line is labelled with its place under its Part, `b (iii)`, so
+   an entry with any takes a wider label column for every line, keeping its
+   blanks in one column. The PDF adapter widens its own by the same 56px. */
+.answer-key-parts--subparts .answer-key-part { grid-template-columns: 56px 56px minmax(0, 1fr); }
 .answer-key-metadata { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; min-width: 0; }
 .answer-key-metadata .badge { padding: 0 7px; font: 11px/1.55 Arial, Helvetica, sans-serif; }
 .answer-key-metadata .badge svg { width: 11px; height: 11px; }
@@ -906,7 +939,7 @@ button { cursor: pointer; }
 }
 /* On a Standard Exam no question prints an answer blank, so the number column
    is only as wide as a three-digit number; a True/False question's T and F,
-   which a student circles, sit before its number in a wider one. A Question
+   which a student circles, sit before its number in a wider one. A Paper
    Style that prints an answer blank before the number widens it again — the
    column an Export Record made before Sections were stored reprints its blank
    in too. `questionIndentOf` in export-plan.ts holds the same widths for the
@@ -917,12 +950,12 @@ button { cursor: pointer; }
    shortens the blank before it rather than pushing into the question. */
 .question-number--blank .question-marks { min-width: 0; overflow: hidden; white-space: nowrap; }
 .question-number--blank .question-count { flex: none; }
-/* A Condensed Exam stands its questions closer together: the Question Style's
-   `questionGap` in question-style.ts. The drop line keeps to the middle of
+/* A Condensed Exam stands its questions closer together: the Paper Style's
+   `questionGap` in paper-style.ts. The drop line keeps to the middle of
    the narrower gap. */
-[data-question-style='condensed'] .exam-question { margin-bottom: 12px; }
-[data-question-style='condensed'] .exam-question[data-drop="before"]::after { top: -7px; }
-[data-question-style='condensed'] .exam-question[data-drop="after"]::after { bottom: -7px; }
+[data-paper-style='condensed'] .exam-question { margin-bottom: 12px; }
+[data-paper-style='condensed'] .exam-question[data-drop="before"]::after { top: -7px; }
+[data-paper-style='condensed'] .exam-question[data-drop="after"]::after { bottom: -7px; }
 .exam-question, .exam-question * { -webkit-user-drag: none; }
 .exam-question:active { cursor: grabbing; }
 
@@ -1130,10 +1163,18 @@ button { cursor: pointer; }
    keeps its number and no answer blank in it, whatever its kind. `PART_INDENT`
    in export-plan.ts holds the same width for the adapters. */
 .multipart-parts-print { display: grid; gap: 18px; margin: 14px 0 0; }
-.multipart-part-print { display: grid; grid-template-columns: 34px 1fr; gap: 6px; }
+.multipart-part-print { position: relative; display: grid; grid-template-columns: 34px 1fr; gap: 6px; }
 .part-letter { display: flex; align-items: baseline; gap: 8px; font-weight: 700; }
 .part-count { white-space: nowrap; }
 .part-body { min-width: 0; }
+/* A Part's Subparts, under its lead-in and one level further in, spaced as
+   Parts are; a piece continued from an earlier page has no lead-in above. */
+.multipart-subparts-print { display: grid; gap: 18px; margin: 14px 0 0; }
+.multipart-part-print[data-continued] > .part-body > .multipart-subparts-print:first-child { margin-top: 0; }
+/* A Multipart question with no stem puts Part (a) on its number's line, and a
+   Part with no lead-in puts Subpart (i) on its letter's: `1 (a) (i) …`. */
+.multipart-parts-print--opening,
+.multipart-subparts-print--opening { margin-top: 0; }
 .question-stem > :first-child { margin-top: 0; }
 .question-stem > :last-child { margin-bottom: 0; }
 
@@ -1146,6 +1187,11 @@ button { cursor: pointer; }
 :where(.exam-page .doc-content) li > p { margin: 0; }
 :where(.exam-page .doc-content) li > :is(ul, ol) { margin: 0.2em 0 0; }
 :where(.exam-page .doc-content) li + li { margin-top: 0.2em; }
+/* A table's cells hold their paragraphs with no gap at their top or foot, as
+   the PDF and DOCX set them: a row of one line is that line and the cell's
+   padding (`TABLE_CELL_PADDING_PX`), not a paragraph gap above and below it. */
+:where(.exam-page .doc-content) :is(td, th) > :first-child { margin-top: 0; }
+:where(.exam-page .doc-content) :is(td, th) > :last-child { margin-bottom: 0; }
 
 /* The choice grid: a table for the column-major layout, borderless everywhere,
    set in from the stem by `CHOICE_INDENT` in export-plan.ts so the answers read
@@ -1222,13 +1268,25 @@ button { cursor: pointer; }
    either empty or ruled. No margin of its own, so the height packing was told
    is the height it takes. Each line is one row tall with its rule along its
    foot: the first row a quarter shorter than the rest, so the first rule sits
-   close under the question it belongs to, and every other row the Question
+   close under the question it belongs to, and every other row the Paper
    Style's pitch. `WorkSpaceView` sets each row's height from the plan; 32px,
    `WORK_SPACE_LINE_PITCH`, is only the fallback. */
 .work-space { display: flow-root; }
 .work-space-line {
   box-sizing: border-box; height: 32px; border-bottom: 1px solid #8f847a;
 }
+/* Dotted lines to write on, under a Paper Style that rules them so. */
+.work-space[data-ruling='dotted'] .work-space-line { border-bottom: 1.5px dotted #4a4038; }
+/* An answer's `[n]` on its last rule, at the right end, the rule stopping
+   short of it (`pointsOnLastRule`): the row keeps its height, and its rule is
+   drawn by the span beside the Points. */
+.work-space-line.work-space-line--points,
+.work-space[data-ruling='dotted'] .work-space-line.work-space-line--points {
+  display: flex; align-items: flex-end; gap: 8px; border-bottom: 0;
+}
+.work-space-rule { flex: 1; align-self: stretch; border-bottom: 1px solid #8f847a; }
+.work-space[data-ruling='dotted'] .work-space-rule { border-bottom: 1.5px dotted #4a4038; }
+.work-space-points { flex: none; white-space: nowrap; }
 
 /* On the sheet a teacher edits, blank space is otherwise invisible, so the
    question that owns it shows its extent while hovered, selected or being
@@ -1281,11 +1339,28 @@ button { cursor: pointer; }
 .work-space-handle:focus-visible { outline: 2px solid #9f5037; outline-offset: 1px; }
 .exam-question--sizing, .exam-question--sizing * { cursor: ns-resize !important; }
 /* The note and the bar start where the body does: past the number column and
-   its 6px gap, however wide the Question Style makes that column. Condensed's
+   its 6px gap, however wide the Paper Style makes that column. Condensed's
    narrower gap between questions takes a smaller note. */
 .exam-question:has(> .question-number--marks) > :is(.answer-visibility-note, .work-space-handle) { left: 70px; }
 .exam-question:has(> .question-number--blank) > :is(.answer-visibility-note, .work-space-handle) { left: 98px; }
-[data-question-style='condensed'] .answer-visibility-note { bottom: -12px; font-size: 10px; line-height: 12px; }
+[data-paper-style='condensed'] .answer-visibility-note { bottom: -12px; font-size: 10px; line-height: 12px; }
+
+/* A printed `[n]` on the sheet, under a Paper Style that prints Points
+   (ADR-0045): the text itself is the control that changes them, so it looks
+   like the page and takes exactly the height the page measured. */
+.points-after-button {
+  padding: 0; border: 0; border-radius: 3px; background: transparent;
+  color: inherit; font: inherit; line-height: inherit; cursor: pointer;
+}
+.points-after-button:hover { background: #f2e6d8; }
+.points-after-button:focus-visible { outline: 2px solid #9f5037; outline-offset: 1px; }
+.points-after-input {
+  width: 3em; height: 1.2em; padding: 0 3px; border: 0; border-radius: 3px;
+  background: #f2e6d8; color: #332a24; font: inherit; line-height: inherit;
+  text-align: center; vertical-align: baseline;
+}
+.points-after-input:focus { outline: 1px solid #9f5037; }
+.points-after-input[aria-invalid='true'] { outline-color: #a3322a; background: #fbe9e6; }
 
 /* The handles: a plus and a grip in the margin beside a question, hidden until
    it is hovered or one of them has focus, so the page still reads as paper.
@@ -1356,10 +1431,10 @@ button { cursor: pointer; }
   width: 18px; height: 16px; color: #8b7868;
 }
 .context-menu-format-icon svg { width: 18px; height: 14px; stroke-width: 1.4; }
-/* A radio's picture of what choosing it looks like — a Question Style's
+/* A radio's picture of what choosing it looks like — a Paper Style's
    sketch — in place of its icon: wider than an icon, at its own 1:1 size so
    its one-pixel lines stay crisp, and set against the label's first line. */
-/* A Question Style's sketch, drawn half as large again as its 32 by 24
+/* A Paper Style's sketch, drawn half as large again as its 32 by 24
    viewBox: its label and two lines of description already make the row that
    tall, so the sketch can use the room. Strokes stay a pixel wide. */
 .context-menu-preview {
@@ -1486,6 +1561,9 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
 .doc-figure figcaption { font-size: 13px; font-style: italic; }
 .doc-table { border-collapse: collapse; }
 .doc-table td, .doc-table th { padding: 3px 8px; border: 1px solid #b9a893; }
+/* On the exam page a cell is padded as the PDF and DOCX pad it
+   (`TABLE_CELL_PADDING_PX`). */
+.exam-page .doc-table :is(td, th) { padding: 5px 8px; }
 /* Read in full on the Question Bank page and in the Pop-over, a table spans
    its lane with equal columns, as the Question editor and the DOCX export lay
    it out; left to size itself it shrinks to its shortest content. */
@@ -1502,6 +1580,10 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
 .doc-panel > .doc-figure { text-align: center; }
 .doc-panel > .doc-table { margin-inline: auto; }
 .doc-panel > .doc-math--block { text-align: center; }
+/* A Centred block (`centring.ts`): a paragraph, a figure with its caption, or
+   a table, set in the middle of its column — in a Panel or a cell too. */
+.doc-content p[data-align='center'], .doc-figure[data-align='center'] { text-align: center; }
+.doc-table[data-align='center'] { margin-inline: auto; }
 
 .dialog-backdrop {
   position: fixed; inset: 0; z-index: 100; padding: 28px; display: grid; place-items: center;
@@ -1565,6 +1647,15 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
 .front-matter-stated { cursor: default; }
 .front-matter-stated:hover { background: transparent; }
 .front-matter-blank { color: #9c8b7c; font-size: 13px; }
+/* Points are typed, not chosen, so their value is a field rather than a
+   list, drawn like the other values until it has focus: blank is unpointed. */
+.front-matter-points { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--paper-ink-soft); }
+.front-matter-value.front-matter-points-input {
+  min-width: 0; width: 160px; color: #332a24; font: inherit; font-size: 14px; cursor: text;
+}
+.front-matter-points-input::placeholder { color: #9c8b7c; font-size: 13px; }
+.front-matter-points-input:focus { outline: 2px solid var(--paper-accent); outline-offset: -2px; background: #fffdf8; }
+.front-matter-points-input[aria-invalid='true'] { outline-color: #a3322a; background: #fbe9e6; }
 
 /* The list of what can be chosen, with a box to narrow it. Typing filters and
    moves the highlight; it never rewrites a value, because the spelling is the
@@ -1941,6 +2032,20 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
 .multipart-part-kind:not(:disabled):hover .badge,
 .multipart-part-kind[aria-expanded="true"] .badge { border-color: #cdb9a6; background: #f2e6d8; }
 .multipart-part-kind:focus { outline: none; }
+/* A Part's or Subpart's Points: a small field beside its type, worded like
+   the sheet's own "points" so a blank one still says what it is for. */
+.multipart-part-points {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--paper-ink-soft); font-size: 13px;
+}
+.multipart-part-points[hidden] { display: none; }
+.multipart-part-points-input {
+  width: 3.2em; min-height: 24px; padding: 1px 6px;
+  border: 1px solid #d8c8b8; border-radius: 5px; background: #fffdf8;
+  color: #332a24; font: inherit; text-align: center;
+}
+.multipart-part-points-input:focus { outline: 2px solid var(--paper-accent); outline-offset: -1px; }
+.multipart-part-points-input:disabled { border-color: transparent; background: transparent; }
 .multipart-part-controls { display: inline-flex; gap: 2px; margin-left: auto; }
 .multipart-part-control {
   display: inline-flex; align-items: center; justify-content: center;
@@ -1950,8 +2055,9 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
 .multipart-part-control svg { width: 16px; height: 16px; stroke-width: 2.2; }
 .multipart-part-control:hover { color: #9f5037; background: #f2e6d8; }
 .multipart-part-x:hover { color: #a3322a; background: #fbe9e6; }
-.milkdown .multipart-part:first-child .multipart-part-up,
-.milkdown .multipart-part:last-child .multipart-part-down { visibility: hidden; }
+/* Its own header's, never a Subpart's inside it. */
+.milkdown .multipart-part:first-child > .multipart-part-header .multipart-part-up,
+.milkdown .multipart-part:last-child > .multipart-part-header .multipart-part-down { visibility: hidden; }
 
 /* A type menu: the question types' badges, the Part's own ticked. */
 .multipart-menu-anchor { position: relative; display: inline-flex; }
@@ -1991,6 +2097,16 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
 }
 /* The answers close the Part's box: their own outline gives way to the box's,
    leaving the dashed rule over them. */
+.milkdown .multipart-part[data-kind="subparts"] > .multipart-part-body > .multipart-part-stem:has(> p:only-child > br.ProseMirror-trailingBreak)::before,
+.milkdown .multipart-part[data-kind="subparts"] > .multipart-part-body > .multipart-part-stem:has(> p:only-child:empty)::before {
+  content: 'Lead-in to its Subparts here…';
+}
+/* A Part's Subparts close its box as answers would, ruled off under its
+   lead-in, each Subpart a Part's box one level in. */
+.milkdown .multipart-part .multipart-subparts {
+  margin: 0; padding: 10px 12px 12px; border-top: 1px dashed #bda995;
+}
+.milkdown .multipart-subparts .multipart-part { margin: 12px 0 0; }
 .milkdown .multipart-part [data-type="multiple-choice"],
 .milkdown .multipart-part [data-type="suggested-answer"] { margin: 0; }
 .milkdown .ProseMirror[contenteditable="true"] .multipart-part [data-type="multiple-choice"],
@@ -2040,6 +2156,9 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
    would shrink the box the content was packed for and push it onto an extra
    sheet. */
 @page { size: 8.5in 11in; margin: 0; }
+/* An A4 plan's sheets (ADR-0045) print on A4, the same sheet in millimetres. */
+@page a4 { size: 210mm 297mm; margin: 0; }
+.exam-page[data-paper='a4'] { page: a4; }
 
 @media print {
   /* Browser print has no product document. Hide the application wholesale so
@@ -2352,6 +2471,11 @@ body.margins-scrubbing, body.margins-scrubbing * { cursor: ew-resize !important;
 }
 .bank-card-menu svg { width: 16px; height: 16px; }
 .bank-card-menu:hover, .bank-card-menu:focus-visible { color: var(--paper-accent); border-color: #ddcdb9; background: #f7eee3; }
+/* An Exam's mark sits at the end of its caption, under the sheet, so it never
+   covers the page the thumbnail draws. */
+.exam-card-frame { position: relative; }
+.exam-card-frame .exam-card-caption { padding-right: 28px; }
+.exam-card-menu { top: auto; right: -4px; bottom: 0; }
 .bank-card-usage { margin: 10px 0 0; color: #6e5b4d; font-size: 13px; }
 /* The mark in the editor's document bar is the way home. */
 .editor-home-mark {
@@ -3473,6 +3597,12 @@ a.import-card-main:hover .exam-sheet, a.import-card-main:focus-visible .exam-she
 }
 .milkdown .side-by-side-panel-content > .picture-block { text-align: center; }
 .milkdown .side-by-side-panel-content > [data-type="image-block"] { margin-inline: auto; }
+/* A Centred block in the editor, as it prints: its element carries
+   `data-align` (see `centring-editor.ts`). */
+.milkdown .ProseMirror p[data-align='center'] { text-align: center; }
+.milkdown .picture-block[data-align='center'],
+.milkdown .picture-block[data-align='center'] .picture-caption { text-align: center; }
+.milkdown .milkdown-table-block[data-align='center'] table { margin-inline: auto; }
 .milkdown .side-by-side-controls {
   position: absolute; top: -14px; left: 4px; z-index: 2; display: flex; gap: 4px;
   opacity: 0; transition: opacity 120ms;
@@ -3630,6 +3760,8 @@ button.pop-over-chip-option[aria-pressed='true'] svg { visibility: visible; }
 .pop-over-rules span { height: 1px; background: #cdb9a6; }
 .pop-over-parts { display: grid; gap: 5px; margin: 5px 0 0; padding: 0; list-style: none; }
 .pop-over-part { padding: 5px 7px; border: 1px solid var(--paper-outline); border-radius: 6px; background: #fffaf3; }
+/* A Part's Subparts sit inside its card, under its lead-in. */
+.pop-over-subparts .pop-over-part { background: var(--paper-surface); }
 .pop-over-part-head { display: flex; align-items: center; gap: 5px; margin-bottom: 2px; }
 .pop-over-part-letter { font-weight: 700; }
 .pop-over-part-type { color: #8a7868; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }

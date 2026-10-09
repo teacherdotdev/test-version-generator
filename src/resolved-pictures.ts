@@ -1,6 +1,12 @@
 import { DEFAULT_COLUMNS } from './exam'
 import { clampSize } from './picture-geometry'
-import { CHOICE_AREA_WIDTH, PAGE_CONTENT_WIDTH, PAGE_WIDTH, PART_CHOICE_AREA_WIDTH } from './export-plan'
+import {
+  CHOICE_AREA_WIDTH,
+  PAGE_CONTENT_WIDTH,
+  PAGE_WIDTH,
+  PART_CHOICE_AREA_WIDTH,
+  SUBPART_CHOICE_AREA_WIDTH,
+} from './export-plan'
 import type { MediaAssetDeclaration, PendingImageOccurrence, PendingImageResolution } from './pending-images'
 import type { ImageTag, PageBox } from './source-document'
 
@@ -49,7 +55,10 @@ const CHOICE_CELL_INSET = 30
 /** How wide an answer's picture can print: its cell — the choice area shared
  *  by its columns — less the letter. */
 function answerCellWidth(occurrence: Pick<PendingImageOccurrence, 'where' | 'answerColumns'>): number {
-  const area = occurrence.where.startsWith('Part ') ? PART_CHOICE_AREA_WIDTH : CHOICE_AREA_WIDTH
+  // “Part b (ii), Answer A” sits a Subpart's label further in than “Part b, Answer A”.
+  const area = /^Part \S+ \(/.test(occurrence.where)
+    ? SUBPART_CHOICE_AREA_WIDTH
+    : occurrence.where.startsWith('Part ') ? PART_CHOICE_AREA_WIDTH : CHOICE_AREA_WIDTH
   return area / (occurrence.answerColumns ?? DEFAULT_COLUMNS) - CHOICE_CELL_INSET
 }
 

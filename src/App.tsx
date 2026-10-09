@@ -46,6 +46,14 @@ import {
 } from './script-marks'
 import { leftArrowInputRule, rightArrowInputRule } from './text-arrows'
 import {
+  centreIcon,
+  centringDecorations,
+  centringKeymap,
+  configureCentring,
+  isCentreActive,
+  toggleCentre,
+} from './centring-editor'
+import {
   insertSideBySide,
   keepSideBySidesInStems,
   sideBySidePanelSchema,
@@ -73,6 +81,14 @@ import {
 } from './exam'
 import type { Difficulty, Question, QuestionType, SectionTarget } from './exam'
 import { DifficultyBadge, TopicBadge } from './badges'
+import {
+  pointsLabel,
+  pointsOfQuestion,
+  pointsOnQuestion,
+  parsePointsInput,
+  withPartPoints,
+  withQuestionPoints,
+} from './points'
 import { bankQuestionById } from './question-bank'
 import { createExamStore, loadExamStore, type ExamStore } from './exam-store'
 import { ExamPage } from './exam-page'
@@ -111,6 +127,7 @@ import { configurePictures, pictureKeys, PICTURE_MENU_EVENT, type PictureMenuReq
 import { storedPicture } from './resolved-pictures'
 import { pendingImagesOfQuestions, withStoredPictures, type PendingImageResolution, type StoredPicture } from './pending-images'
 import {
+  AlignCenter,
   AlignLeft,
   BookOpenText,
   Captions,
@@ -153,10 +170,10 @@ import {
   TEXT_SIZES,
 } from './section-headings'
 import {
-  DEFAULT_QUESTION_STYLE,
-  QUESTION_STYLES,
-  QUESTION_STYLE_LABELS,
-} from './question-style'
+  DEFAULT_PAPER_STYLE,
+  PAPER_STYLES,
+  PAPER_STYLE_LABELS,
+} from './paper-style'
 import { BEFORE_NAVIGATE_EVENT, navigate, replaceRoute, useLocationSearch, useRoute } from './use-route'
 import { Footer } from './site-chrome'
 import { HomePage } from './home-page'
@@ -164,6 +181,7 @@ import { LandingPage, OnboardingPage } from './landing-page'
 import { ConvertPage } from './convert-page'
 import { hasBeenWelcomed } from './welcomed'
 import type { ExamWorkspaceService, QuestionDeletionImpact, QuestionUsage, RecentExam } from './exam-workspaces'
+import { examDeletionMessage, type ExamDeletionSummary } from './exam-deletion'
 import {
   type QuestionBankResource,
   type QuestionBankSummary,
@@ -186,7 +204,7 @@ import { ImportsPage, WaitingImportPage } from './imports-page'
 import { questionBankCollection, type QuestionBankCollectionItem } from './resource-collections'
 import { QuestionBankExportDialog } from './question-bank-export-dialog'
 import { QuestionBankImportDialog } from './question-bank-import-dialog'
-import { MarginsIcon, QuestionStylePreview } from './format-icons'
+import { MarginsIcon, PaperStylePreview } from './format-icons'
 import {
   keepMultipartParts,
   multipartMode,
@@ -196,6 +214,10 @@ import {
   multipartPartView,
   multipartPartsSchema,
   multipartPartsView,
+  multipartSubpartSchema,
+  multipartSubpartView,
+  multipartSubpartsSchema,
+  multipartSubpartsView,
 } from './multipart'
 import {
   keepSuggestedAnswer,
@@ -556,6 +578,17 @@ function CrepeQuestion({
                 active: (ctx: Ctx) => isScriptActive(ctx, 'superscript'),
                 onRun: (ctx: Ctx) => toggleScript(ctx, 'superscript'),
               })
+            // Centre sets the paragraphs, pictures and tables the selection
+            // touches in the middle of their column (see `centring.ts`).
+            builder
+              .getGroup('formatting')
+              .addItem('centre', {
+                icon: centreIcon,
+                label: 'Centre',
+                keymap: keymapRef<'ToggleCentre'>(centringKeymap.key, 'ToggleCentre'),
+                active: (ctx: Ctx) => isCentreActive(ctx),
+                onRun: (ctx: Ctx) => toggleCentre(ctx),
+              })
           },
         },
       },
@@ -595,15 +628,21 @@ function CrepeQuestion({
       .use(multipartPartsSchema)
       .use(multipartPartSchema)
       .use(multipartPartStemSchema)
+      .use(multipartSubpartsSchema)
+      .use(multipartSubpartSchema)
       .use(multipartPartsView)
       .use(multipartPartView)
       .use(multipartPartStemView)
+      .use(multipartSubpartsView)
+      .use(multipartSubpartView)
       .use(keepMultipartParts)
       .use(sideBySideSchema)
       .use(sideBySidePanelSchema)
       .use(sideBySideView)
       .use(sideBySidePanelView)
       .use(keepSideBySidesInStems)
+      .use(centringDecorations)
+      .use(centringKeymap)
     // Make the whole multiple-choice block — or matching set — the drag target
     // instead of a single answer row: never offer a handle for a choice, prompt
     // or Word Bank answer itself, so Crepe's handle climbs to the block.
@@ -613,6 +652,8 @@ function CrepeQuestion({
       configurePastedImages(ctx)
       configurePendingImages(ctx)
       configurePictures(ctx)
+      // After the pictures', whose parsing it extends.
+      configureCentring(ctx)
       ctx.update(uploadConfig.key, (prev) => ({
         ...prev,
         enableHtmlFileUploader: true,
@@ -634,6 +675,8 @@ function CrepeQuestion({
             || node?.type?.name === 'multipartParts'
             || node?.type?.name === 'multipartPart'
             || node?.type?.name === 'multipartPartStem'
+            || node?.type?.name === 'multipartSubparts'
+            || node?.type?.name === 'multipartSubpart'
             // A Panel moves with its Side-by-Side; the blocks in it keep
             // their own handles, so they drag in and out of it.
             || node?.type?.name === 'sideBySidePanel'
@@ -708,6 +751,15 @@ function QuestionDialog({
   )
   const [difficulty, setDifficulty] = useState<Difficulty | ''>(question.difficulty ?? '')
   const [topics, setTopics] = useState<readonly string[]>(topicsOf(question))
+  // What the Points field holds as typed; read when the question is saved, so
+  // a half-typed value is never mistaken for one (see `parsePointsInput`).
+  const [pointsText, setPointsText] = useState(
+    question.points !== undefined && pointsOnQuestion(question) ? String(question.points) : '',
+  )
+  const pointsValue = parsePointsInput(pointsText)
+  // A Multipart question's Points are its Parts' and Subparts' sum, kept up to
+  // date as they are typed in the editor below (ADR-0042).
+  const [partsPoints, setPartsPoints] = useState(() => pointsOfQuestion(question))
   const latestDoc = useRef(doc)
   const readEditorDocument = useRef<(() => ProseMirrorJSON) | null>(null)
   const dialog = useRef<HTMLElement>(null)
@@ -765,6 +817,12 @@ function QuestionDialog({
       else delete saved.difficulty
       if (topics.length > 0) saved.topics = [...topics]
       else delete saved.topics
+      // Points live on the Question for every type but Multipart, whose Parts
+      // carry theirs in the document. What cannot be read as Points keeps the
+      // Points the question had.
+      if (!pointsOnQuestion(saved)) delete saved.points
+      else if (pointsValue === null) delete saved.points
+      else if (pointsValue !== undefined) saved.points = pointsValue
       if (type === 'open') {
         const answer = suggestedAnswerDocumentOf(edited)
         if (answer) saved.suggestedAnswer = await ownDocumentMedia(answer)
@@ -846,6 +904,13 @@ function QuestionDialog({
               icon: <Captions />,
               onSelect: pictureMenu.toggleCaption,
             },
+            {
+              kind: 'action',
+              label: pictureMenu.centred ? 'Align left' : 'Centre',
+              icon: pictureMenu.centred ? <AlignLeft /> : <AlignCenter />,
+              disabled: !pictureMenu.centrable,
+              onSelect: pictureMenu.toggleCentre,
+            },
           ]}
           onClose={() => setPictureMenu(null)}
         />}
@@ -903,6 +968,39 @@ function QuestionDialog({
             onCreate={(value) => setTopics(withTopicAdded(topics, value))}
             renderValue={(value) => <TopicBadge topic={value} />}
           />
+          <div className="front-matter-field">
+            <span className="front-matter-label">Points</span>
+            {pointsOnQuestion(question) ? (
+              <span className="front-matter-points">
+                <input
+                  className="front-matter-value front-matter-points-input"
+                  type="text"
+                  inputMode="numeric"
+                  aria-label="Points"
+                  aria-invalid={pointsValue === undefined ? true : undefined}
+                  placeholder="Empty"
+                  value={pointsText}
+                  onChange={(event) => setPointsText(event.target.value)}
+                  onBlur={() => {
+                    // Put back what was there when the field is left holding
+                    // something that is not Points.
+                    if (pointsValue === undefined) {
+                      setPointsText(question.points !== undefined ? String(question.points) : '')
+                    }
+                  }}
+                />
+                {question.type === 'matching' ? 'for the whole set' : null}
+              </span>
+            ) : (
+              <span className="front-matter-value front-matter-stated">
+                {partsPoints === undefined ? (
+                  <span className="front-matter-blank">Set on each Part</span>
+                ) : (
+                  `${pointsLabel(partsPoints)}, from its Parts`
+                )}
+              </span>
+            )}
+          </div>
         </div>
         <div className="dialog-editor">
           <CrepeQuestion
@@ -916,6 +1014,7 @@ function QuestionDialog({
             }}
             onChange={(next) => {
               latestDoc.current = next
+              if (type === 'multipart') setPartsPoints(pointsOfQuestion({ ...question, doc: next }))
             }}
           />
         </div>
@@ -1035,6 +1134,24 @@ function BankDeletionConfirmation({ bank, impact, onCancel, onConfirm }: {
       {impact.length > 0 && <ul>{impact.map((item) => <li key={item.examId}>{item.title} — {item.questionCount} {item.questionCount === 1 ? 'Question' : 'Questions'} removed</li>)}</ul>}
       <p><strong>Export History remains unchanged.</strong> Historical exports stay viewable and can be exported again.</p>
     </>}
+  </DestructiveConfirmation>
+}
+
+/** Deleting an Exam takes its Export History with it (ADR-0047). */
+function ExamDeletionConfirmation({ summary, onCancel, onConfirm }: {
+  summary: ExamDeletionSummary
+  onCancel: () => void
+  onConfirm: () => Promise<void>
+}) {
+  const message = examDeletionMessage(summary)
+  return <DestructiveConfirmation
+    label="Delete Exam"
+    title={message.title}
+    confirmLabel="Delete Exam"
+    onCancel={onCancel}
+    onConfirm={onConfirm}
+  >
+    <p>{message.body}</p>
   </DestructiveConfirmation>
 }
 
@@ -1848,6 +1965,7 @@ function ExamEditor({
   onHome,
   onOpenExam,
   onSaveAs,
+  onDelete,
   launchError,
   bankLibraryRevision = 0,
   onImportBank,
@@ -1860,6 +1978,8 @@ function ExamEditor({
   onHome: () => void
   onOpenExam: (id: string) => void
   onSaveAs: () => Promise<void>
+  /** Asks to delete this Exam (ADR-0047); the confirmation is the app's. */
+  onDelete: () => void
   launchError: string | null
   /** Bumped when something outside the bank pane — an import from the
    *  page-wide file drop — has opened a tab in this Exam's workspace, so the
@@ -1918,6 +2038,9 @@ function ExamEditor({
   ) ?? null
   const isHistoricalBrowsing = historyOpen
   const [storageNotice, setStorageNotice] = useState<string | null>(null)
+  // Pages of an exported PDF that run past their bottom margin (ADR-0046):
+  // the export went ahead, and this stays until the teacher dismisses it.
+  const [exportWarning, setExportWarning] = useState<string | null>(null)
   const [choosingExam, setChoosingExam] = useState(false)
   const [documentMenu, setDocumentMenu] = useState<{
     kind: DocumentMenuKind
@@ -2010,6 +2133,38 @@ function ExamEditor({
   const shuffleSelectedAnswers = (questionIds: readonly string[]) => {
     store.shuffleSelectedAnswers(questionIds)
     setVarySummary('Shuffled answer order.')
+  }
+
+  // Points belong to the Question, not to this Exam (ADR-0042): set on the
+  // sheet, they are a bank edit, committed through the owning Question Bank
+  // and saved at once like a save from the question editor, never an
+  // undoable change to the Working Copy. `partId` names a Part or Subpart of
+  // a Multipart question; `null` the question itself.
+  const setPoints = (questionId: string, partId: string | null, points: number | null) => {
+    void (async () => {
+      const question = bankQuestionById(store.getState().questionBank, questionId)
+      if (!question) return
+      const saved = partId === null
+        ? withQuestionPoints(question, points)
+        : withPartPoints(question, partId, points)
+      if (JSON.stringify(saved) === JSON.stringify(question)) return
+      try {
+        const owner = await bankWorkspaces.ownerOfQuestion(questionId)
+        if (!owner) throw new Error('The owning Question Bank is unavailable on this device.')
+        await store.whenSettled()
+        await bankWorkspaces.commitCanonicalQuestion(
+          owner.id,
+          saved,
+          (canonical) => workspaces.propagateCanonicalQuestion(canonical),
+        )
+        store.syncCanonicalQuestions([saved])
+        setBankRevision((revision) => revision + 1)
+      } catch (error) {
+        setStorageNotice(
+          `The Points could not be saved${error instanceof Error ? `: ${error.message}` : '.'}`,
+        )
+      }
+    })()
   }
 
   // Where a released gesture goes. Each branch is one store call, so one drag
@@ -2198,15 +2353,18 @@ function ExamEditor({
   const runPreparedExport = async (prepared: PreparedExport) => {
     const format = prepared.record.format
     let blob: Blob
+    let warning: string | null = null
     try {
       if (format === 'pdf') {
         const pdf = await import('./pdf-export')
-        blob = pdf.pdfBlob(await pdf.createPublicationPdf(
+        const created = await pdf.createPublicationPdf(
           prepared.documents,
           undefined,
           undefined,
           prepared.record.examPackage,
-        ))
+        )
+        blob = pdf.pdfBlob(created.bytes)
+        warning = pdf.pastMarginWarning(created.pagesPastMargin)
       } else {
         const docx = await import('./docx-export')
         blob = await docx.createPublicationDocx(prepared.documents)
@@ -2218,7 +2376,6 @@ function ExamEditor({
       if (
         media.isRequiredMediaError(error)
         || pdf?.isPdfUnsupportedCharacterError(error)
-        || pdf?.isPdfLayoutError(error)
       ) throw error
       throw new Error(
         format === 'pdf'
@@ -2270,6 +2427,8 @@ function ExamEditor({
       console.error(`Could not start the ${format.toUpperCase()} download`, error)
       throw new Error('The download could not be started. The Export Record remains in History.')
     }
+    // Told once the file is the teacher's, and only about this export.
+    setExportWarning(warning)
   }
 
   let exportPreview: PreparedExport | null = null
@@ -2444,21 +2603,21 @@ function ExamEditor({
               },
             })),
           },
-          // One style for every question on the Exam, never per question or
+          // One Paper Style for the whole Exam, never per question or
           // per type (ADR-0041). The sheet reflows as soon as it changes.
           {
             kind: 'submenu',
-            label: 'Questions',
+            label: 'Paper style',
             icon: <ListOrdered />,
-            value: QUESTION_STYLE_LABELS[state.workingCopy.questionStyle ?? DEFAULT_QUESTION_STYLE].label,
-            items: QUESTION_STYLES.map((style) => ({
+            value: PAPER_STYLE_LABELS[state.workingCopy.paperStyle ?? DEFAULT_PAPER_STYLE].label,
+            items: PAPER_STYLES.map((style) => ({
               kind: 'radio' as const,
-              label: QUESTION_STYLE_LABELS[style].label,
-              description: QUESTION_STYLE_LABELS[style].description,
-              preview: <QuestionStylePreview style={style} />,
-              checked: (state.workingCopy.questionStyle ?? DEFAULT_QUESTION_STYLE) === style,
+              label: PAPER_STYLE_LABELS[style].label,
+              description: PAPER_STYLE_LABELS[style].description,
+              preview: <PaperStylePreview style={style} />,
+              checked: (state.workingCopy.paperStyle ?? DEFAULT_PAPER_STYLE) === style,
               onSelect: () => {
-                if (!isHistoricalBrowsing) store.setQuestionStyle(style)
+                if (!isHistoricalBrowsing) store.setPaperStyle(style)
               },
             })),
           },
@@ -2513,6 +2672,14 @@ function ExamEditor({
             label: 'Export History',
             icon: <History />,
             onSelect: () => setHistoryOpen(true),
+          },
+          { kind: 'separator' },
+          {
+            kind: 'action',
+            label: 'Delete Exam',
+            icon: <Trash2 />,
+            destructive: true,
+            onSelect: onDelete,
           },
         ] : [
           {
@@ -2749,6 +2916,7 @@ function ExamEditor({
             onSetWorkSpace={(questionIds, patch) =>
               store.setQuestionWorkSpace(questionIds, patch)
             }
+            onSetPoints={isHistoricalBrowsing ? undefined : setPoints}
                 unsavedDraft={!store.hasSavedExam()}
               />
             </div>
@@ -2762,6 +2930,20 @@ function ExamEditor({
         <p className="vary-summary" role="status" aria-live="polite">
           {varySummary}
         </p>
+      )}
+
+      {exportWarning && (
+        <div className="storage-notice storage-notice--warning" role="alert">
+          <p>{exportWarning}</p>
+          <button
+            type="button"
+            className="toolbar-icon-button"
+            aria-label="Dismiss PDF warning"
+            onClick={() => setExportWarning(null)}
+          >
+            ×
+          </button>
+        </div>
       )}
 
       {storageNotice && (
@@ -2879,6 +3061,7 @@ export default function App({
   const [editorStore, setEditorStore] = useState(store)
   const [editorId, setEditorId] = useState(initialEditorId)
   const [deletingBank, setDeletingBank] = useState<{ bank: QuestionBankCollectionItem; impact: QuestionDeletionImpact[] } | null>(null)
+  const [deletingExam, setDeletingExam] = useState<ExamDeletionSummary | null>(null)
   const [exportingBank, setExportingBank] = useState<QuestionBankResource | null>(null)
   const [inspectingBankFile, setInspectingBankFile] = useState(false)
   const [droppedBankFile, setDroppedBankFile] = useState<File | null>(null)
@@ -3005,6 +3188,35 @@ export default function App({
       setBankCollection((current) => current.filter(({ id }) => id !== bank.id))
       setExams(await workspaces.recent())
       setDeletingBank(null)
+    }}
+  />
+  // The editor names its Exam by what its title field says now, which may be
+  // ahead of the last backup.
+  const requestExamDeletion = useCallback((id: string, title?: string) => {
+    void workspaces.deletionSummary(id).then((summary) => {
+      if (summary) setDeletingExam(title === undefined ? summary : { ...summary, title })
+    })
+  }, [workspaces])
+  const examDeletionConfirmation = deletingExam && <ExamDeletionConfirmation
+    summary={deletingExam}
+    onCancel={() => setDeletingExam(null)}
+    onConfirm={async () => {
+      const { examId } = deletingExam
+      const open = examId === editorId
+      // A backup still on its way must land before the database goes, not
+      // after, where it would find the Exam gone.
+      if (open && editorStore) await editorStore.whenSettled().catch(() => undefined)
+      await workspaces.deleteExam(examId)
+      // An Exam deleted from its own editor leaves it for Home.
+      if (open) {
+        window.location.assign('/')
+        return
+      }
+      setDeletingExam(null)
+      const [recent, recentBanks] = await Promise.all([workspaces.recent(), bankWorkspaces.recent()])
+      setExams(recent)
+      // Its banks are used in one Exam fewer.
+      setBankCollection(await questionBankCollection(recentBanks, bankWorkspaces, workspaces))
     }}
   />
   const saveAs = useCallback(async () => {
@@ -3142,7 +3354,8 @@ export default function App({
     onOpenExam={openExam}
     onOpenBank={openBank}
     onNewExam={newExam}
-  />{bankDeletionConfirmation}</>
+    onDeleteExam={(exam) => requestExamDeletion(exam.id)}
+  />{bankDeletionConfirmation}{examDeletionConfirmation}</>
   if (route === '/question-banks') return <>{globalChrome}<ResourceCollectionPage
     kind="question-banks"
     exams={exams}
@@ -3180,8 +3393,9 @@ export default function App({
     onOpenBank={openBank}
     onExportBank={requestBankExport}
     onDeleteBank={requestBankDeletion}
+    onDeleteExam={(exam) => requestExamDeletion(exam.id)}
     onImport={() => openImport()}
-  />{bankExportDialog}{bankDeletionConfirmation}</>
+  />{bankExportDialog}{bankDeletionConfirmation}{examDeletionConfirmation}</>
   if (route === '/question-bank') return pageBank && pageBankReady ? <>{globalChrome}<QuestionBankPage
     key={pageBank.bank.id}
     bank={pageBank.bank}
@@ -3202,6 +3416,7 @@ export default function App({
     bankLibraryRevision={bankLibraryRevision}
     onImportBank={(file) => openImport(file)}
     onSaveAs={saveAs}
+    onDelete={() => requestExamDeletion(editorId, editorStore.getState().workingCopy.title)}
     onOpenExam={(id) => {
       void (async () => {
         await bankWorkspaces.carryWorkspace({ examId: editorId }, { examId: id })
@@ -3215,5 +3430,5 @@ export default function App({
       if (id) await workspaces.removePristine(id)
       window.location.assign('/')
     })
-  }} /></> : globalChrome
+  }} />{examDeletionConfirmation}</> : globalChrome
 }

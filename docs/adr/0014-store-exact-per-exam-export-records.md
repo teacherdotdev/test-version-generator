@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, amended by ADR-0047 (an Exam can be deleted, and its Export Records with it)
 ---
 
 # Store exact per-Exam Export Records

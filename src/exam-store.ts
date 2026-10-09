@@ -27,7 +27,6 @@ import {
   mergeSection,
   moveToNewSection,
   splitSection,
-  defaultWorkSpaceOf,
   workSpaceIn,
   placeQuestions,
   rewordSection,
@@ -41,13 +40,14 @@ import {
   orderedChoices,
   orderedPartChoices,
   orderedQuestions,
-  partsOf,
+  answeringPartsOf,
+  presentationIdsOf,
   shuffleSelectedQuestions,
   type Arrangement,
   type ColumnSetting,
   newSectionWordingOf,
   type ExamSection,
-  type Part,
+  type Subpart,
   type Question,
   type SectionPlacement,
   type SectionTarget,
@@ -67,7 +67,7 @@ import {
 } from './section-headings'
 import { isExamHeader, sameExamHeader, withHeaderLine, type HeaderLine } from './page-header'
 import { isPageMargins, sameMargins, withMargin, type MarginSide } from './page-margins'
-import { DEFAULT_QUESTION_STYLE, isQuestionStyle, type QuestionStyle } from './question-style'
+import { DEFAULT_PAPER_STYLE, isPaperStyle, type PaperStyle } from './paper-style'
 import {
   bankQuestionById,
   createWorkingCopy,
@@ -193,6 +193,15 @@ function isWordBankLayoutSettings(value: unknown): value is Record<string, WordB
   )
 }
 
+function isWordBankLayoutChoices(value: unknown): value is Record<string, true> {
+  return (
+    typeof value === 'object'
+    && value !== null
+    && !Array.isArray(value)
+    && Object.values(value).every((set) => set === true)
+  )
+}
+
 function isSectionList(value: unknown): value is ExamWorkingCopy['sections'] {
   return Array.isArray(value) && value.every(isExamSection)
 }
@@ -226,6 +235,7 @@ function isWorkingCopy(value: unknown): value is ExamWorkingCopy {
     (draft.columns === undefined || isColumnSettings(draft.columns)) &&
     (draft.workSpace === undefined || isWorkSpaceSettings(draft.workSpace)) &&
     (draft.wordBankLayout === undefined || isWordBankLayoutSettings(draft.wordBankLayout)) &&
+    (draft.wordBankLayoutSet === undefined || isWordBankLayoutChoices(draft.wordBankLayoutSet)) &&
     (draft.choiceOrder === undefined || isChoiceOrder(draft.choiceOrder)) &&
     (draft.hiddenAnswers === undefined || isChoiceOrder(draft.hiddenAnswers)) &&
     (draft.sections === undefined || isSectionList(draft.sections)) &&
@@ -235,7 +245,7 @@ function isWorkingCopy(value: unknown): value is ExamWorkingCopy {
     (draft.header === undefined || isExamHeader(draft.header)) &&
     (draft.textSize === undefined || isTextSize(draft.textSize)) &&
     (draft.margins === undefined || isPageMargins(draft.margins)) &&
-    (draft.questionStyle === undefined || isQuestionStyle(draft.questionStyle))
+    (draft.paperStyle === undefined || isPaperStyle(draft.paperStyle))
   )
 }
 
@@ -259,6 +269,7 @@ const WORKING_COPY_SETTINGS: Readonly<Record<string, (value: unknown) => boolean
   columns: isColumnSettings,
   workSpace: isWorkSpaceSettings,
   wordBankLayout: isWordBankLayoutSettings,
+  wordBankLayoutSet: isWordBankLayoutChoices,
   choiceOrder: isChoiceOrder,
   // The same shape as an order: ids, keyed by question.
   hiddenAnswers: isChoiceOrder,
@@ -269,7 +280,7 @@ const WORKING_COPY_SETTINGS: Readonly<Record<string, (value: unknown) => boolean
   header: isExamHeader,
   textSize: isTextSize,
   margins: isPageMargins,
-  questionStyle: isQuestionStyle,
+  paperStyle: isPaperStyle,
 }
 
 // A draft an earlier build stored, in the current shape. Its questions are
@@ -294,7 +305,13 @@ function upgradedStoredState(value: unknown): unknown {
   }
   const draft = state.workingCopy
   if (typeof draft === 'object' && draft !== null && !Array.isArray(draft)) {
-    const workingCopy: Record<string, unknown> = { ...draft }
+    // A build before ADR-0044 stored the Paper Style under its old name.
+    const { questionStyle: legacyStyle, ...rest } = draft as Record<string, unknown>
+    const workingCopy: Record<string, unknown> = { ...rest }
+    // A build that never shipped stored Paper Details, since withdrawn
+    // (ADR-0045): they are dropped rather than carried along unread.
+    delete workingCopy.paperDetails
+    if (workingCopy.paperStyle === undefined && legacyStyle !== undefined) workingCopy.paperStyle = legacyStyle
     for (const [setting, readable] of Object.entries(WORKING_COPY_SETTINGS)) {
       if (workingCopy[setting] !== undefined && !readable(workingCopy[setting])) {
         delete workingCopy[setting]
@@ -352,7 +369,7 @@ export type ExamStore = {
   setTextSize(size: TextSize): void
   /** How every question on this Exam prints. Switching never touches a Work
    *  Space the teacher set. */
-  setQuestionStyle(style: QuestionStyle): void
+  setPaperStyle(style: PaperStyle): void
   /** Rewords one test-page header line; `null` restores its default. */
   setHeaderLine(line: HeaderLine, text: string | null): void
   /** Sets how far in from `sides` of the sheet the Exam's pages print, in
@@ -493,6 +510,7 @@ function sameExamWorkingCopy(left: ExamWorkingCopy, right: ExamWorkingCopy): boo
       first.height === second.height && first.style === second.style && first.fill === second.fill,
     )
     && sameEntries(left.wordBankLayout, right.wordBankLayout, (first, second) => first === second)
+    && sameEntries(left.wordBankLayoutSet, right.wordBankLayoutSet, (first, second) => first === second)
     && sameEntries(left.choiceOrder, right.choiceOrder, (first, second) =>
       first.length === second.length && first.every((id, index) => id === second[index]),
     )
@@ -506,32 +524,35 @@ function sameExamWorkingCopy(left: ExamWorkingCopy, right: ExamWorkingCopy): boo
     && sameExamHeader(left.header, right.header)
     && (left.textSize ?? DEFAULT_TEXT_SIZE) === (right.textSize ?? DEFAULT_TEXT_SIZE)
     && sameMargins(left.margins, right.margins)
-    && (left.questionStyle ?? DEFAULT_QUESTION_STYLE) === (right.questionStyle ?? DEFAULT_QUESTION_STYLE)
+    && (left.paperStyle ?? DEFAULT_PAPER_STYLE) === (right.paperStyle ?? DEFAULT_PAPER_STYLE)
 }
 
-/** The Part with this id, when it belongs to a Multipart question this Exam references.
- *  Part ids and question ids never collide — both are fresh UUIDs — so a
- *  presentation setting addressed to one can tell which it is by looking. */
-function referencedPartOf(state: AuthoringState, id: string): Part | undefined {
+/** The Part or Subpart that answers with this id, when it belongs to a Multipart question
+ *  this Exam references. Its ids and question ids never collide — all are fresh
+ *  UUIDs — so a presentation setting addressed to one can tell which it is by
+ *  looking. A Part that holds Subparts answers nothing, so has nothing to set. */
+function referencedPartOf(state: AuthoringState, id: string): Subpart | undefined {
   for (const questionId of state.workingCopy.questionIds) {
     const question = bankQuestionById(state.questionBank, questionId)
-    const part = question ? partsOf(question).find((candidate) => candidate.id === id) : undefined
+    const part = question
+      ? answeringPartsOf(question).find((candidate) => candidate.id === id)
+      : undefined
     if (part) return part
   }
   return undefined
 }
 
 /** A duplicate Multipart question looks like its original on the sheet: each of its
- *  Parts takes the answer order, columns and work space its original Part had
- *  here, under the copy's fresh Part and choice ids. */
+ *  Parts and Subparts takes the answer order, columns and work space its
+ *  original had here, under the copy's fresh ids. */
 function withPartPresentationCopied(
   workingCopy: ExamWorkingCopy,
   original: Question,
   copy: Question,
   arrangement: Arrangement,
 ): ExamWorkingCopy {
-  const originalParts = partsOf(original)
-  const copiedParts = partsOf(copy)
+  const originalParts = answeringPartsOf(original)
+  const copiedParts = answeringPartsOf(copy)
   if (originalParts.length === 0) return workingCopy
   const columns = { ...(workingCopy.columns ?? {}) }
   const workSpace = { ...(workingCopy.workSpace ?? {}) }
@@ -643,9 +664,10 @@ function withQuestionsAdded(
 }
 
 /** Each of `questionIds` that is a Matching question on this Exam takes the
- *  Word Bank layout its Question Style and the fit rule give it now
+ *  Word Bank layout its Paper Style and the fit rule give it now
  *  (`wordBankLayoutFor`), replacing any it had: how a Matching position gets
- *  its layout when it arrives, and how a change of style sets them all again. */
+ *  its layout when it arrives, and how a change of style places again every
+ *  one the teacher did not choose. */
 function withWordBankLayouts(
   bank: QuestionBank,
   workingCopy: ExamWorkingCopy,
@@ -866,18 +888,20 @@ export function createExamStore(options: {
         return { ...current, workingCopy }
       }),
 
-    setQuestionStyle: (style) =>
+    setPaperStyle: (style) =>
       change((current) => {
-        if ((current.workingCopy.questionStyle ?? DEFAULT_QUESTION_STYLE) === style) return current
-        const styled: ExamWorkingCopy = { ...current.workingCopy, questionStyle: style }
-        if (style === DEFAULT_QUESTION_STYLE) delete styled.questionStyle
-        // A style is a preset for the whole sheet: taking one sets every
-        // Matching question's Word Bank where that style puts it, over any
-        // the teacher moved, in the same undoable step (ADR-0041).
+        if ((current.workingCopy.paperStyle ?? DEFAULT_PAPER_STYLE) === style) return current
+        const styled: ExamWorkingCopy = { ...current.workingCopy, paperStyle: style }
+        if (style === DEFAULT_PAPER_STYLE) delete styled.paperStyle
+        // Switching style never changes what the teacher set (ADR-0044): every
+        // Matching question's Word Bank goes where the new style and the fit
+        // rule put it, in the same undoable step, except one the teacher
+        // chose. The rule is deterministic, so switching back restores them.
+        const chosen = styled.wordBankLayoutSet ?? {}
         const workingCopy = withWordBankLayouts(
           current.questionBank,
           styled,
-          styled.questionIds,
+          styled.questionIds.filter((id) => chosen[id] !== true),
           bankAnswerWidth,
         )
         return { ...current, workingCopy }
@@ -995,6 +1019,8 @@ export function createExamStore(options: {
     setWordBankLayout: (questionIds, layout) => {
       change((current) => {
         const next = { ...(current.workingCopy.wordBankLayout ?? {}) }
+        // The teacher chose it, so a change of style leaves it (ADR-0044).
+        const chosen = { ...(current.workingCopy.wordBankLayoutSet ?? {}) }
         let changed = false
         for (const questionId of new Set(questionIds)) {
           if (!current.workingCopy.questionIds.includes(questionId)) continue
@@ -1004,10 +1030,14 @@ export function createExamStore(options: {
           // position carried one included.
           if (wordBankLayoutOf(current.workingCopy, question) === layout) continue
           next[questionId] = layout
+          chosen[questionId] = true
           changed = true
         }
         return changed
-          ? { ...current, workingCopy: { ...current.workingCopy, wordBankLayout: next } }
+          ? {
+              ...current,
+              workingCopy: { ...current.workingCopy, wordBankLayout: next, wordBankLayoutSet: chosen },
+            }
           : current
       })
     },
@@ -1029,27 +1059,28 @@ export function createExamStore(options: {
             const question = bankQuestionById(current.questionBank, questionId)
             if (!question || !takesWorkSpace(question.type)) continue
           }
-          // What the position prints now: its own setting, or its Question
+          // What the position prints now: its own setting, or its Paper
           // Style's default when it has none.
-          const style = current.workingCopy.questionStyle
+          const style = current.workingCopy.paperStyle
           const prior = workSpaceIn(currentSpaces, style, questionId)
           const next: WorkSpace = {
             height: snapWorkSpaceHeight(patch.height ?? prior.height),
             style: patch.style ?? prior.style,
             fill: patch.fill ?? prior.fill,
           }
+          // "None" picked for a position that sets nothing is the teacher's
+          // own setting even where it prints what the style already prints:
+          // stored as a zero-height Work Space, it stays none when the Exam
+          // later takes a style that rules lines (ADR-0044). A position the
+          // teacher never touched keeps storing nothing.
+          const choosesNone = !hasWorkSpace(next) && !isWorkSpace(currentSpaces[questionId])
           if (
             next.height === prior.height
             && next.style === prior.style
             && next.fill === prior.fill
+            && !choosesNone
           ) continue
-          // No room at all is the absence of a setting, not a stored zero, so
-          // taking work space away leaves the Working Copy as it was before —
-          // unless the Question Style would rule lines there: then "None" is
-          // the teacher's own setting, stored, and wins over the style.
-          if (hasWorkSpace(next) || hasWorkSpace(defaultWorkSpaceOf(style))) {
-            nextSpaces[questionId] = next
-          } else delete nextSpaces[questionId]
+          nextSpaces[questionId] = next
           changed = true
         }
         return changed
@@ -1117,6 +1148,10 @@ export function createExamStore(options: {
                   },
                 }
               : {}),
+            // And so does whether the teacher chose that layout.
+            ...(workingCopy.wordBankLayoutSet?.[questionId] === true
+              ? { wordBankLayoutSet: { ...workingCopy.wordBankLayoutSet, [copy.id]: true as const } }
+              : {}),
             ...(workingCopy.workSpace?.[questionId]
               ? {
                   workSpace: {
@@ -1168,7 +1203,7 @@ export function createExamStore(options: {
           deleted.removedQuestionIds,
           deleted.removedQuestionIds.flatMap((id) => {
             const question = bankQuestionById(current.questionBank, id)
-            return question ? partsOf(question).map((part) => part.id) : []
+            return question ? presentationIdsOf(question).slice(1) : []
           }),
         )
         return withExamWorkingCopy(current, removed)
@@ -1260,7 +1295,7 @@ export function createExamStore(options: {
             questionIds,
             questionIds.flatMap((id) => {
               const question = bankQuestionById(current.questionBank, id)
-              return question ? partsOf(question).map((part) => part.id) : []
+              return question ? presentationIdsOf(question).slice(1) : []
             }),
           ),
         ),

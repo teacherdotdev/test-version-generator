@@ -137,6 +137,31 @@ function part(
   }
 }
 
+function subpart(
+  id: string,
+  stem: ProseMirrorJSON[],
+  answer: ProseMirrorJSON,
+  columns: Question['columns'] = DEFAULT_COLUMNS,
+): ProseMirrorJSON {
+  return {
+    type: 'multipartSubpart',
+    attrs: { id, columns },
+    content: [{ type: 'multipartPartStem', content: stem }, answer],
+  }
+}
+
+/** A Part that holds Subparts: its stem is their lead-in. */
+function partWithSubparts(id: string, leadIn: ProseMirrorJSON[], subparts: ProseMirrorJSON[]): ProseMirrorJSON {
+  return {
+    type: 'multipartPart',
+    attrs: { id, columns: DEFAULT_COLUMNS },
+    content: [
+      { type: 'multipartPartStem', content: leadIn },
+      { type: 'multipartSubparts', content: subparts },
+    ],
+  }
+}
+
 function choicesOf(...choices: ProseMirrorJSON[]): ProseMirrorJSON {
   return { type: 'multipleChoice', content: choices }
 }
@@ -292,11 +317,11 @@ const COMPOSITE_EXAM: Exam = {
   ],
 }
 
-// One question of every type, for the Question Style fixtures. The Short
+// One question of every type, for the Paper Style fixtures. The Short
 // Answer Part has a Work Space of its own, which wins over a style's lines;
 // the Short Answer question has none, so a style's lines show there.
-const QUESTION_STYLE_EXAM: Exam = {
-  title: 'Question Styles',
+const PAPER_STYLE_EXAM: Exam = {
+  title: 'Paper Styles',
   questions: [
     multipleChoice(
       'ys-mc',
@@ -440,6 +465,161 @@ export const FIXTURES: readonly Fixture[] = [
         itemHeight: (item) =>
           item.kind === 'question'
             ? item.stem.length * 200 + (item.parts?.length ?? 0) * 260
+            : 40,
+      },
+    },
+  ),
+
+  // A Part may hold Subparts: its stem prints as their lead-in, and each
+  // Subpart prints numbered beneath it, one level further in, as a Part of
+  // its kind prints — a shuffled Multiple Choice Subpart, a Short Answer one
+  // with ruled room. The key gives one line per Subpart, labelled with its
+  // place under its Part.
+  fixture(
+    'a multipart whose part holds subparts',
+    {
+      title: 'Pond Survey',
+      questions: [
+        multipart(
+          'sp1',
+          [paragraph(text('A class counted the frogs at a pond each month for a year.'))],
+          [
+            part(
+              'sp1-a',
+              [paragraph(text('Name one thing a frog eats.'))],
+              suggestedAnswer(paragraph(text('Insects.'))),
+            ),
+            partWithSubparts(
+              'sp1-b',
+              [paragraph(text('The count was highest in April.'))],
+              [
+                subpart(
+                  'sp1-b-i',
+                  [paragraph(text('In which season is April?'))],
+                  choicesOf(
+                    choice('sp1-b-i1', true, paragraph(text('Spring'))),
+                    choice('sp1-b-i2', false, paragraph(text('Autumn'))),
+                    choice('sp1-b-i3', false, paragraph(text('Winter'))),
+                  ),
+                  1,
+                ),
+                subpart(
+                  'sp1-b-ii',
+                  [paragraph(text('Suggest why more frogs were seen then.'))],
+                  suggestedAnswer(paragraph(text('Frogs gather at ponds to breed in spring.'))),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+      workSpace: { 'sp1-b-ii': { height: 64, style: 'lines', fill: false } },
+    },
+    arrangement(['sp1'], { 'sp1-b-i': ['sp1-b-i2', 'sp1-b-i1', 'sp1-b-i3'] }),
+    { answerKey: true },
+  ),
+
+  // Points on everything a student answers (ADR-0042): a Multiple Choice
+  // question with Question Metadata beside its `[n]`, an unpointed True/False
+  // one, a Matching set worth Points as a whole, and a Multipart question whose
+  // Part and Subparts carry their own. No current Paper Style prints Points on
+  // the test; the key prints each `[n]` and the paper's total.
+  fixture(
+    'a paper with points',
+    {
+      title: 'Rivers',
+      questions: [
+        {
+          ...multipleChoice(
+            'mk1',
+            2,
+            [paragraph(text('Where does a river begin?'))],
+            [
+              choice('mk1-a', true, paragraph(text('Its source'))),
+              choice('mk1-b', false, paragraph(text('Its mouth'))),
+            ],
+          ),
+          points: 1,
+          difficulty: 'easy',
+          topics: ['Rivers'],
+        },
+        trueFalse('mk2', [paragraph(text('A delta forms at a river’s source.'))], 'false'),
+        {
+          ...matching(
+            'mk3',
+            [paragraph(text('Match each word to its meaning.'))],
+            [
+              prompt('mk3-p1', 'mk3-a1', paragraph(text('Tributary'))),
+              prompt('mk3-p2', 'mk3-a2', paragraph(text('Meander'))),
+            ],
+            [
+              bankAnswer('mk3-a1', paragraph(text('A stream that joins a river'))),
+              bankAnswer('mk3-a2', paragraph(text('A bend in a river'))),
+            ],
+          ),
+          points: 2,
+        },
+        multipart(
+          'mk4',
+          [paragraph(text('A river floods its valley every spring.'))],
+          [
+            { ...part('mk4-a', [paragraph(text('Name the flat land that floods.'))], suggestedAnswer(paragraph(text('The floodplain.')))), attrs: { id: 'mk4-a', columns: DEFAULT_COLUMNS, points: 1 } },
+            partWithSubparts(
+              'mk4-b',
+              [paragraph(text('Farmers grow crops on the flooded land.'))],
+              [
+                { ...subpart('mk4-b-i', [paragraph(text('What does a flood leave behind?'))], suggestedAnswer(paragraph(text('Silt.')))), attrs: { id: 'mk4-b-i', columns: DEFAULT_COLUMNS, points: 2 } },
+                { ...subpart('mk4-b-ii', [paragraph(text('Give one danger of farming there.'))], suggestedAnswer()), attrs: { id: 'mk4-b-ii', columns: DEFAULT_COLUMNS, points: 3 } },
+              ],
+            ),
+          ],
+        ),
+      ],
+    },
+    arrangement(['mk1', 'mk2', 'mk3', 'mk4']),
+    { answerKey: true },
+  ),
+
+  // A Part's Subparts may break across pages: the lead-in stays with
+  // Subpart (i), and the Subparts after the break continue on the next page
+  // without the Part's letter or lead-in printed again.
+  fixture(
+    'a part whose later subparts continue on the next page',
+    {
+      title: 'Reading',
+      questions: [
+        multipart(
+          'sp2',
+          [paragraph(text('Read the notice below.'))],
+          [
+            partWithSubparts(
+              'sp2-a',
+              [paragraph(text('The notice is about a lost cat.'))],
+              ['i', 'ii', 'iii'].map((label) =>
+                subpart(
+                  `sp2-a-${label}`,
+                  [paragraph(text(`Question (${label}) about the notice.`))],
+                  choicesOf(
+                    choice(`sp2-a-${label}1`, true, paragraph(text('Yes'))),
+                    choice(`sp2-a-${label}2`, false, paragraph(text('No'))),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    },
+    arrangement(['sp2']),
+    {
+      measure: {
+        itemHeight: (item) =>
+          item.kind === 'question'
+            ? item.stem.length * 200
+              + (item.parts ?? []).reduce(
+                (sum, part) => sum + (part.continued ? 0 : 100) + part.subparts.length * 260,
+                0,
+              )
             : 40,
       },
     },
@@ -937,6 +1117,58 @@ export const FIXTURES: readonly Fixture[] = [
       ],
     },
     arrangement(['m1', 'o1', 'o2']),
+    { images: true },
+  ),
+
+  // A Centred figure with its caption, and a Centred table with a centred
+  // cell; a Centred block that opens its question keeps the number at the left.
+  fixture(
+    'a centred figure, caption and table',
+    {
+      title: 'Centred',
+      questions: [
+        open(
+          'o1',
+          paragraph(text('Fig. 1.1 shows a leaf seen through a hand lens.')),
+          {
+            type: 'image-block',
+            attrs: { src: `/local-images/${'d'.repeat(64)}`, size: 0.5, align: 'center' },
+          },
+          { ...paragraph(text('Fig. 1.1', mark('strong'))), attrs: { align: 'center' } },
+          {
+            type: 'table',
+            attrs: { align: 'center' },
+            content: [
+              {
+                type: 'table_header_row',
+                content: [
+                  { type: 'table_header', content: [paragraph(text('Leaf'))] },
+                  { type: 'table_header', content: [{ ...paragraph(text('Length / mm')), attrs: { align: 'center' } }] },
+                ],
+              },
+              {
+                type: 'table_row',
+                content: [
+                  { type: 'table_cell', content: [paragraph(text('A'))] },
+                  { type: 'table_cell', content: [{ ...paragraph(text('42')), attrs: { align: 'center' } }] },
+                ],
+              },
+            ],
+          },
+          { ...paragraph(text('Table 1.1')), attrs: { align: 'center' } },
+          paragraph(text('Describe the leaf.')),
+        ),
+        open(
+          'o2',
+          { ...paragraph(text('Table 2.1')), attrs: { align: 'center' } },
+          {
+            type: 'image-block',
+            attrs: { src: `/local-images/${'e'.repeat(64)}`, caption: 'A captioned figure', align: 'center' },
+          },
+        ),
+      ],
+    },
+    arrangement(['o1', 'o2']),
     { images: true },
   ),
 
@@ -1440,20 +1672,290 @@ export const FIXTURES: readonly Fixture[] = [
     },
   ),
 
-  // Each Question Style over every Question Type, so every adapter prints its
+  // The Exam Board Paper Style (ADR-0045) over a paper with points: on A4,
+  // the paper's total beneath the title, `1`, `(a)`, `(i)` and `A` labels,
+  // dotted lines where the teacher set no Work Space, each answer's `[n]` at
+  // the right margin, the Multipart question's `[Total: 9]`, the page number
+  // above the header line and "Turn over" at the foot of every test page but
+  // the last. One question to a page, so the test runs over several.
+  fixture(
+    'a paper with points in the exam board paper style',
+    {
+      title: 'Plant Biology',
+      paperStyle: 'exam-board',
+      questions: [
+        {
+          ...multipleChoice(
+            'eb-mc',
+            2,
+            [paragraph(text('Which gas do leaves give out in sunlight?'))],
+            [
+              choice('eb-mc-a', false, paragraph(text('Nitrogen'))),
+              choice('eb-mc-b', true, paragraph(text('Oxygen'))),
+              choice('eb-mc-c', false, paragraph(text('Argon'))),
+              choice('eb-mc-d', false, paragraph(text('Helium'))),
+            ],
+          ),
+          points: 1,
+        },
+        { ...trueFalse('eb-tf', [paragraph(text('Xylem carries water up the stem.'))], 'true'), points: 1 },
+        {
+          ...matching(
+            'eb-mx',
+            [paragraph(text('Match each part of a flower to its job.'))],
+            [
+              prompt('eb-mx-p1', 'eb-mx-a1', paragraph(text('Anther'))),
+              prompt('eb-mx-p2', 'eb-mx-a2', paragraph(text('Stigma'))),
+            ],
+            [
+              bankAnswer('eb-mx-a1', paragraph(text('Makes pollen'))),
+              bankAnswer('eb-mx-a2', paragraph(text('Receives pollen'))),
+            ],
+          ),
+          points: 2,
+        },
+        { ...open('eb-sa', paragraph(text('Explain why a plant kept in the dark loses mass.'))), points: 3 },
+        multipart(
+          'eb-mp',
+          [paragraph(text('A student grows cress seeds on damp cotton wool.'))],
+          [
+            { ...part('eb-mp-a', [paragraph(text('State one condition seeds need to germinate.'))], suggestedAnswer(paragraph(text('Warmth.')))), attrs: { id: 'eb-mp-a', columns: DEFAULT_COLUMNS, points: 2 } },
+            partWithSubparts(
+              'eb-mp-b',
+              [paragraph(text('Half the seeds are kept in a cupboard.'))],
+              [
+                {
+                  ...subpart(
+                    'eb-mp-b-i',
+                    [paragraph(text('Which colour are the cupboard seedlings?'))],
+                    choicesOf(
+                      choice('eb-mp-b-i-a', true, paragraph(text('Yellow'))),
+                      choice('eb-mp-b-i-b', false, paragraph(text('Dark green'))),
+                    ),
+                  ),
+                  attrs: { id: 'eb-mp-b-i', columns: DEFAULT_COLUMNS, points: 1 },
+                },
+                { ...subpart('eb-mp-b-ii', [paragraph(text('Explain the difference in their height.'))], suggestedAnswer()), attrs: { id: 'eb-mp-b-ii', columns: DEFAULT_COLUMNS, points: 6 } },
+              ],
+            ),
+          ],
+        ),
+      ],
+      // The teacher's own Work Space wins over the style's dotted three lines.
+      workSpace: { 'eb-mp-a': { height: 64, style: 'lines', fill: false } },
+    },
+    arrangement(['eb-mc', 'eb-tf', 'eb-mx', 'eb-sa', 'eb-mp']),
+    {
+      answerKey: true,
+      measure: { itemHeight: (item: PageItem) => (item.kind === 'question' ? 600 : 40) },
+    },
+  ),
+
+  // A table under a picture in a Multipart question's Part (a), on an Exam
+  // Board page of A4, its notes cell wrapping over many lines. Measured at
+  // nothing, so the plan puts it all on the first page of questions, where
+  // it fits with room to spare: the PDF must draw it there, a wrapped cell's
+  // lines each taking one line of the page and no more.
+  fixture(
+    'a wrapping table under a picture in an exam board part',
+    {
+      title: 'Rolling Ball',
+      paperStyle: 'exam-board',
+      questions: [
+        multipart(
+          'eb-tb',
+          [paragraph(text('This question is about motion.'))],
+          [
+            {
+              ...part(
+                'eb-tb-a',
+                [
+                  paragraph(text('A class rolls a ball down a ramp and times it.')),
+                  {
+                    type: 'image-block',
+                    attrs: { src: `/local-images/${'f'.repeat(64)}`, caption: 'Fig. 1.1' },
+                  },
+                  paragraph(text('Complete the table.', mark('strong'))),
+                  {
+                    type: 'table',
+                    content: [
+                      {
+                        type: 'table_header_row',
+                        content: [
+                          { type: 'table_header', content: [paragraph(text('Height of ramp / cm'))] },
+                          { type: 'table_header', content: [paragraph(text('Time / s'))] },
+                          { type: 'table_header', content: [paragraph(text('Notes'))] },
+                        ],
+                      },
+                      {
+                        type: 'table_row',
+                        content: [
+                          { type: 'table_cell', content: [paragraph()] },
+                          { type: 'table_cell', content: [paragraph(text('2'))] },
+                          {
+                            type: 'table_cell',
+                            content: [paragraph(text(
+                              'Record each time to the nearest tenth of a second. '.repeat(8).trim(),
+                            ))],
+                          },
+                        ],
+                      },
+                      {
+                        type: 'table_row',
+                        content: [
+                          { type: 'table_cell', content: [paragraph(text('20'))] },
+                          { type: 'table_cell', content: [paragraph()] },
+                          { type: 'table_cell', content: [paragraph()] },
+                        ],
+                      },
+                      {
+                        type: 'table_row',
+                        content: [
+                          { type: 'table_cell', content: [paragraph()] },
+                          { type: 'table_cell', content: [paragraph()] },
+                          { type: 'table_cell', content: [paragraph(text('Repeat'))] },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+                suggestedAnswer(),
+              ),
+              attrs: { id: 'eb-tb-a', columns: DEFAULT_COLUMNS, points: 3 },
+            },
+          ],
+        ),
+      ],
+    },
+    arrangement(['eb-tb']),
+    { images: true },
+  ),
+
+  // A Multipart question with no stem of its own — only an empty paragraph —
+  // opens with Part (a) on its number's line, and a Part with no lead-in
+  // opens with Subpart (i) on its letter's line: `1 (a) Fig. 1.1 shows…`,
+  // `(b) (i) Name…`, as structured papers print them.
+  fixture(
+    'a multipart with no stem, and a part with no lead-in',
+    {
+      title: 'Ramps',
+      paperStyle: 'exam-board',
+      questions: [
+        multipart(
+          'ns',
+          [paragraph()],
+          [
+            part(
+              'ns-a',
+              [paragraph(text('Fig. 1.1 shows a ball rolling down a ramp. State the energy it gains.'))],
+              suggestedAnswer(paragraph(text('Kinetic energy.'))),
+            ),
+            partWithSubparts(
+              'ns-b',
+              [paragraph()],
+              [
+                subpart(
+                  'ns-b-i',
+                  [paragraph(text('Name the force that slows the ball.'))],
+                  suggestedAnswer(paragraph(text('Friction.'))),
+                ),
+                subpart(
+                  'ns-b-ii',
+                  [paragraph(text('Which unit is energy measured in?'))],
+                  choicesOf(
+                    choice('ns-b-ii-a', true, paragraph(text('Joule'))),
+                    choice('ns-b-ii-b', false, paragraph(text('Newton'))),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ],
+    },
+    arrangement(['ns']),
+    { answerKey: true },
+  ),
+
+  // A Part whose stem — text, three pictures with their captions, two tables
+  // — and ruled room are taller than an A4 page (ADR-0048). It breaks between
+  // its stem's blocks: its letter with the first, each caption with its
+  // picture, the room and its Points with the last, and Part (b) after it.
+  // Measured generously, block by block, so the PDF, which sets the same
+  // content by its own metrics, keeps every page inside its margins.
+  fixture(
+    'a part taller than a page, broken between its stem’s blocks',
+    {
+      title: 'Pendulums',
+      paperStyle: 'exam-board',
+      questions: [
+        multipart(
+          'tp',
+          [paragraph(text('This question is about a pendulum.'))],
+          [
+            {
+              ...part(
+                'tp-a',
+                [
+                  paragraph(text('A pendulum is set swinging from three heights.')),
+                  ...[1, 2, 3].flatMap((figure) => [
+                    { type: 'image-block', attrs: { src: `/local-images/${String(figure).repeat(64)}`, caption: '' } },
+                    paragraph(text(`Fig. 1.${figure}`)),
+                  ]),
+                  ...['Swings', 'Seconds'].map((heading) => ({
+                    type: 'table',
+                    content: ['Height', '10 cm', '20 cm', '30 cm'].map((cell) => ({
+                      type: 'table_row',
+                      content: [
+                        { type: 'table_cell', content: [paragraph(text(cell))] },
+                        { type: 'table_cell', content: [paragraph(text(heading))] },
+                      ],
+                    })),
+                  })),
+                  paragraph(text('Describe how the height changes the time for one swing.')),
+                ],
+                suggestedAnswer(),
+              ),
+              attrs: { id: 'tp-a', columns: DEFAULT_COLUMNS, points: 4 },
+            },
+            part('tp-b', [paragraph(text('Name the force that slows the pendulum.'))], suggestedAnswer()),
+          ],
+        ),
+      ],
+    },
+    arrangement(['tp']),
+    {
+      images: true,
+      measure: {
+        itemHeight: (item: PageItem) => {
+          if (item.kind !== 'question') return 40
+          const blocks = (stem: readonly ProseMirrorJSON[]) =>
+            stem.reduce((sum, block) =>
+              sum + (block.type === 'image-block' ? 260 : block.type === 'table' ? 160 : 40), 0)
+          return blocks(item.stem) + (item.parts ?? []).reduce(
+            (sum, piece) => sum + 30 + blocks(piece.stem) + (piece.workSpace?.height ?? 0) + (piece.pointsAfter ? 30 : 0),
+            0,
+          )
+        },
+      },
+    },
+  ),
+
+  // Each Paper Style over every Question Type, so every adapter prints its
   // blanks, its letters, its Word Bank and its default Work Space the way the
   // plan resolved them. Two questions to a page, so the PDF has room to draw
-  // them; Condensed's measure fits every answer four across.
-  ...(['classic', 'condensed'] as const).map((questionStyle) =>
+  // them; Condensed's measure fits every answer four across. Unpointed, so
+  // Exam Board prints no paper total beneath the title.
+  ...(['classic', 'condensed', 'exam-board'] as const).map((paperStyle) =>
     fixture(
-      `every question type in the ${questionStyle} question style`,
-      { ...QUESTION_STYLE_EXAM, title: `${questionStyle} style`, questionStyle },
+      `every question type in the ${paperStyle} paper style`,
+      { ...PAPER_STYLE_EXAM, title: `${paperStyle} style`, paperStyle },
       arrangement(['ys-mc', 'ys-tf', 'ys-mx', 'ys-sa', 'ys-mp']),
       {
         answerKey: true,
         measure: {
           itemHeight: (item: PageItem) => (item.kind === 'question' ? 330 : 40),
-          ...(questionStyle === 'condensed' ? { choiceWidth: () => 80 } : {}),
+          ...(paperStyle === 'condensed' ? { choiceWidth: () => 80 } : {}),
         },
       },
     ),

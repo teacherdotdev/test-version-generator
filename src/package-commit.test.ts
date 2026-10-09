@@ -226,14 +226,14 @@ describe('committing an import', () => {
       .toEqual([[q1!.id, q3!.id], [q5!.id], [q2!.id], []])
   })
 
-  test('an Exam Record 0.4.0’s Question Style is stored, with a Work Space of none set against it', async () => {
+  test('an Exam Record 0.4.0’s Paper Style is stored, with a Work Space of none set against it', async () => {
     const { banks, exams } = services()
     const proposal = await withExamRecord({
       format: 'test-parrot/exam',
       formatVersion: '0.4.0',
       name: 'Styled',
       sections: [{ title: 'Short Answer', instructions: '' }],
-      questionStyle: 'classic',
+      paperStyle: 'classic',
       positions: [
         { question: { bank: 'cells', question: 'q5' }, section: 0, workSpace: { height: 0, style: 'blank', fill: false } },
       ],
@@ -241,7 +241,7 @@ describe('committing an import', () => {
     const result = await banks.commitImport(proposal, initialSelection(proposal))
     const { working } = await examState(exams, result.createdExamIds[0]!)
     const copy = working!.workingCopy
-    expect(copy.questionStyle).toBe('classic')
+    expect(copy.paperStyle).toBe('classic')
     const { exam } = selectedExam(working!.questionBank, copy)
     // The teacher's "None" wins over the three lines Classic would rule.
     expect(workSpaceOf(exam, copy.questionIds[0]!)).toEqual({ height: 0, style: 'blank', fill: false })
@@ -254,13 +254,13 @@ describe('committing an import', () => {
       formatVersion: '0.3.0',
       name: 'Plain',
       sections: [{ title: 'Short Answer', instructions: '' }],
-      questionStyle: 'classic',
+      paperStyle: 'classic',
       positions: [{ question: { bank: 'cells', question: 'q5' }, section: 0 }],
     })
     const result = await banks.commitImport(proposal, initialSelection(proposal))
     const { working } = await examState(exams, result.createdExamIds[0]!)
     // An unknown member in 0.3.0, and ignored.
-    expect(working!.workingCopy).not.toHaveProperty('questionStyle')
+    expect(working!.workingCopy).not.toHaveProperty('paperStyle')
   })
 
   test('an Exam Record 0.2.0 still imports with per-type wording, its Sections derived', async () => {

@@ -21,12 +21,15 @@ import {
   AnswerKeyEntry,
   AnswerKeyHeading,
   AnswerKeySection,
+  PaperTotalContent,
+  PageFooterContent,
   PageHeaderContent,
   PageItemMeasureView,
   QuestionContent,
   SectionHeadingContent,
   WorkSpaceView,
   type IdentityLineEditor,
+  type RenderPrintedPoints,
 } from './page-item-view'
 import { headerLineOf, type HeaderLine } from './page-header'
 import { pageContentStyle } from './export-typography'
@@ -34,6 +37,7 @@ import { pageGeometry } from './page-geometry'
 import {
   US_LETTER,
   maxWorkSpaceHeight,
+  runningHeadHeight,
   numberLabelOf,
   planExport,
   rowsOfPlanned,
@@ -45,9 +49,9 @@ import {
   type PageItem,
   type QuestionItem,
   type SectionHeadingItem,
-  type PlannedPart,
   type PlannedQuestion,
   type PlannedWorkSpace,
+  answeringPartsIn,
   wordBankLayoutOf,
 } from './export-plan'
 import {
@@ -74,11 +78,20 @@ import {
 import type { Selection } from './use-selection'
 import { selectAllPaneProps, useSelectAll } from './use-select-all'
 import { answerVisibilityNote } from './hidden-answers'
+import { pointsLabel, parsePointsInput } from './points'
 import { shownIncorrectChoices, shownIncorrectMenuOf, type ShownIncorrectMenu } from './question-menu'
 import type { SectionHeadingChange } from './section-headings'
 import { sectionHeadingStyles } from './export-typography'
 import type { WorkspaceDrag } from './use-workspace-drag'
 import { dropStateOf, type QuestionDropState } from './workspace-drag'
+import {
+  dragged,
+  NO_WORK_SPACE_PREVIEWS,
+  released,
+  settled,
+  shownHeight,
+  type SheetState,
+} from './work-space-preview'
 import {
   AlignJustify,
   ArrowDown,
@@ -152,6 +165,10 @@ const DEFAULT_WORK_SPACE_HEIGHT = 4 * WORK_SPACE_LINE_PITCH
 
 export type SetWorkSpace = (questionIds: readonly string[], patch: Partial<WorkSpace>) => void
 
+/** Sets the Points of a question — `partId` `null` — or of one of a Multipart
+ *  question's Parts or Subparts; `null` points clears them. A bank edit. */
+export type SetPoints = (questionId: string, partId: string | null, points: number | null) => void
+
 /** The Answer columns submenu, for a Multiple Choice question or Part. */
 function columnsMenu(
   label: string,
@@ -176,8 +193,8 @@ function columnsMenu(
 
 // Where a Matching question's Word Bank prints on this Exam, offered as Multiple
 // Choice answer columns are: always one of the two, which the question took
-// from the Question Style when it arrived and which a change of style sets
-// again (ADR-0041).
+// from the Paper Style when it arrived. Choosing one here is the teacher's,
+// and a change of style then leaves it (ADR-0044).
 const WORD_BANK_MENU_OPTIONS: readonly { label: string; value: WordBankLayout; icon: ReactNode }[] = [
   { label: 'Beside items', value: 'beside', icon: <Columns2 /> },
   { label: 'Above items', value: 'above', icon: <Rows2 /> },
@@ -404,11 +421,14 @@ function questionMenuItems({
   if (question.type === 'matching' && onSetWordBankLayout) {
     answerFormat.push(wordBankMenu(wordBankLayout, (next) => onSetWordBankLayout(actedOnIds, next)))
   }
-  for (const part of question.parts ?? []) {
+  // A Part that holds Subparts answers nothing itself: each of its Subparts
+  // is laid out, and leaves room, under its own id and name.
+  const answering = answeringPartsIn(question.parts ?? [])
+  for (const { name, part } of answering) {
     if (part.type !== 'multiple-choice') continue
     answerFormat.push(
       columnsMenu(
-        `Part ${part.letter} · Answer columns`,
+        `Part ${name} · Answer columns`,
         part.grid?.columns ?? DEFAULT_COLUMNS,
         (next) => onSetColumns([part.id], next),
       ),
@@ -419,13 +439,13 @@ function questionMenuItems({
   }
   // A Short Answer Part leaves room under its own id, as a Short Answer
   // question does under its.
-  for (const part of question.parts ?? []) {
+  for (const { name, part } of answering) {
     if (part.type === 'multiple-choice') continue
     items.push(
       { kind: 'separator' },
       ...workSpaceMenu(
-        `Part ${part.letter} · Work space`,
-        `Part ${part.letter} · Fill rest of page`,
+        `Part ${name} · Work space`,
+        `Part ${name} · Fill rest of page`,
         workSpaceOfPart(part.id),
         [part.id],
         onSetWorkSpace,
@@ -539,8 +559,10 @@ function QuestionHandles({
 // hidden from print with the rest of the chrome.
 //
 // A drag previews locally and commits once, on release — one undo step per
-// gesture, and one repagination rather than one per pixel. Heights snap to
-// whole rows, laid out at the Question Style's pitch — closer under Condensed —
+// gesture, and one repagination rather than one per pixel. The sheet keeps
+// showing the released height until it has repaginated with it
+// (`WorkSpaceSizing`), so a release never flashes the old one. Heights snap to
+// whole rows, laid out at the Paper Style's pitch — closer under Condensed —
 // so blank and lined space always agree about size, and what is committed is
 // the stored height of those rows (`storedWorkSpaceHeight`). Dragging
 // a space that fills its page takes over from the fill: the teacher is now
@@ -553,6 +575,7 @@ function WorkSpaceHandle({
   space,
   max,
   onPreview,
+  onRelease,
   onCommit,
 }: {
   label: string
@@ -561,8 +584,10 @@ function WorkSpaceHandle({
   /** The most room a drag may open on the page: less on an Exam whose
    *  margins leave a shorter page (`maxWorkSpaceHeight`). */
   max: number
-  /** The height on the page a drag is showing, or `null` once it ends. */
-  onPreview: (height: number | null) => void
+  /** The height on the page a drag is showing. */
+  onPreview: (height: number) => void
+  /** The drag has ended, `committed` when it stored a new height. */
+  onRelease: (committed: boolean) => void
   /** The stored height the teacher settled on. */
   onCommit: (height: number) => void
 }) {
@@ -570,10 +595,13 @@ function WorkSpaceHandle({
   const rows = rowsOfPlanned(space)
   const gesture = useRef<{ id: number; startY: number; next: number } | null>(null)
   const lines = rowsIn(height, rows)
-  // Commits a whole count of rows, unless it is the count already showing.
-  const settle = (stored: number) => {
+  // Commits a whole count of rows, unless it is the count already showing,
+  // and says whether it did.
+  const settle = (stored: number): boolean => {
     const snapped = storedWorkSpaceHeight(laidWorkSpaceHeight(stored, rows), rows, max)
-    if (snapped / WORK_SPACE_LINE_PITCH !== lines || space.fill) onCommit(snapped)
+    if (snapped / WORK_SPACE_LINE_PITCH === lines && !space.fill) return false
+    onCommit(snapped)
+    return true
   }
   return (
     <div
@@ -619,13 +647,12 @@ function WorkSpaceHandle({
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
           event.currentTarget.releasePointerCapture(event.pointerId)
         }
-        settle(drag.next)
-        onPreview(null)
+        onRelease(settle(drag.next))
       }}
       onPointerCancel={(event) => {
         if (gesture.current?.id !== event.pointerId) return
         gesture.current = null
-        onPreview(null)
+        onRelease(false)
       }}
       onKeyDown={(event) => {
         const next =
@@ -650,7 +677,112 @@ function WorkSpaceHandle({
 // selectable, editable and droppable. A continued piece is chrome-free — its
 // handles, and everything they do, belong to the piece that carries the
 // question's number.
-function QuestionView({
+// A printed `[n]` on the sheet, under a Paper Style that prints Points
+// (ADR-0045): the very text the page prints, made the control that changes
+// the Points it shows. Points never show on the sheet otherwise — like
+// Question Metadata, only where the style prints them — and the Export
+// Preview draws the plan without this. Clicking turns the `[n]` into a field
+// of the same height, so the page measured with the plain text still fits: a
+// whole number sets the Points, an empty field clears them, and anything else
+// changes nothing. Points belong to the Question, so what is typed here edits
+// the Question in its bank (ADR-0042).
+function EditablePoints({
+  label,
+  points,
+  text,
+  onRule = false,
+  onSet,
+}: {
+  /** What it is the Points of, for a screen reader: "question 3", "question 3 part b (ii)". */
+  label: string
+  points: number
+  /** The `[n]` as the style prints it. */
+  text: string
+  /** Set on the last rule of a Work Space, inside its row, rather than on a
+   *  line of its own. */
+  onRule?: boolean
+  onSet: (points: number | null) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [typed, setTyped] = useState('')
+  const finish = (keep: boolean) => {
+    setEditing(false)
+    if (!keep) return
+    const next = parsePointsInput(typed)
+    if (next !== undefined && next !== points) onSet(next)
+  }
+  // Nothing in or on the field is the question's own gesture: no selecting,
+  // dragging or opening the editor from it.
+  const stop = {
+    onClick: (event: { stopPropagation: () => void }) => event.stopPropagation(),
+    onDoubleClick: (event: { stopPropagation: () => void }) => event.stopPropagation(),
+    onPointerDown: (event: { stopPropagation: () => void }) => event.stopPropagation(),
+    onContextMenu: (event: { stopPropagation: () => void }) => event.stopPropagation(),
+  }
+  const Line = onRule ? 'span' : 'p'
+  return (
+    <Line className={onRule ? undefined : 'points-after'}>
+      {editing ? (
+        <input
+          className="points-after-input"
+          type="text"
+          inputMode="numeric"
+          aria-label={`Points for ${label}`}
+          aria-invalid={parsePointsInput(typed) === undefined ? true : undefined}
+          size={3}
+          autoFocus
+          value={typed}
+          {...stop}
+          onChange={(event) => setTyped(event.target.value)}
+          onBlur={() => finish(true)}
+          onKeyDown={(event) => {
+            event.stopPropagation()
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              event.currentTarget.blur()
+            } else if (event.key === 'Escape') {
+              event.preventDefault()
+              finish(false)
+            }
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          className="points-after-button"
+          aria-label={`Points for ${label}: ${pointsLabel(points)}`}
+          title="Change points"
+          {...stop}
+          onClick={(event) => {
+            event.stopPropagation()
+            setTyped(String(points))
+            setEditing(true)
+          }}
+        >
+          {text}
+        </button>
+      )}
+    </Line>
+  )
+}
+
+/** The sheet's Work Space drags as a question on it sees them, by the position
+ *  each sizes: the question's id, or a Part's or Subpart's. The sheet holds
+ *  them, not the question, so a question drawn afresh — a new page, a new
+ *  piece — keeps a released drag's height until the sheet has repaginated
+ *  with it (`work-space-preview.ts`). */
+export type WorkSpaceSizing = {
+  /** The height to draw over the planned space, or `null` for the plan's own. */
+  shownHeight: (positionId: string, planned: PlannedWorkSpace) => number | null
+  /** Whether the pointer is down on any of these positions' handles. */
+  isSizing: (positionIds: readonly string[]) => boolean
+  onPreview: (positionId: string, height: number) => void
+  /** The drag has ended, `committed` when it stored a new height. */
+  onRelease: (positionId: string, committed: boolean) => void
+}
+
+/** A question on the sheet, with its chrome. Exported for its tests. */
+export function QuestionView({
   item,
   sectionId,
   selected,
@@ -659,7 +791,9 @@ function QuestionView({
   onEdit,
   onOpenMenu,
   onSetWorkSpace,
+  onSetPoints,
   maxWorkSpace,
+  workSpaceSizing,
   dragging,
   dropped,
   dropState,
@@ -672,7 +806,11 @@ function QuestionView({
   /** The Question Section this question is in, which a gesture reads. */
   sectionId: string
   onSetWorkSpace: SetWorkSpace
+  /** Present in the editor: sets Points from the sheet. */
+  onSetPoints?: SetPoints
   maxWorkSpace: number
+  /** The sheet's Work Space drags, which it holds rather than the question. */
+  workSpaceSizing: WorkSpaceSizing
   selected: boolean
   orderedIds: readonly string[]
   selection: Selection
@@ -698,46 +836,66 @@ function QuestionView({
   } | null>(null)
   const suppressClick = useRef(false)
   const question = item.question
-  // The height a work-space drag is showing before it commits, or `null`.
-  const [previewHeight, setPreviewHeight] = useState<number | null>(null)
-  // The same for one of a Multipart question's Short Answer Parts, by the Part's id.
-  const [partPreview, setPartPreview] = useState<{ partId: string; height: number } | null>(null)
-  const previewed = (space: PlannedWorkSpace, height: number): PlannedWorkSpace => ({
-    ...space,
-    height,
-    lines: space.style === 'lines' ? rowsIn(height, rowsOfPlanned(space)) : 0,
-    fill: false,
+  // A work space drawn at the height its drag is showing, when the sheet holds
+  // one for it (`workSpaceSizing`), and otherwise as the plan draws it.
+  const previewed = (positionId: string, space: PlannedWorkSpace): PlannedWorkSpace => {
+    const height = workSpaceSizing.shownHeight(positionId, space)
+    return height === null
+      ? space
+      : { ...space, height, lines: space.style === 'lines' ? rowsIn(height, rowsOfPlanned(space)) : 0, fill: false }
+  }
+  const previewedPart = <Part extends { id: string; workSpace: PlannedWorkSpace | null }>(part: Part): Part => {
+    const space = part.workSpace && previewed(part.id, part.workSpace)
+    return space === part.workSpace ? part : { ...part, workSpace: space }
+  }
+  const questionSpace = item.workSpace && previewed(question.id, item.workSpace)
+  const parts = item.parts && item.parts.map((part) => {
+    const subparts = part.subparts.map(previewedPart)
+    const own = previewedPart(part)
+    return own === part && subparts.every((subpart, index) => subpart === part.subparts[index])
+      ? part
+      : { ...own, subparts }
   })
-  const withQuestionPreview: QuestionItem =
-    previewHeight === null || !item.workSpace
-      ? item
-      : { ...item, workSpace: previewed(item.workSpace, previewHeight) }
   const shown: QuestionItem =
-    partPreview === null || !withQuestionPreview.parts
-      ? withQuestionPreview
-      : {
-          ...withQuestionPreview,
-          parts: withQuestionPreview.parts.map((part) =>
-            part.id === partPreview.partId && part.workSpace
-              ? { ...part, workSpace: previewed(part.workSpace, partPreview.height) }
-              : part,
-          ),
-        }
-  // A Short Answer Part's work space, with the bar that sizes it in the gap
-  // below the Part, exactly as a Short Answer question's bar sits below it.
-  const renderPartWorkSpace = (part: PlannedPart, space: PlannedWorkSpace) => (
-    <div className="part-work-space">
-      <WorkSpaceView space={space} />
-      <WorkSpaceHandle
-        label={`Work space for question ${numberLabelOf(question)} part ${part.letter}`}
-        space={item.parts?.find(({ id }) => id === part.id)?.workSpace ?? space}
-        max={maxWorkSpace}
-        onPreview={(height) =>
-          setPartPreview(height === null ? null : { partId: part.id, height })}
-        onCommit={(height) => onSetWorkSpace([part.id], { height, fill: false })}
-      />
-    </div>
-  )
+    questionSpace === item.workSpace && (parts ?? []).every((part, index) => part === item.parts![index])
+      ? item
+      : { ...item, workSpace: questionSpace, parts }
+  // A Short Answer Part's or Subpart's work space, with the bar that sizes it
+  // in the gap below it, exactly as a Short Answer question's bar sits below it.
+  const answeringHere = answeringPartsIn(item.parts ?? [])
+  const renderPartWorkSpace = (partId: string, space: PlannedWorkSpace, points?: ReactNode) => {
+    const here = answeringHere.find(({ part }) => part.id === partId)
+    return (
+      <div className="part-work-space">
+        <WorkSpaceView space={space} points={points} />
+        <WorkSpaceHandle
+          label={`Work space for question ${numberLabelOf(question)} part ${here?.name ?? ''}`}
+          space={here?.part.workSpace ?? space}
+          max={maxWorkSpace}
+          onPreview={(height) => workSpaceSizing.onPreview(partId, height)}
+          onRelease={(committed) => workSpaceSizing.onRelease(partId, committed)}
+          onCommit={(height) => onSetWorkSpace([partId], { height, fill: false })}
+        />
+      </div>
+    )
+  }
+
+  // The `[n]` the Paper Style prints after the question or one of its Parts
+  // or Subparts, as the control that changes it.
+  const renderPoints: RenderPrintedPoints | undefined = onSetPoints
+    ? ({ partId, points, text, onRule }) => {
+        const here = partId === null ? undefined : answeringHere.find(({ part }) => part.id === partId)
+        return (
+          <EditablePoints
+            label={`question ${numberLabelOf(question)}${here ? ` part ${here.name}` : ''}`}
+            points={points}
+            text={text}
+            onRule={onRule}
+            onSet={(next) => onSetPoints(question.id, partId, next)}
+          />
+        )
+      }
+    : undefined
 
   const releasePointer = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -749,7 +907,10 @@ function QuestionView({
   if (selected) classes.push('exam-question--selected')
   if (dragging) classes.push('exam-question--dragging')
   if (dropped) classes.push('exam-question--dropped')
-  if (previewHeight !== null || partPreview !== null) classes.push('exam-question--sizing')
+  // Only while the pointer is down: a released drag's height may still show.
+  if (workSpaceSizing.isSizing([question.id, ...answeringHere.map(({ part }) => part.id)])) {
+    classes.push('exam-question--sizing')
+  }
 
   return (
     <section
@@ -871,6 +1032,7 @@ function QuestionView({
         item={shown}
         showCorrectness
         renderPartWorkSpace={renderPartWorkSpace}
+        renderPoints={renderPoints}
       />
       {/* Editing chrome, like the work space bar: placed in the gap below
           the answers, so it takes none of the height the page measured. */}
@@ -884,7 +1046,8 @@ function QuestionView({
           label={`Work space for question ${numberLabelOf(question)}`}
           space={item.workSpace}
           max={maxWorkSpace}
-          onPreview={setPreviewHeight}
+          onPreview={(height) => workSpaceSizing.onPreview(question.id, height)}
+          onRelease={(committed) => workSpaceSizing.onRelease(question.id, committed)}
           onCommit={(height) => onSetWorkSpace([question.id], { height, fill: false })}
         />
       )}
@@ -1219,7 +1382,9 @@ function PageItemView({
   onEdit,
   onOpenMenu,
   onSetWorkSpace,
+  onSetPoints,
   maxWorkSpace,
+  workSpaceSizing,
   draggedQuestionIds,
   droppedQuestionIds,
   dropState,
@@ -1253,8 +1418,10 @@ function PageItemView({
   onEdit: (questionId: string) => void
   onOpenMenu: (questionId: string, point: MenuPoint, side?: MenuSide) => void
   onSetWorkSpace: SetWorkSpace
+  onSetPoints?: SetPoints
   /** The most room a work space may be dragged to on this sheet. */
   maxWorkSpace: number
+  workSpaceSizing: WorkSpaceSizing
   draggedQuestionIds: ReadonlySet<string>
   droppedQuestionIds: ReadonlySet<string>
   dropState: (item: QuestionItem) => QuestionDropState
@@ -1268,6 +1435,8 @@ function PageItemView({
   onDragEnd: () => void
 }) {
   switch (item.kind) {
+    case 'paper-total':
+      return <PaperTotalContent item={item} />
     case 'section-heading':
       return onSectionHeadingChange ? (
         <EditableSectionHeading
@@ -1295,7 +1464,9 @@ function PageItemView({
           onEdit={onEdit}
           onOpenMenu={onOpenMenu}
           onSetWorkSpace={onSetWorkSpace}
+          onSetPoints={onSetPoints}
           maxWorkSpace={maxWorkSpace}
+          workSpaceSizing={workSpaceSizing}
           dragging={draggedQuestionIds.has(item.question.id)}
           dropped={droppedQuestionIds.has(item.question.id) && item.numbered}
           dropState={dropState(item)}
@@ -1309,7 +1480,7 @@ function PageItemView({
       )
     }
     case 'answer-key-heading':
-      return <AnswerKeyHeading />
+      return <AnswerKeyHeading item={item} />
     case 'answer-key-section':
       return <AnswerKeySection item={item} />
     case 'answer-key-entry':
@@ -1323,6 +1494,8 @@ function PageItemView({
 
 function keyOf(item: PageItem): string {
   switch (item.kind) {
+    case 'paper-total':
+      return 'paper-total'
     case 'section-heading':
       return `heading-${item.sectionId}`
     case 'question':
@@ -1375,16 +1548,22 @@ const REPAGINATE_DEBOUNCE_MS = 150
 // bytes have not arrived measures as nothing. Each gets one re-measurement per
 // edit — enough to settle, and bounded, so a measurement can never chase its
 // own result round in a loop.
+//
+// The plan comes with the Exam it was planned from, which lags the Exam being
+// edited while a pass waits: how the sheet tells it has caught up with an edit.
+type PaginatedExam = { plan: LayoutPlan; plannedFrom: Exam }
+
 function usePaginatedExam(
   exam: Exam,
   arrangement: Arrangement,
   workspace: RefObject<HTMLElement | null>,
   selection: ExportContentSelection,
-): LayoutPlan {
+): PaginatedExam {
   const { test, answerKey } = selection
-  const [plan, setPlan] = useState<LayoutPlan>(() =>
-    planExport({ exam, arrangement, selection, measure: unmeasured }),
-  )
+  const [paginated, setPaginated] = useState<PaginatedExam>(() => ({
+    plan: planExport({ exam, arrangement, selection, measure: unmeasured }),
+    plannedFrom: exam,
+  }))
   const measured = useRef(false)
   // What the last pagination was for, so this one can tell an edit from a
   // reorder. A `Arrangement` carries an ordering and nothing else, so a change to
@@ -1398,14 +1577,15 @@ function usePaginatedExam(
   useLayoutEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined
     let live = true
-    const repaginate = () => setPlan(
-      planExport({
+    const repaginate = () => setPaginated({
+      plan: planExport({
         exam,
         arrangement,
         selection: { test, answerKey },
         measure: domMeasure,
       }),
-    )
+      plannedFrom: exam,
+    })
     const schedule = () => {
       if (!live) return
       clearTimeout(timer)
@@ -1494,7 +1674,26 @@ function usePaginatedExam(
     }
   }, [exam, workspace])
 
-  return plan
+  return paginated
+}
+
+// The sheet's Work Space drags (`WorkSpaceSizing`), held here, above the
+// questions, by the position each sizes. A release is held against the sheet
+// as it stood when the pointer came up, and lets go once the sheet has caught
+// up with it (`work-space-preview.ts`).
+function useWorkSpaceSizing(exam: Exam, plannedFrom: Exam): WorkSpaceSizing {
+  const [previews, setPreviews] = useState(NO_WORK_SPACE_PREVIEWS)
+  const sheet: SheetState = { exam, plannedFrom }
+  useEffect(() => {
+    setPreviews((current) => settled(current, { exam, plannedFrom }))
+  }, [exam, plannedFrom])
+  return {
+    shownHeight: (positionId, planned) => shownHeight(previews, positionId, planned, sheet),
+    isSizing: (positionIds) => positionIds.some((positionId) => previews.get(positionId)?.released === null),
+    onPreview: (positionId, height) => setPreviews((current) => dragged(current, positionId, height)),
+    onRelease: (positionId, committed) =>
+      setPreviews((current) => released(current, positionId, committed, sheet)),
+  }
 }
 
 // The print Export Adapter's own document.
@@ -1511,18 +1710,22 @@ export function ExportPreview({ plan }: { plan: LayoutPlan }) {
   return (
     <main className="exam-workspace" style={pageGeometry(plan.pageSize)}>
       {plan.pages.map((page) => (
-        <article className="exam-page" key={`${page.stream}-${page.header}-${page.number}`}>
+        <article
+          className="exam-page"
+          key={`${page.stream}-${page.header}-${page.number}`}
+          data-paper={plan.pageSize.paper}
+        >
           <PageHeaderContent header={page.header} furniture={page.furniture} />
           <div
             className="page-content"
             style={pageContentStyle(plan.textSize)}
-            data-question-style={plan.questionStyle}
+            data-paper-style={plan.paperStyle}
           >
             {page.items.map((item) => (
               <PageItemMeasureView key={keyOf(item)} item={item} />
             ))}
           </div>
-          <footer className="page-footer">{page.furniture.pageNumber}</footer>
+          <PageFooterContent furniture={page.furniture} />
         </article>
       ))}
     </main>
@@ -1545,6 +1748,7 @@ export function ExamPage({
   onSetColumns,
   onSetWordBankLayout,
   onSetWorkSpace,
+  onSetPoints,
   onTitleChange,
   onSectionHeadingChange,
   onMoveSection,
@@ -1582,6 +1786,9 @@ export function ExamPage({
   onSetWordBankLayout?: (questionIds: readonly string[], layout: WordBankLayout) => void
   /** Changes the room left for work below Short Answer questions. */
   onSetWorkSpace: SetWorkSpace
+  /** Sets Points from the sheet, editing the Question in its bank. Absent
+   *  offers no Points controls. */
+  onSetPoints?: SetPoints
   /** Renames the Exam from its own title line. See `PageHeaderContent`. */
   onTitleChange?: (title: string) => void
   /** Rewords a section heading from where it prints. See `EditableSectionHeading`. */
@@ -1606,7 +1813,8 @@ export function ExamPage({
 }) {
   const workspace = useRef<HTMLElement | null>(null)
   const blank = exam.questions.length === 0
-  const plan = usePaginatedExam(exam, arrangement, workspace, contentSelection)
+  const { plan, plannedFrom } = usePaginatedExam(exam, arrangement, workspace, contentSelection)
+  const workSpaceSizing = useWorkSpaceSizing(exam, plannedFrom)
   const pages = plan.pages
   const orderedIds = orderedQuestionIds(pages)
   const columnSettings = columnSettingsOf(exam)
@@ -1985,6 +2193,7 @@ export function ExamPage({
         <article
           className="exam-page"
           key={`${page.header}-${page.number}`}
+          data-paper={plan.pageSize.paper}
           onClick={clearOnBackground}
         >
           {sectionBands
@@ -2038,7 +2247,7 @@ export function ExamPage({
           <div
             className="page-content"
             style={pageContentStyle(plan.textSize)}
-            data-question-style={plan.questionStyle}
+            data-paper-style={plan.paperStyle}
             onClick={clearOnBackground}
           >
             {/* An exam with nothing in it yet offers the first question where
@@ -2071,7 +2280,9 @@ export function ExamPage({
                 onEdit={onEdit}
                 onOpenMenu={openMenu}
                 onSetWorkSpace={onSetWorkSpace}
-                maxWorkSpace={maxWorkSpaceHeight(plan.pageSize)}
+                onSetPoints={onSetPoints}
+                maxWorkSpace={maxWorkSpaceHeight(plan.pageSize, runningHeadHeight(plan.paperStyle))}
+                workSpaceSizing={workSpaceSizing}
                 draggedQuestionIds={draggedQuestionIds}
                 droppedQuestionIds={droppedQuestionIds}
                 dropState={questionDropState}
@@ -2082,7 +2293,7 @@ export function ExamPage({
               />
             ))}
           </div>
-          <footer className="page-footer">{page.furniture.pageNumber}</footer>
+          <PageFooterContent furniture={page.furniture} />
         </article>
       ))}
 

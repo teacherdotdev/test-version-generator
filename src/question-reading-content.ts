@@ -9,7 +9,9 @@ import {
   topicsOf,
   type Difficulty,
   type Question,
+  type Subpart,
 } from './exam'
+import { subpartLabelAt } from './export-plan'
 import { bankLetter } from './matching'
 import { stemNodesOf, type ProseMirrorJSON } from './question-doc'
 
@@ -28,19 +30,49 @@ export type QuestionReadingContent = {
   }
   suggestedAnswer?: ProseMirrorJSON[]
   /** A Multipart question's Parts, lettered as the test prints them, each with its own
-   *  answers; the shared material is `stem`. */
-  parts?: {
-    id: string
-    letter: string
-    typeLabel: string
-    stem: ProseMirrorJSON[]
-    choices?: { id: string; content: ProseMirrorJSON[]; correct: boolean; locked?: boolean }[]
-    suggestedAnswer?: ProseMirrorJSON[]
-  }[]
+   *  answers or Subparts; the shared material is `stem`. */
+  parts?: QuestionReadingPart[]
 }
+
+/** A Part as the reading draws it: lettered `a`, `b`, … — or, for a Subpart,
+ *  numbered `i`, `ii`, … — with its own answers, or a Part's lead-in with the
+ *  Subparts it holds. */
+export type QuestionReadingPart = {
+  id: string
+  letter: string
+  typeLabel: string
+  stem: ProseMirrorJSON[]
+  choices?: { id: string; content: ProseMirrorJSON[]; correct: boolean; locked?: boolean }[]
+  suggestedAnswer?: ProseMirrorJSON[]
+  subparts?: QuestionReadingPart[]
+}
+
+/** How a Part that holds Subparts is named where a reading names its type. */
+export const SUBPARTS_LABEL = 'Subparts'
 
 const childNodes = (node: ProseMirrorJSON): ProseMirrorJSON[] =>
   Array.isArray(node.content) ? (node.content as ProseMirrorJSON[]) : []
+
+/** A Part that answers, or a Subpart, as the reading draws it. */
+function readingOfPart(part: Subpart, letter: string): QuestionReadingPart {
+  return {
+    id: part.id,
+    letter,
+    typeLabel: SECTION_LABELS[part.type],
+    stem: part.stem,
+    ...(part.type === 'multiple-choice'
+      ? {
+          choices: part.choices.map((choice) => ({
+            id: choice.id,
+            content: childNodes(choice.node),
+            correct: choice.correct,
+            locked: choice.locked,
+          })),
+        }
+      : {}),
+    ...(part.suggestedAnswer ? { suggestedAnswer: childNodes(part.suggestedAnswer) } : {}),
+  }
+}
 
 /** An editor Question, as the reading draws it. */
 export function readingOfQuestion(question: Question): QuestionReadingContent {
@@ -61,23 +93,17 @@ export function readingOfQuestion(question: Question): QuestionReadingContent {
   if (question.type === 'multipart') {
     return {
       ...base,
-      parts: partsOf(question).map((part, index) => ({
-        id: part.id,
-        letter: bankLetter(index).toLowerCase(),
-        typeLabel: SECTION_LABELS[part.type],
-        stem: part.stem,
-        ...(part.type === 'multiple-choice'
+      parts: partsOf(question).map((part, index): QuestionReadingPart =>
+        part.type === 'subparts'
           ? {
-              choices: part.choices.map((choice) => ({
-                id: choice.id,
-                content: childNodes(choice.node),
-                correct: choice.correct,
-                locked: choice.locked,
-              })),
+              id: part.id,
+              letter: bankLetter(index).toLowerCase(),
+              typeLabel: SUBPARTS_LABEL,
+              stem: part.stem,
+              subparts: part.subparts.map((subpart, subpartIndex) =>
+                readingOfPart(subpart, subpartLabelAt(subpartIndex))),
             }
-          : {}),
-        ...(part.suggestedAnswer ? { suggestedAnswer: childNodes(part.suggestedAnswer) } : {}),
-      })),
+          : readingOfPart({ ...part, type: part.type }, bankLetter(index).toLowerCase())),
     }
   }
   if (question.type === 'matching') {

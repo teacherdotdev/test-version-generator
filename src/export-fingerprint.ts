@@ -17,7 +17,15 @@
 // first differing line, and that line says what the document says.
 
 import {
+  answerKeyPointsText,
+  answerKeyTotalText,
+  printedLabel,
+  partsOpenNumberLine,
+  pointsOnLastRule,
+  printedNumberOf,
   printsNumberLine,
+  runningFootOf,
+  subpartsOpenLabelLine,
   type ChoiceGrid,
   type ExportDocument,
   type LayoutPlan,
@@ -25,8 +33,10 @@ import {
   type PageFurniture,
   type PageItem,
   type PlannedPart,
+  type PlannedWorkSpace,
   type QuestionItem,
 } from './export-plan'
+import { centredKind } from './centring'
 import { arrangementRange } from './export-preparation'
 import type { ProseMirrorJSON } from './question-doc'
 import { MARGIN_SIDES, type MarginSide } from './page-margins'
@@ -64,10 +74,12 @@ export type ExportFingerprint = {
 //
 //   heading:<1-6|title> <inline>   a heading, at its level
 //   para <inline>                  an ordinary paragraph
+//   para:center <inline>           …a Centred one, or a Centred figure or its caption
 //   code <inline>                  a code block
 //   list:<bullet|ordered>:<n> <inline>
 //   rule                           a horizontal rule
 //   table:<rows>x<columns>         a table or a choice grid opens
+//   table:<rows>x<columns>:center  …a Centred table
 //   cell:<row>,<column>            one cell opens; its own lines follow
 //   /table                         the table closes
 //   box                            a Blockquote's border opens; its lines follow
@@ -77,6 +89,7 @@ export type ExportFingerprint = {
 //   /side                          the Side-by-Side closes
 //   space:blank                    a Short Answer question's empty work space
 //   space:lines:<n>                …or its work space ruled with n lines
+//   space:lines:<n>:dotted         …ruled with n dotted lines
 //
 // and inline content as:
 //
@@ -301,9 +314,12 @@ function planBlock(
     ? `list:${context.list.ordered ? 'ordered' : 'bullet'}:${context.list.level}`
     : 'para'
 
+  // A Centred block's own lines say so; a list item's never are.
+  const own = context.list ? kind : centredKind(kind, node)
+
   switch (node.type) {
     case 'paragraph':
-      return [line(kind, renderInline([...opener, ...inlineSegments(node, images)]))]
+      return [line(own, renderInline([...opener, ...inlineSegments(node, images)]))]
 
     case 'heading': {
       const level = Math.min(Math.max(Number(attrs.level) || 1, 1), 6)
@@ -394,7 +410,7 @@ function planBlock(
     case 'image-block': {
       const caption = stringOf(attrs.caption)
       const figure = line(
-        kind,
+        own,
         renderInline([
           ...opener,
           { kind: 'image', ordinal: images.take(stringOf(attrs.src)) },
@@ -403,7 +419,7 @@ function planBlock(
       return caption
         ? [
             figure,
-            line(kind, renderInline([{ kind: 'text', text: caption, marks: ['emphasis'] }])),
+            line(own, renderInline([{ kind: 'text', text: caption, marks: ['emphasis'] }])),
           ]
         : [figure]
     }
@@ -439,7 +455,7 @@ function planTable(node: ProseMirrorJSON, images: ImageOrdinals): ContentLine[] 
     (widest, row) => Math.max(widest, childrenOf(row).length),
     1,
   )
-  const lines: ContentLine[] = [`table:${rows.length}x${columns}`]
+  const lines: ContentLine[] = [centredKind(`table:${rows.length}x${columns}`, node)]
   rows.forEach((row, rowIndex) => {
     for (let column = 0; column < columns; column += 1) {
       lines.push(`cell:${rowIndex},${column}`)
@@ -463,7 +479,7 @@ function planGrid(grid: ChoiceGrid, images: ImageOrdinals): ContentLine[] {
         ? planBlocks(
             childrenOf(choice.node),
             {
-              opener: [{ kind: 'text', text: `${choice.letter}. `, marks: [] }],
+              opener: [{ kind: 'text', text: `${printedLabel(choice.letter, choice.printed)} `, marks: [] }],
             },
             images,
           )
@@ -493,14 +509,14 @@ function planMatching(set: MatchingSet, images: ImageOrdinals): ContentLine[] {
   }
   const prompts = set.prompts.map((prompt) => ({
     node: prompt.node,
-    opener: `_______ ${prompt.number}. `,
+    opener: `_______ ${printedLabel(prompt.number, prompt.printed)} `,
   }))
   if (set.bankGrid) {
     const lines: ContentLine[] = [`table:${set.bankGrid.rows}x${set.bankGrid.columns}`]
     set.bankGrid.cells.forEach((row, rowIndex) => {
       row.forEach((answer, column) => {
         lines.push(`cell:${rowIndex},${column}`)
-        const content = answer ? cellLines(answer.node, `${answer.letter}. `) : []
+        const content = answer ? cellLines(answer.node, `${printedLabel(answer.letter, answer.printed)} `) : []
         lines.push(...(content.length > 0 ? content : ['para']))
       })
     })
@@ -513,7 +529,7 @@ function planMatching(set: MatchingSet, images: ImageOrdinals): ContentLine[] {
     ...column(prompts),
     'cell:0,1',
     ...column(
-      set.bank.map((answer) => ({ node: answer.node, opener: `${answer.letter}. ` })),
+      set.bank.map((answer) => ({ node: answer.node, opener: `${printedLabel(answer.letter, answer.printed)} ` })),
     ),
     '/table',
   ]
@@ -522,8 +538,30 @@ function planMatching(set: MatchingSet, images: ImageOrdinals): ContentLine[] {
 /** A work space as the vocabulary writes it. Its height is geometry and is not
  *  compared; whether it is there, blank or ruled, and how many rules it
  *  carries, is content a student writes on. */
-export function workSpaceLine(style: string, lines: number): ContentLine {
-  return style === 'lines' ? `space:lines:${lines}` : 'space:blank'
+/** A work space's line; `points` are what stands on its last rule, read as
+ *  its own text: `space:lines:3:dotted [3]`. */
+export function workSpaceLine(style: string, lines: number, ruling?: string, points?: string): ContentLine {
+  if (style !== 'lines') return 'space:blank'
+  const space = ruling === 'dotted' ? `space:lines:${lines}:dotted` : `space:lines:${lines}`
+  return points ? `${space} ${normalizeSpace(points).trim()}` : space
+}
+
+/** A planned work space's line, when it takes any room, and the Points after
+ *  the answer it ends — on its last rule when it has one
+ *  (`pointsOnLastRule`), otherwise a paragraph of their own. */
+function answerSpaceLines(space: PlannedWorkSpace | null, pointsAfter?: string): ContentLine[] {
+  if (pointsAfter && pointsOnLastRule(space)) {
+    return [workSpaceLine(space!.style, space!.lines, space!.ruling, pointsAfter)]
+  }
+  return [
+    ...(space && space.height > 0 ? [workSpaceLine(space.style, space.lines, space.ruling)] : []),
+    ...pointsLines(pointsAfter ? [pointsAfter] : undefined),
+  ]
+}
+
+/** Points printed after an answer or a question: a paragraph of their own. */
+function pointsLines(texts: readonly string[] | undefined): ContentLine[] {
+  return (texts ?? []).map((text) => line('para', renderInline([{ kind: 'text', text, marks: [] }])))
 }
 
 function planQuestion(item: QuestionItem, images: ImageOrdinals): ContentLine[] {
@@ -531,46 +569,74 @@ function planQuestion(item: QuestionItem, images: ImageOrdinals): ContentLine[] 
     ? [
         {
           kind: 'text',
-          text: `${[...item.question.marks, `${item.question.number}.`].join(' ')} `,
+          text: `${[...item.question.marks, printedNumberOf(item.question)].join(' ')} `,
           marks: [],
         },
       ]
     : []
+  // A Multipart question with no stem opens with Part (a) on its number's
+  // line, so the number opens the Part's first line instead.
+  const opening = partsOpenNumberLine(item)
   const stem =
     item.stem.length > 0
       ? planBlocks(item.stem, { opener }, images)
-      : opener.length > 0
+      : opener.length > 0 && !opening
         ? [line('para', renderInline(opener))]
         : []
   return [
     ...stem,
     ...(item.grid ? planGrid(item.grid, images) : []),
     ...(item.matching ? planMatching(item.matching, images) : []),
-    ...(item.workSpace && item.workSpace.height > 0
-      ? [workSpaceLine(item.workSpace.style, item.workSpace.lines)]
-      : []),
-    ...(item.parts ?? []).flatMap((part) => planPart(part, images)),
+    ...answerSpaceLines(item.workSpace, item.pointsAfter),
+    ...(item.parts ?? []).flatMap((part, index) =>
+      planPart(part, images, opening && index === 0 ? opener : [])),
+    ...pointsLines(item.closingPoints),
   ]
 }
 
-// A Multipart question's Part reads as a question of its kind does: its blank and letter
-// open its stem, and its grid or work space follows.
-function planPart(part: PlannedPart, images: ImageOrdinals): ContentLine[] {
-  const opener: Segment[] = [
-    {
-      kind: 'text',
-      text: `${part.letter}. `,
-      marks: [],
-    },
+// A Multipart question's Part reads as a question of its kind does: its letter
+// opens its stem, and its grid or work space follows — or, for a Part that
+// holds Subparts, each Subpart read the same way under its own label. A piece
+// continued from an earlier page carries no letter or label, only the stem
+// blocks it carries and what follows them (ADR-0048).
+// `lead` is what opens the Part's first line before its own letter: the
+// question's number, when the Part prints on the number's line. A Part with
+// no lead-in passes its letter on, with the lead, to its first Subpart.
+function planPart(part: PlannedPart, images: ImageOrdinals, lead: Segment[] = []): ContentLine[] {
+  const letter: Segment[] = [...lead, { kind: 'text', text: `${printedLabel(part.letter, part.printed)} `, marks: [] }]
+  const opening = subpartsOpenLabelLine(part)
+  return [
+    ...(opening ? [] : planAnswering(part.continued ? [] : letter, part, images)),
+    ...part.subparts.flatMap((subpart, index) =>
+      planAnswering(
+        subpart.continued
+          ? []
+          : [
+              ...(opening && index === 0 ? letter : []),
+              { kind: 'text', text: `${printedLabel(subpart.label, subpart.printed)} `, marks: [] },
+            ],
+        subpart,
+        images,
+      )),
   ]
+}
+
+function planAnswering(
+  opener: Segment[],
+  part: Pick<PlannedPart, 'stem' | 'grid' | 'workSpace' | 'pointsAfter'>,
+  images: ImageOrdinals,
+): ContentLine[] {
   const stem = planBlocks(part.stem, { opener }, images)
   return [
-    ...(stem.length > 0 ? stem : [line('para', renderInline(opener))]),
+    ...(stem.length > 0 ? stem : opener.length > 0 ? [line('para', renderInline(opener))] : []),
     ...(part.grid ? planGrid(part.grid, images) : []),
-    ...(part.workSpace && part.workSpace.height > 0
-      ? [workSpaceLine(part.workSpace.style, part.workSpace.lines)]
-      : []),
+    ...answerSpaceLines(part.workSpace, part.pointsAfter),
   ]
+}
+
+/** An Answer Key line's `[n]`, after its answer, when it has points. */
+export function pointsSegments(points: number | undefined): Segment[] {
+  return points === undefined ? [] : [{ kind: 'text', text: ` ${answerKeyPointsText(points)}`, marks: [] }]
 }
 
 export function planItemLines(
@@ -578,6 +644,8 @@ export function planItemLines(
   images: ImageOrdinals,
 ): ContentLine[] {
   switch (item.kind) {
+    case 'paper-total':
+      return [line('para', renderInline([{ kind: 'text', text: item.text, marks: [] }]))]
     case 'section-heading':
       // A cleared part says nothing in any format, so it says nothing here.
       return [
@@ -594,7 +662,12 @@ export function planItemLines(
     case 'question':
       return planQuestion(item, images)
     case 'answer-key-heading':
-      return ['heading:1 Answer Section']
+      // The paper's total shares the heading's line in every adapter.
+      return [
+        item.totalPoints !== undefined
+          ? `heading:1 Answer Section ${answerKeyTotalText(item.totalPoints)}`
+          : 'heading:1 Answer Section',
+      ]
     case 'answer-key-section':
       return [`heading:2 ${item.title}`]
     case 'answer-key-entry': {
@@ -612,6 +685,7 @@ export function planItemLines(
             ...(item.letter
               ? [{ kind: 'text' as const, text: item.letter, marks: ['strong'] }]
               : []),
+            ...pointsSegments(item.points),
             ...(metadata.length > 0
               ? [{ kind: 'text' as const, text: ` ${metadata.join(' ')}`, marks: [] }]
               : []),
@@ -626,6 +700,7 @@ export function planItemLines(
               ...(part.answer
                 ? [{ kind: 'text' as const, text: part.answer, marks: ['strong'] }]
                 : []),
+              ...pointsSegments(part.points),
             ]),
           ),
           ...(part.suggestedAnswer ? planBlocks(part.suggestedAnswer, {}, images) : []),
@@ -651,11 +726,13 @@ function furnitureLines(furniture: PageFurniture): {
   ].filter(Boolean).join(' ')
   return {
     header: [
+      // A page number printed at the top is a row of its own, above the line.
+      ...(furniture.pageNumberAt === 'top' ? [`para ${furniture.pageNumber}`] : []),
       // An unlabeled answer key page's identity line holds nothing at all.
       identity ? `para ${identity}` : 'para',
       ...(furniture.title === null ? [] : [`heading:title ${furniture.title}`]),
     ],
-    footer: [`para ${furniture.pageNumber}`],
+    footer: [line('para', runningFootOf(furniture).join(' '))],
   }
 }
 

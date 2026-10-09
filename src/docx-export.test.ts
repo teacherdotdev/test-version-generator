@@ -25,7 +25,7 @@ import { descendants, parseXml, path } from './xml'
 import { FIXTURES, PIXEL_PNG, paragraph, text } from './export-fixtures'
 import { CHOICE_INDENT, pageSizeOf, planExport, questionIndentOf, unmeasured, STUDENT_TEST } from './export-plan'
 import type { Arrangement, Exam } from './exam'
-import { ANSWER_BLANK } from './question-style'
+import { ANSWER_BLANK } from './paper-style'
 
 const exam: Exam = {
   title: 'Chemistry: Unit 3 / Review',
@@ -447,7 +447,7 @@ describe('what Word is asked to draw stays on the sheet', () => {
 
 describe('a choice grid hangs where print draws it', () => {
   // Print sets a Multiple Choice question's answers in from its stem by
-  // `CHOICE_INDENT`, and the stem starts past the number column the Question
+  // `CHOICE_INDENT`, and the stem starts past the number column the Paper
   // Style decides; the grid then runs to the right margin the Exam set.
   test('past a Classic answer blank and the answers’ indent, to the Exam’s own right margin', async () => {
     const classic = FIXTURES.find((fixture) => fixture.name.includes('classic'))!

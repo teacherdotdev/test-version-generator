@@ -40,6 +40,7 @@ import {
 } from './question-bank-import'
 import { mediaFilePath } from './package-zip'
 import { choicesOf, partsOf } from './exam'
+import { pointsOfQuestion } from './points'
 import type { QuestionBankResource } from './question-bank-workspaces'
 
 function fixtureRootFor(version: string): string {
@@ -114,6 +115,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     const names = await filesIn(exampleRoot)
 
     expect(names).toEqual([
+      'centred-figure.json',
       'complete-rich-text.json',
       'cropped-picture.json',
       'locked-answers.json',
@@ -122,9 +124,11 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       'minimal-multiple-choice.json',
       'multipart.json',
       'pending-images.json',
+      'points.json',
       'provenance-and-links.json',
       'short-answer.json',
       'side-by-side.json',
+      'subparts.json',
       'true-false.json',
     ])
     for (const name of names) {
@@ -355,6 +359,69 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     })
   })
 
+  test('a Centred figure, caption and table reach the editor centred, and are written back centred', async () => {
+    const proposal = await inspectFixture(exampleRoot, 'centred-figure.json')
+    const stem = proposal.record.bank.questions[0]!.stem
+    const aligned = (content: readonly { align?: string }[]) => content.map((node) => node.align ?? 'left')
+    expect(aligned(stem.content)).toEqual(['left', 'center', 'center', 'left', 'center', 'center', 'left'])
+
+    const editor = recordDocumentToEditorNodes(stem, proposal.record.media)
+    expect(editor.map((node) => (node.attrs as { align?: string } | undefined)?.align ?? 'left')).toEqual(
+      ['left', 'center', 'center', 'left', 'center', 'center', 'left'],
+    )
+    expect(editor[1]!.type).toBe('image-block')
+    expect(JSON.stringify(editor[4])).toContain('"text":"42"')
+
+    const questions = importedQuestionsFromRecord(proposal.record)
+    const png = [...(await mediaBeside(exampleRoot))].find(([path]) => path.includes('c414cd0e'))![1]
+    const prepared = await prepareQuestionBankExport({
+      id: 'local-bank',
+      name: 'Centred Figure',
+      createdAt: 'not-public',
+      lastUpdatedAt: 'not-public',
+      questions,
+    }, async () => ({ data: png, mimeType: 'image/png', width: 1, height: 1 }))
+    const generated = JSON.parse(decoder.decode(prepared.recordBytes)) as QuestionBankRecord
+    const validate = new Ajv2020({ strict: true }).compile(publicSchema)
+    expect(validate(generated), JSON.stringify(validate.errors)).toBe(true)
+    const written = generated.bank.questions[0]!.stem.content
+    expect(aligned(written)).toEqual(['left', 'center', 'center', 'left', 'center', 'center', 'left'])
+    // The table's own cell keeps its centred paragraph.
+    expect(JSON.stringify(written[4])).toContain('"align":"center","content":[{"type":"text","text":"42"}]')
+  })
+
+  test('a list item’s and an answer’s blocks import to the left', async () => {
+    const record = (await fixture(exampleRoot, 'centred-figure.json')) as {
+      bank: { questions: Record<string, unknown>[] }
+      media: unknown[]
+    }
+    record.media = []
+    const centred = { type: 'paragraph', align: 'center', content: [{ type: 'text', text: 'Leaf A' }] }
+    record.bank.questions[0] = {
+      id: 'q1',
+      type: 'multiple-choice',
+      stem: {
+        type: 'document',
+        content: [{ type: 'bullet-list', content: [{ type: 'list-item', content: [centred] }] }],
+      },
+      choices: [
+        { id: 'q1-c1', correct: true, content: { type: 'document', content: [centred] } },
+        { id: 'q1-c2', correct: false, content: { type: 'document', content: [centred] } },
+      ],
+    }
+    const proposal = await inspectQuestionBankRecordValue(record, undefined, packageFiles(await mediaBeside(exampleRoot)))
+    expect(JSON.stringify(proposal.record.bank)).not.toContain('"align"')
+  })
+
+  test('a record older than 0.9.0 has no Centred blocks: its `align` is ignored and every block is left', async () => {
+    const record = (await fixture(exampleRoot, 'centred-figure.json')) as { formatVersion: string }
+    record.formatVersion = '0.8.0'
+    const proposal = await inspectQuestionBankRecordValue(record, undefined, packageFiles(await mediaBeside(exampleRoot)))
+    expect(JSON.stringify(proposal.record)).not.toContain('"align"')
+    const [imported] = importedQuestionsFromRecord(proposal.record)
+    expect(JSON.stringify(imported)).not.toContain('"align"')
+  })
+
   test('a Locked Answer says so, an unlocked one says it was unlocked, and both reach the editor', async () => {
     const proposal = await inspectFixture(exampleRoot, 'locked-answers.json')
     const [planets, photosynthesis, falling] = proposal.record.bank.questions
@@ -368,6 +435,126 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     // “None of the above” reads as locked, but its author unlocked it.
     expect(choicesOf(imported[1]!).map((choice) => choice.locked)).toEqual([false, false, true, false])
     expect(partsOf(imported[2]!)[0]!.choices.map((choice) => choice.locked)).toEqual([false, false, true])
+  })
+
+  test('a Part holds Subparts as its lead-in, and they reach the editor numbered beneath it', async () => {
+    const proposal = await inspectFixture(exampleRoot, 'subparts.json')
+    const [pond] = proposal.record.bank.questions
+    const [answering, holding] = pond!.parts!
+
+    expect(answering).toMatchObject({ id: 'q1-s1', type: 'short-answer' })
+    expect(holding).not.toHaveProperty('type')
+    expect(holding).toMatchObject({ id: 'q1-s2' })
+    const subparts = (holding as { subparts: { id: string; type: string }[] }).subparts
+    expect(subparts.map(({ id, type }) => [id, type])).toEqual([
+      ['q1-s2-s1', 'multiple-choice'],
+      ['q1-s2-s2', 'short-answer'],
+      ['q1-s2-s3', 'short-answer'],
+    ])
+
+    const [imported] = importedQuestionsFromRecord(proposal.record)
+    const parts = partsOf(imported!)
+    expect(parts.map((part) => part.type)).toEqual(['open', 'subparts'])
+    expect(parts[1]!.subparts.map((subpart) => subpart.type)).toEqual(['multiple-choice', 'open', 'open'])
+    expect(parts[1]!.subparts[0]!.choices.map((choice) => [choice.correct, choice.locked])).toEqual([
+      [true, false],
+      [false, false],
+      [false, true],
+    ])
+  })
+
+  test('a record older than 0.9.0 has no Subparts: its Parts all answer, and a `subparts` it carries is ignored', async () => {
+    const record = (await fixture(exampleRoot, 'subparts.json')) as {
+      formatVersion: string
+      bank: { questions: { parts: Record<string, unknown>[] }[] }
+    }
+    record.formatVersion = '0.8.0'
+    // An older record cannot leave a Part's type out.
+    try {
+      await inspectQuestionBankRecordValue(structuredClone(record))
+      throw new Error('unexpectedly conformed')
+    } catch (error) {
+      expect((error as QuestionBankImportError).code).toBe('invalid-structure')
+    }
+    record.bank.questions[0]!.parts[1]!.type = 'short-answer'
+    const proposal = await inspectQuestionBankRecordValue(record)
+    expect(proposal.record.bank.questions[0]!.parts![1]).not.toHaveProperty('subparts')
+    expect(partsOf(importedQuestionsFromRecord(proposal.record)[0]!)[1]!.type).toBe('open')
+  })
+
+  test('Points reach the editor on a question, a whole Matching set, a Part and a Subpart', async () => {
+    const proposal = await inspectFixture(exampleRoot, 'points.json')
+    const questions = importedQuestionsFromRecord(proposal.record)
+    expect(questions.map((question) => question.points)).toEqual([1, 1, 2, 3, undefined, undefined])
+    expect(questions.map(pointsOfQuestion)).toEqual([1, 1, 2, 3, undefined, 4])
+    const [a, b] = partsOf(questions[5]!)
+    expect(a!.points).toBe(1)
+    expect(b!.points).toBeUndefined()
+    expect(b!.subparts.map((subpart) => subpart.points)).toEqual([1, 2, undefined])
+  })
+
+  test('Points are refused on a Multipart Question and on a Part that holds Subparts, by name', async () => {
+    for (const [name, message] of [
+      ['points-on-multipart.json', 'Multipart Question “q6” is worth what its Parts and Subparts are, so it cannot have Points of its own; give them to its Parts and Subparts.'],
+      ['points-on-lead-in.json', 'Part b (“q6-s2”) of Multipart Question “q6” holds Subparts, so it cannot also have a type, choices, a Suggested Answer or Points of its own; each Subpart carries its own.'],
+    ] as const) {
+      try {
+        await inspectFixture(invalidRoot, name)
+        throw new Error(`${name} unexpectedly conformed`)
+      } catch (error) {
+        expect((error as QuestionBankImportError).message, name).toBe(message)
+      }
+    }
+  })
+
+  test('a record older than 0.9.0 has no Points: every Question it holds is unpointed', async () => {
+    const record = (await fixture(exampleRoot, 'points.json')) as {
+      formatVersion: string
+      bank: { questions: Record<string, unknown>[] }
+    }
+    record.formatVersion = '0.8.0'
+    // An older record has no Subparts either, so the lead-in answers.
+    const multipart = record.bank.questions[5] as { parts: Record<string, unknown>[] }
+    multipart.parts[1] = { id: 'q6-s2', type: 'short-answer', stem: multipart.parts[1]!.stem, points: 3 }
+    const proposal = await inspectQuestionBankRecordValue(record)
+    expect(JSON.stringify(proposal.record)).not.toContain('"points"')
+    expect(importedQuestionsFromRecord(proposal.record).map(pointsOfQuestion)).toEqual(
+      [undefined, undefined, undefined, undefined, undefined, undefined],
+    )
+  })
+
+  test('Points are written where a student answers, validate, and import back as they were', async () => {
+    const proposal = await inspectFixture(exampleRoot, 'points.json')
+    const questions = importedQuestionsFromRecord(proposal.record)
+    // A Multipart question's stored `points`, should one carry any, is never written.
+    questions[5] = { ...questions[5]!, points: 9 }
+    const prepared = await prepareQuestionBankExport({
+      id: 'local-bank',
+      name: 'Points',
+      createdAt: 'not-public',
+      lastUpdatedAt: 'not-public',
+      questions,
+    })
+    const generated = JSON.parse(decoder.decode(prepared.recordBytes)) as QuestionBankRecord
+    const validate = new Ajv2020({ strict: true }).compile(publicSchema)
+    expect(validate(generated), JSON.stringify(validate.errors)).toBe(true)
+    expect(generated.bank.questions.map((question) => question.points)).toEqual([1, 1, 2, 3, undefined, undefined])
+    const parts = generated.bank.questions[5]!.parts!
+    expect(parts.map((part) => (part as { points?: number }).points)).toEqual([1, undefined])
+    expect((parts[1] as { subparts: { points?: number }[] }).subparts.map((subpart) => subpart.points)).toEqual([1, 2, undefined])
+    const again = importedQuestionsFromRecord((await inspectQuestionBankRecord(prepared.recordBytes)).record)
+    expect(again.map(pointsOfQuestion)).toEqual([1, 1, 2, 3, undefined, 4])
+  })
+
+  test('a Part that holds Subparts and answers too is refused, by name', async () => {
+    try {
+      await inspectFixture(invalidRoot, 'subparts-and-answers.json')
+      throw new Error('unexpectedly conformed')
+    } catch (error) {
+      expect((error as QuestionBankImportError).message).toBe(
+        'Part b (“q1-s2”) of Multipart Question “q1” holds Subparts, so it cannot also have a type, choices, a Suggested Answer or Points of its own; each Subpart carries its own.',
+      )
+    }
   })
 
   test('a record older than 0.9.0 has no Locked Answers of its own, so its wording locks its answers', async () => {
@@ -401,6 +588,8 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       string
     >
     expect(Object.keys(manifest).sort()).toEqual([
+      'align-on-heading.json',
+      'align-right.json',
       'bad-reference.json',
       'base64-media.json',
       'crop-inverted.json',
@@ -421,11 +610,18 @@ describe('public Question Bank Record 0.9.0 contract', () => {
       'pending-unknown-member.json',
       'pending-with-asset.json',
       'pending-zero.json',
+      'points-fraction.json',
+      'points-on-lead-in.json',
+      'points-on-multipart.json',
+      'points-zero.json',
       'side-by-side-four-panels.json',
       'side-by-side-in-blockquote.json',
       'side-by-side-in-choice.json',
       'side-by-side-nested.json',
       'side-by-side-one-panel.json',
+      'subparts-and-answers.json',
+      'subparts-empty.json',
+      'subparts-nested.json',
       'unsafe-url.json',
       'unsupported-required-feature.json',
       'unsupported-version.json',
@@ -433,7 +629,7 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     const validate = new Ajv2020({ allErrors: true, strict: true }).compile(publicSchema)
     for (const [name, code] of Object.entries(manifest)) {
       // An inverted crop is well-formed: only the importer can compare its sides.
-      if (/^(?:pending-|side-by-side-|crop-(?!inverted)|base64-|locked-)/.test(name))
+      if (/^(?:pending-|side-by-side-|crop-(?!inverted)|base64-|locked-|subparts-|points-|align-)/.test(name))
         expect(validate(await fixture(invalidRoot, name)), name).toBe(false)
       // Only the importer can compare a crop's sides, or look for a file.
       if (['crop-inverted.json', 'missing-media-file.json', 'invalid-media.json'].includes(name))
@@ -578,6 +774,103 @@ describe('public Question Bank Record 0.9.0 contract', () => {
     expect(generated.bank.questions[1]!.parts![0]!.choices!.map((choice) => choice.locked)).toEqual([
       undefined, undefined, true,
     ])
+  })
+
+  test('a Part with Subparts is written as their lead-in, validates, and imports back as it was', async () => {
+    const validate = new Ajv2020({ strict: true }).compile(publicSchema)
+    const text = (value: string) => [{ type: 'paragraph', content: [{ type: 'text', text: value }] }]
+    const answering = (type: string, id: string, stem: string, answer: Record<string, unknown>) => ({
+      type,
+      attrs: { id, columns: 2 },
+      content: [{ type: 'multipartPartStem', content: text(stem) }, answer],
+    })
+    const bank: QuestionBankResource = {
+      id: 'local-bank',
+      name: 'Generated Subparts',
+      createdAt: 'not-public',
+      lastUpdatedAt: 'not-public',
+      questions: [{
+        id: 'local-multipart',
+        type: 'multipart',
+        columns: 2,
+        doc: {
+          type: 'doc',
+          content: [
+            ...text('A table of rainfall by month.'),
+            {
+              type: 'multipartParts',
+              content: [
+                answering('multipartPart', 'local-a', 'Which month was wettest?', {
+                  type: 'suggestedAnswer', content: text('March.'),
+                }),
+                {
+                  type: 'multipartPart',
+                  attrs: { id: 'local-b', columns: 2 },
+                  content: [
+                    { type: 'multipartPartStem', content: text('Rain fell on 12 days in May.') },
+                    {
+                      type: 'multipartSubparts',
+                      content: [
+                        answering('multipartSubpart', 'local-b-i', 'Is that more than in April?', {
+                          type: 'multipleChoice',
+                          content: ['Yes', 'No'].map((answer, index) => ({
+                            type: 'multipleChoiceChoice',
+                            attrs: { id: `local-b-i-${index}`, correct: index === 0 },
+                            content: text(answer),
+                          })),
+                        }),
+                        answering('multipartSubpart', 'local-b-ii', 'Give a reason.', {
+                          type: 'suggestedAnswer', content: [{ type: 'paragraph' }],
+                        }),
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      }],
+    }
+    const prepared = await prepareQuestionBankExport(bank)
+    const generated = JSON.parse(decoder.decode(prepared.recordBytes)) as QuestionBankRecord
+
+    expect(generated.formatVersion).toBe('0.9.0')
+    expect(validate(generated), JSON.stringify(validate.errors)).toBe(true)
+    expect(generated.bank.questions[0]!.parts![1]).toEqual({
+      id: 'q1-s2',
+      stem: { type: 'document', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Rain fell on 12 days in May.' }] }] },
+      subparts: [
+        expect.objectContaining({
+          id: 'q1-s2-s1',
+          type: 'multiple-choice',
+          choices: [
+            expect.objectContaining({ id: 'q1-s2-s1-c1', correct: true }),
+            expect.objectContaining({ id: 'q1-s2-s1-c2', correct: false }),
+          ],
+        }),
+        { id: 'q1-s2-s2', type: 'short-answer', stem: expect.anything() },
+      ],
+    })
+
+    const proposal = await inspectQuestionBankRecord(prepared.recordBytes)
+    const [imported] = importedQuestionsFromRecord(proposal.record)
+    const original = partsOf(bank.questions[0]!)
+    const back = partsOf(imported!)
+    // Fresh local ids, the same Parts and Subparts.
+    const shape = (parts: typeof back) => parts.map((part) => ({
+      type: part.type,
+      stem: part.stem,
+      subparts: part.subparts.map((subpart) => ({
+        type: subpart.type,
+        stem: subpart.stem,
+        choices: subpart.choices.map((choice) => [choice.correct, choice.node.content]),
+        suggestedAnswer: subpart.suggestedAnswer,
+      })),
+      suggestedAnswer: part.suggestedAnswer,
+    }))
+    expect(shape(back)).toEqual(shape(original))
+    expect(back[1]!.subparts[0]!.id).not.toBe('local-b-i')
   })
 })
 

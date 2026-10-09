@@ -21,7 +21,9 @@ import {
   partAnswerNodeOf,
   partStemNodesOf,
   promptAnswerIdOf,
+  readPoints,
   multipartPartNodesOf,
+  subpartNodesOf,
   withFreshChoiceIds,
   type ProseMirrorJSON,
 } from './question-doc'
@@ -36,7 +38,7 @@ import {
 } from './section-headings'
 import type { ExamHeader } from './page-header'
 import type { PageMargins } from './page-margins'
-import { questionStyleRules, type QuestionStyle } from './question-style'
+import { paperStyleRules, type PaperStyle } from './paper-style'
 import { newMatchingNode } from './matching'
 import { newMultipartPartsNode } from './multipart'
 
@@ -47,8 +49,8 @@ export type QuestionType =
   | 'open'
   | 'multipart'
 
-/** What a Part of a Multipart question can be: Multiple Choice, or Short Answer — the
- *  `'open'` type's internal name, as for a whole question. */
+/** What a Part or Subpart of a Multipart question can answer as: Multiple Choice, or
+ *  Short Answer — the `'open'` type's internal name, as for a whole question. */
 export type PartType = 'multiple-choice' | 'open'
 
 /** Whether a question of this type answers with choices a teacher picks from.
@@ -118,6 +120,13 @@ export type Question = {
   // record written before either existed still reads as a valid question.
   difficulty?: Difficulty
   topics?: string[]
+  /** What answering it is worth, for a Multiple Choice, True/False, Short
+   *  Answer or Matching question; absent when it is unpointed. A Multipart
+   *  question never stores Points of its own: its Parts and Subparts carry
+   *  theirs on their document nodes, and its worth is their sum (see
+   *  `points.ts`, ADR-0042). Owned by the Question, so it is the same on every
+   *  Exam that uses it. */
+  points?: number
 }
 
 export type Exam = {
@@ -132,6 +141,10 @@ export type Exam = {
    *  Exam presentation like answer columns, stored for every Matching
    *  position. See `wordBankLayoutOf` in export-plan.ts. */
   wordBankLayout?: Record<string, WordBankLayout>
+  /** The Matching positions whose Word Bank layout the teacher chose, keyed by
+   *  question id. A change of Paper Style places every other one again and
+   *  never these (ADR-0044). Absent means the teacher chose none. */
+  wordBankLayoutSet?: Record<string, true>
   /** This Exam's Question Sections, in the order they print. Absent on an Exam
    *  written before Sections were stored: its Sections are then derived, one
    *  per Question Type (see `sectionsOf`). */
@@ -150,9 +163,9 @@ export type Exam = {
   textSize?: TextSize
   /** How every question on it prints: what goes before a number, how answers
    *  are lettered and laid out, what room a Short Answer position leaves when
-   *  the teacher has set none. See `question-style.ts`. Absent means
+   *  the teacher has set none. See `paper-style.ts`. Absent means
    *  `'standard'`. */
-  questionStyle?: QuestionStyle
+  paperStyle?: PaperStyle
   /** This Exam's own test-page header lines, where they depart from the
    *  default blanks. See `page-header.ts`. */
   header?: ExamHeader
@@ -169,7 +182,7 @@ export type WorkSpaceStyle = 'blank' | 'lines'
  *  `height` is in CSS pixels at 96dpi, and is always a whole number of
  *  `WORK_SPACE_LINE_PITCH`s: it stores how many rows of room the teacher
  *  asked for, so switching between blank and lined never moves anything on
- *  the page. The page lays those rows out by the Exam's Question Style
+ *  the page. The page lays those rows out by the Exam's Paper Style
  *  (`workSpaceRowsOf`, `laidWorkSpaceHeight`), so a style that sets them
  *  closer together never rewrites what is stored. `fill` stretches
  *  the space to the foot of whatever page the question lands on — `height` is
@@ -204,9 +217,9 @@ export function workSpaceRows(pitch: number = WORK_SPACE_LINE_PITCH): WorkSpaceR
   return { pitch, first: pitch * (1 - FIRST_ROW_INSET) }
 }
 
-/** The rows a Work Space lies in under an Exam's Question Style. */
-export function workSpaceRowsOf(style: QuestionStyle | undefined): WorkSpaceRows {
-  return workSpaceRows(questionStyleRules(style).workSpacePitch)
+/** The rows a Work Space lies in under an Exam's Paper Style. */
+export function workSpaceRowsOf(style: PaperStyle | undefined): WorkSpaceRows {
+  return workSpaceRows(paperStyleRules(style).workSpacePitch)
 }
 
 /** The height a stored Work Space takes on the page: as many rows as it
@@ -267,36 +280,37 @@ export function isWorkSpace(value: unknown): value is WorkSpace {
 
 /** A question's work space on this Exam. The one reader, so an Exam written
  *  before work space existed, and a question no one has given any, both read
- *  as its Question Style's default — none, unless the style rules answer
+ *  as its Paper Style's default — none, unless the style rules answer
  *  lines. A work space the teacher set, "None" stored as a zero height
  *  included, always wins over the style (ADR-0041). */
 export function workSpaceOf(exam: Exam, questionId: string): WorkSpace {
-  return workSpaceIn(exam.workSpace, exam.questionStyle, questionId)
+  return workSpaceIn(exam.workSpace, exam.paperStyle, questionId)
 }
 
 /** `workSpaceOf`, for callers holding an Exam's settings rather than an Exam:
  *  the stored work space, or the style's default where none is stored. */
 export function workSpaceIn(
   spaces: Readonly<Record<string, WorkSpace>> | undefined,
-  style: QuestionStyle | undefined,
+  style: PaperStyle | undefined,
   questionId: string,
 ): WorkSpace {
   const space = spaces?.[questionId]
   return space && isWorkSpace(space) ? space : defaultWorkSpaceOf(style)
 }
 
-/** The room a Short Answer position leaves under this Question Style when the
+/** The room a Short Answer position leaves under this Paper Style when the
  *  teacher has set none. */
-export function defaultWorkSpaceOf(style: QuestionStyle | undefined): WorkSpace {
-  return questionStyleRules(style).defaultWorkSpace ?? NO_WORK_SPACE
+export function defaultWorkSpaceOf(style: PaperStyle | undefined): WorkSpace {
+  return paperStyleRules(style).defaultWorkSpace ?? NO_WORK_SPACE
 }
 
 /** Where a Matching question's Word Bank prints on one Exam: beside its
  *  Items, or above them in columns. Exam presentation, set on the sheet like a
  *  Multiple Choice question's answer columns, and always a concrete choice:
- *  a position takes one when it arrives on the Exam, from its Question Style
+ *  a position takes one when it arrives on the Exam, from its Paper Style
  *  and whether its Word Bank fits beside (`wordBankLayoutFor` in
- *  export-plan.ts), and a change of style sets every one again. */
+ *  export-plan.ts), and a change of style sets again every one the teacher
+ *  did not choose (`wordBankLayoutSet`, ADR-0044). */
 export type WordBankLayout = 'beside' | 'above'
 
 /** Whether a stored value is a Word Bank layout this build can print. */
@@ -341,19 +355,35 @@ export type Prompt = {
   node: ProseMirrorJSON
 }
 
-// One Part of a Multipart question, read out of its document: its stable id, what it
-// asks for, its own stem, and — for a Multiple Choice Part — its answers and
-// the columns they lay out in, or — for a Short Answer Part — its Suggested
-// Answer. Parts are never Questions of their own: they print lettered under
-// their question's one number, and the Question Bank keeps them together.
-export type Part = {
+// One Subpart of a Part, read out of its document: its stable id, what it asks
+// for, its own stem, and — for a Multiple Choice Subpart — its answers and the
+// columns they lay out in, or — for a Short Answer one — its Suggested Answer.
+// A Part that answers itself has exactly this shape too, so whatever is set
+// per position on an Exam — answer order, columns, Work Space — is set on
+// either the same way, under its own id.
+export type Subpart = {
   id: string
   type: PartType
   stem: ProseMirrorJSON[]
   choices: Choice[]
   columns: ColumnSetting
-  /** A Short Answer Part's Suggested Answer as a document, when it has one. */
+  /** A Short Answer one's Suggested Answer as a document, when it has one. */
   suggestedAnswer?: ProseMirrorJSON
+  /** What answering it is worth; absent when it is unpointed. A Part that
+   *  holds Subparts has none of its own (ADR-0043). */
+  points?: number
+}
+
+// One Part of a Multipart question, read out of its document. A Part either
+// answers, as a Subpart does, or holds Subparts and answers nothing itself
+// (ADR-0043): its type is then `'subparts'`, its stem is their shared lead-in,
+// and it has no answers or Suggested Answer of its own. Parts are never
+// Questions of their own: they print lettered under their question's one
+// number, and the Question Bank keeps them together.
+export type Part = Omit<Subpart, 'type'> & {
+  type: PartType | 'subparts'
+  /** The Subparts it holds, in authored order; empty for a Part that answers. */
+  subparts: Subpart[]
 }
 
 // The order Question Types are listed in wherever a teacher picks one, and the
@@ -1012,60 +1042,96 @@ function isBlankDocument(doc: ProseMirrorJSON | undefined): boolean {
   )
 }
 
+// A Part or Subpart node read as one that answers: Multiple Choice unless it
+// holds a Suggested Answer, as the editor reads it.
+function answeringPartOf(node: ProseMirrorJSON): Subpart {
+  const answer = partAnswerNodeOf(node)
+  const type: PartType = answer?.type === 'suggestedAnswer' ? 'open' : 'multiple-choice'
+  const part: Subpart = {
+    id: choiceIdOf(node),
+    type,
+    stem: partStemNodesOf(node),
+    choices:
+      type === 'multiple-choice'
+        ? choiceNodesOf({ content: answer ? [answer] : [] }).map((choice) => ({
+            id: choiceIdOf(choice),
+            correct: choiceIsCorrect(choice),
+            locked: choiceIsLocked(choice),
+            node: choice,
+          }))
+        : [],
+    columns: partColumnsOf(node),
+  }
+  const points = readPoints(((node.attrs ?? {}) as Record<string, unknown>).points)
+  if (points !== undefined) part.points = points
+  if (type === 'open' && answer) {
+    const suggested: ProseMirrorJSON = {
+      type: 'doc',
+      content: Array.isArray(answer.content) ? answer.content : [],
+    }
+    if (!isBlankDocument(suggested)) part.suggestedAnswer = suggested
+  }
+  return part
+}
+
+function partColumnsOf(node: ProseMirrorJSON): ColumnSetting {
+  const columns = ((node.attrs ?? {}) as Record<string, unknown>).columns
+  return columns === 1 || columns === 2 || columns === 4 ? columns : DEFAULT_COLUMNS
+}
+
 // A Multipart question's Parts in authored order — the order they are lettered in on
-// every arrangement. Empty for any other question type.
+// every arrangement — each with its Subparts, if it holds any. Empty for any
+// other question type.
 export function partsOf(question: Question): Part[] {
   if (question.type !== 'multipart') return []
-  return multipartPartNodesOf(question.doc).map((node) => {
-    const answer = partAnswerNodeOf(node)
-    const attrs = (node.attrs ?? {}) as Record<string, unknown>
-    const columns = attrs.columns
-    const type: PartType = answer?.type === 'suggestedAnswer' ? 'open' : 'multiple-choice'
-    const part: Part = {
+  return multipartPartNodesOf(question.doc).map((node): Part => {
+    const subparts = subpartNodesOf(node).map(answeringPartOf)
+    if (subparts.length === 0) return { ...answeringPartOf(node), subparts }
+    return {
       id: choiceIdOf(node),
-      type,
+      type: 'subparts',
       stem: partStemNodesOf(node),
-      choices:
-        type === 'multiple-choice'
-          ? choiceNodesOf({ content: answer ? [answer] : [] }).map((choice) => ({
-              id: choiceIdOf(choice),
-              correct: choiceIsCorrect(choice),
-              locked: choiceIsLocked(choice),
-              node: choice,
-            }))
-          : [],
-      columns: columns === 1 || columns === 2 || columns === 4 ? columns : DEFAULT_COLUMNS,
+      choices: [],
+      columns: partColumnsOf(node),
+      subparts,
     }
-    if (type === 'open' && answer) {
-      const suggested: ProseMirrorJSON = {
-        type: 'doc',
-        content: Array.isArray(answer.content) ? answer.content : [],
-      }
-      if (!isBlankDocument(suggested)) part.suggestedAnswer = suggested
-    }
-    return part
   })
 }
 
-/** The one Part with this id among an Exam's Multipart questions, along with
- *  the question that holds it. */
+/** Everything a student answers in a Multipart question, in the order it prints:
+ *  each Part that answers itself, and in place of a Part that holds Subparts,
+ *  its Subparts. These are what answer order, answer columns and Work Space are
+ *  set on, each under its own id. Empty for any other question type. */
+export function answeringPartsOf(question: Question): Subpart[] {
+  return partsOf(question).flatMap(({ subparts, type, ...part }): Subpart[] =>
+    type === 'subparts' ? subparts : [{ ...part, type }],
+  )
+}
+
+/** The one Part or Subpart that answers with this id among an Exam's Multipart
+ *  questions, along with the question that holds it. A Part that holds
+ *  Subparts answers nothing, so it is never found here. */
 export function partById(
   exam: Pick<Exam, 'questions'>,
   partId: string,
-): { question: Question; part: Part } | undefined {
+): { question: Question; part: Subpart } | undefined {
   for (const question of exam.questions) {
-    const part = partsOf(question).find(({ id }) => id === partId)
+    const part = answeringPartsOf(question).find(({ id }) => id === partId)
     if (part) return { question, part }
   }
   return undefined
 }
 
 /** Every key an Exam's presentation settings may file under for this
- *  question: its own id, and each of its Parts' ids. Answer order, answer
- *  columns and Work Space are set per Part on a Multipart question, so removing or
- *  replacing the Multipart question has to reach them all. */
+ *  question: its own id, and each of its Parts' and Subparts' ids. Answer
+ *  order, answer columns and Work Space are set per Part or Subpart on a
+ *  Multipart question, so removing or replacing the Multipart question has to
+ *  reach them all. */
 export function presentationIdsOf(question: Question): string[] {
-  return [question.id, ...partsOf(question).map((part) => part.id)]
+  return [
+    question.id,
+    ...partsOf(question).flatMap((part) => [part.id, ...part.subparts.map(({ id }) => id)]),
+  ]
 }
 
 /** Answers in an arrangement's order with every Locked Answer back at its
@@ -1102,9 +1168,12 @@ export function withAnswersMoved(current: readonly Choice[], moving: readonly st
   return current.map((choice) => (choice.locked ? choice.id : moving[next++]!))
 }
 
-/** A Multiple Choice Part's answers in the order this arrangement puts them
- *  in, keyed in `choiceOrder` by the Part's id as a question's are by its own. */
-export function orderedPartChoices(part: Part, arrangement: Arrangement): Choice[] {
+/** A Multiple Choice Part's or Subpart's answers in the order this arrangement
+ *  puts them in, keyed in `choiceOrder` by its id as a question's are by its own. */
+export function orderedPartChoices(
+  part: Pick<Subpart, 'id' | 'choices'>,
+  arrangement: Arrangement,
+): Choice[] {
   return arrangedChoices(part.choices, arrangement.choiceOrder[part.id] ?? [])
 }
 
@@ -1202,8 +1271,8 @@ export function shuffleSelectedQuestions(
 /**
  * Shuffles the answers of every selected eligible Multiple Choice question, the
  * Word Bank of every selected matching set, and the answers of every Multiple
- * Choice Part of a selected Multipart question, independently. A Multipart question's Parts
- * themselves never move: they are lettered in place. The Question
+ * Choice Part or Subpart of a selected Multipart question, independently. A Multipart
+ * question's Parts and Subparts themselves never move: they are lettered in place. The Question
  * Content is not changed: this records an order of stable choice ids in the
  * arrangement alone, so correctness remains on the choice it was authored on
  * and every prompt still names the same answer under its new letter.
@@ -1227,13 +1296,13 @@ export function shuffleSelectedAnswers(
   let changed = false
 
   // Everything whose answers may vary: each eligible question, and each
-  // Multiple Choice Part of a selected Multipart question, which Varies as a Multiple
-  // Choice question does under the Part's own id.
+  // Multiple Choice Part or Subpart of a selected Multipart question, which Varies as
+  // a Multiple Choice question does under its own id.
   const targets: { id: string; current: Choice[] }[] = []
   for (const question of exam.questions) {
     if (!selected.has(question.id)) continue
     if (question.type === 'multipart') {
-      for (const part of partsOf(question)) {
+      for (const part of answeringPartsOf(question)) {
         if (part.type === 'multiple-choice') {
           targets.push({ id: part.id, current: orderedPartChoices(part, arrangement) })
         }

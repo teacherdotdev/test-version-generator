@@ -20,7 +20,12 @@ import {
   workSpaceLine,
 } from './export-fingerprint'
 import { child, descendants, parseXml, path, type XmlNode } from './xml'
-import { BLOCKQUOTE_TABLE_STYLE, SIDE_BY_SIDE_TABLE_STYLE } from './docx-export'
+import {
+  BLOCKQUOTE_TABLE_STYLE,
+  CENTRED_PARAGRAPH_STYLE,
+  CENTRED_TABLE_STYLE,
+  SIDE_BY_SIDE_TABLE_STYLE,
+} from './docx-export'
 
 // ---------------------------------------------------------------------------
 // Package reading
@@ -126,6 +131,13 @@ type Reader = {
   nextImage: () => number
 }
 
+/** Whether a toggle property is on: present, unless its value turns it off —
+ *  `0` or `false`, either of which OOXML allows. */
+function isOn(property: XmlNode): boolean {
+  const value = property.attrs['w:val']
+  return value !== '0' && value !== 'false'
+}
+
 function runMarks(run: XmlNode, extra: readonly string[]): string[] {
   const properties = child(run, 'w:rPr')
   const marks = [...extra]
@@ -133,13 +145,13 @@ function runMarks(run: XmlNode, extra: readonly string[]): string[] {
   for (const property of properties.children) {
     switch (property.name) {
       case 'w:b':
-        if (property.attrs['w:val'] !== '0') marks.push('strong')
+        if (isOn(property)) marks.push('strong')
         break
       case 'w:i':
-        if (property.attrs['w:val'] !== '0') marks.push('emphasis')
+        if (isOn(property)) marks.push('emphasis')
         break
       case 'w:strike':
-        if (property.attrs['w:val'] !== '0') marks.push('strike_through')
+        if (isOn(property)) marks.push('strike_through')
         break
       case 'w:vertAlign':
         if (property.attrs['w:val'] === 'subscript') marks.push('subscript')
@@ -237,7 +249,7 @@ function paragraphLine(paragraph: XmlNode, reader: Reader): ContentLine {
 
   if (properties && child(properties, 'w:pBdr')) return line('rule', inline)
   if (properties && child(properties, 'w:shd')) return line('code', inline)
-  return line('para', inline)
+  return line(style === CENTRED_PARAGRAPH_STYLE ? 'para:center' : 'para', inline)
 }
 
 /** The `w:tblStyle` a table names, which is how `docx-export.ts` marks the
@@ -289,7 +301,9 @@ function tableLines(table: XmlNode, reader: Reader): ContentLine[] {
       Math.max(widest, row.children.filter((cell) => cell.name === 'w:tc').length),
     1,
   )
-  const lines: ContentLine[] = [`table:${rows.length}x${columns}`]
+  const lines: ContentLine[] = [
+    `table:${rows.length}x${columns}${style === CENTRED_TABLE_STYLE ? ':center' : ''}`,
+  ]
   rows.forEach((row, rowIndex) => {
     const cells = row.children.filter((cell) => cell.name === 'w:tc')
     for (let column = 0; column < columns; column += 1) {
@@ -325,9 +339,13 @@ function paragraphStyleOf(paragraph: XmlNode): string | undefined {
 
 function blockLines(container: XmlNode, reader: Reader): ContentLine[] {
   const lines: ContentLine[] = []
-  const open: { space: { style: 'blank' | 'lines'; rules: number } | null } = { space: null }
+  const open: {
+    space: { style: 'blank' | 'lines'; rules: number; ruling?: string; points?: string } | null
+  } = { space: null }
   const closeSpace = () => {
-    if (open.space) lines.push(workSpaceLine(open.space.style, open.space.rules))
+    if (open.space) {
+      lines.push(workSpaceLine(open.space.style, open.space.rules, open.space.ruling, open.space.points))
+    }
     open.space = null
   }
   for (const node of container.children) {
@@ -339,7 +357,17 @@ function blockLines(container: XmlNode, reader: Reader): ContentLine[] {
         closeSpace()
         open.space = { style: spaceStyle, rules: 0 }
       }
+      const rule = path(node, 'w:pPr', 'w:pBdr', 'w:bottom')
       if (path(node, 'w:pPr', 'w:pBdr')) open.space!.rules += 1
+      if (rule?.attrs['w:val'] === 'dotted') open.space!.ruling = 'dotted'
+      // The last rule, drawn as a tab's leader up to the answer's Points.
+      const leader = path(node, 'w:pPr', 'w:tabs', 'w:tab')?.attrs['w:leader']
+      if (leader) {
+        open.space!.rules += 1
+        if (leader === 'dot') open.space!.ruling = 'dotted'
+        const points = renderInline(inlineSegments(node, [], reader))
+        if (points) open.space!.points = points
+      }
       continue
     }
     closeSpace()

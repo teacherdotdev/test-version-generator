@@ -1,5 +1,5 @@
 import { htmlBlocks, plainBlocks } from '../rich-text'
-import { excerpt, linesOf, plainStructure, type Line } from '../text'
+import { excerpt, linesOf, plainStructure, pointsIn, type Line } from '../text'
 import type { Blocks, ForeignChoice, ForeignQuestion, FormatInput, FormatSpec, ImportIssue, ParseResult } from '../types'
 
 /**
@@ -13,9 +13,9 @@ import type { Blocks, ForeignChoice, ForeignQuestion, FormatInput, FormatSpec, I
  * Lines above a question say more about it: `Type:` gives its kind (`E`
  * essay, `F` fill in the blank, `S` short answer, `MT` matching, `MA`, `MS`
  * or `MR` multiple answer, `ORD` ordering, `FMB` fill in multiple blanks),
- * `Title:` its title, and `Points:` its points and every later question's.
- * `~ ` and `@ ` lines are feedback. Test Parrot keeps none of titles, points
- * and feedback.
+ * `Title:` its title, and `Points:` its points and every later question's,
+ * kept as Points when a whole number. `~ ` and `@ ` lines are feedback.
+ * Test Parrot keeps neither titles nor feedback.
  *
  * Where Respondus would quietly mark answer A correct because nothing else
  * is, this leaves the question out and says so: a guessed answer key is
@@ -26,7 +26,7 @@ const QUESTION = /^\s*(\d+)\s*[.)]\s+(.*)$/
 const CHOICE = /^\s*(\*)?\s*([A-Ta-t])\s*[.)]\s+(.*)$/
 const TYPE = /^\s*Type:\s*(\S+)\s*$/i
 const TITLE = /^\s*Title:/i
-const POINTS = /^\s*Points:/i
+const POINTS = /^\s*Points:\s*(.*)$/i
 const FEEDBACK = /^\s*[@~]\s/
 const ANSWERS = /^\s*Answers:\s*$/i
 const KEY_ENTRY = /^\s*(\d+)\s*[.)]\s*(.*)$/
@@ -44,6 +44,7 @@ type Draft = {
   number: string
   line: number
   sourceType?: string
+  points?: number
   stem: string[]
   choices: { correct: boolean; letter: string; lines: string[]; line: number }[]
 }
@@ -106,6 +107,8 @@ export function parseRespondus(text: string): ParseResult {
   const body = keyAt === -1 ? lines : lines.slice(0, keyAt)
 
   let pendingType: string | undefined
+  // A `Points:` line holds for every question after it, until the next.
+  let points: number | undefined
   let draft: Draft | null = null
   // Where continuation lines go: the stem, the last answer, or feedback.
   let target: 'stem' | 'choice' | 'feedback' = 'stem'
@@ -149,7 +152,9 @@ export function parseRespondus(text: string): ParseResult {
       pendingType = type[1]!
       continue
     }
-    if (TITLE.test(text) || POINTS.test(text)) {
+    const pointsLine = POINTS.exec(text)
+    if (pointsLine) points = pointsIn(pointsLine[1])
+    if (TITLE.test(text) || pointsLine) {
       finish()
       continue
     }
@@ -158,7 +163,7 @@ export function parseRespondus(text: string): ParseResult {
       finish()
       const at = line.text.length - line.text.trimStart().length
       const original = line.text.slice(at).replace(/^\s*\d+\s*[.)]\s+/, '')
-      draft = { number: question[1]!, line: line.line, sourceType: pendingType, stem: [original.trim() || question[2]!], choices: [] }
+      draft = { number: question[1]!, line: line.line, sourceType: pendingType, points, stem: [original.trim() || question[2]!], choices: [] }
       pendingType = undefined
       target = 'stem'
       continue
@@ -197,7 +202,7 @@ function build(draft: Draft, key: Map<string, string[]>, content: (text: string)
   const keyed = key.get(draft.number)
   const choiceText = (choice: Draft['choices'][number]) => choice.lines.join(' ').trim()
   const sourceType = draft.sourceType ?? 'MC'
-  const base = { line, sourceType, stem }
+  const base = { line, sourceType, stem, ...(draft.points !== undefined ? { points: draft.points } : {}) }
   if (!kind) {
     return { code: 'unsupported-type', error: `Test Parrot cannot read Respondus questions of type “${draft.sourceType}”, so it was left out.` }
   }

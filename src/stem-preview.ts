@@ -73,7 +73,7 @@ export function stemPreview(question: Question): StemPreview {
 
 /**
  * Everything a stem search reads for this question: the row's own line and,
- * for a Multipart question, each Part's stem as well — a teacher looking for "Aldmere"
+ * for a Multipart question, each Part's and Subpart's stem as well — a teacher looking for "Aldmere"
  * should find the Multipart question whether the word is in the passage or in the
  * question asked about it. Answers stay out of reach, as they do for any
  * question.
@@ -81,7 +81,8 @@ export function stemPreview(question: Question): StemPreview {
 export function searchableText(question: Question): string {
   return [
     stemPreview(question).text,
-    ...partsOf(question).map((part) => previewOf(part.stem).text),
+    ...partsOf(question).flatMap((part) =>
+      [part, ...part.subparts].map((shown) => previewOf(shown.stem).text)),
   ].join(' ')
 }
 

@@ -44,6 +44,11 @@ export type ForeignQuestion = {
    *  for messages. */
   sourceType?: string
   topics?: string[]
+  /** The points the source gives the whole question, as it wrote them. A
+   *  positive whole number becomes its Points; any other is dropped, since
+   *  Points are positive whole numbers (ADR-0042). A Matching set's are the
+   *  set's. */
+  points?: number
   stem: Blocks
 } & (
   | { kind: 'multiple-choice'; choices: ForeignChoice[] }

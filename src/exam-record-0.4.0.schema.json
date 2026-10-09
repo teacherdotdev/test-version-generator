@@ -44,12 +44,13 @@
         "large"
       ]
     },
-    "questionStyle": {
-      "description": "How every question on the Exam prints (ADR-0041). `standard` circles T or F and a capital letter and adds nothing. `classic` prints an answer blank before each Multiple Choice and True/False number, letters answers and the Word Bank in lower case with the Word Bank above its Items, and rules three answer lines below a Short Answer Question or Part with no `workSpace`. `condensed` stands questions closer together, lays Multiple Choice answers across the line where they fit, rules three answer lines below a Short Answer Question or Part with no `workSpace`, and sets every Work Space's rows closer together, keeping its count of rows. Absent means standard.",
+    "paperStyle": {
+      "description": "How every question on the Exam prints (ADR-0041). `standard` circles T or F and a capital letter and adds nothing. `classic` prints an answer blank before each Multiple Choice and True/False number, letters answers and the Word Bank in lower case with the Word Bank above its Items, and rules three answer lines below a Short Answer Question or Part with no `workSpace`. `condensed` stands questions closer together, lays Multiple Choice answers across the line where they fit, rules three answer lines below a Short Answer Question or Part with no `workSpace`, and sets every Work Space's rows closer together, keeping its count of rows. `exam-board` prints on A4, labels questions `1`, Parts `(a)` and Subparts `(i)`, rules dotted answer lines (three below a Short Answer Question or Part with no `workSpace`), and prints each answer's Points as `[n]` at the right margin and each Multipart question's total beneath it, with the paper's total beneath the title (ADR-0045). Absent means standard.",
       "enum": [
         "standard",
         "classic",
-        "condensed"
+        "condensed",
+        "exam-board"
       ]
     },
     "header": {
@@ -175,16 +176,20 @@
           }
         },
         "wordBankLayout": {
-          "description": "Where a Matching position's Word Bank prints: `beside` its Items, or `above` them in columns. Absent, the importer places it once, by the Exam's `questionStyle` and whether its widest answer fits a column beside the Items, and stores that.",
+          "description": "Where a Matching position's Word Bank prints: `beside` its Items, or `above` them in columns. Absent, the importer places it once, by the Exam's `paperStyle` and whether its widest answer fits a column beside the Items, and stores that.",
           "enum": [
             "beside",
             "above"
           ]
+        },
+        "wordBankLayoutSet": {
+          "description": "Whether the teacher chose this Matching position's `wordBankLayout`, rather than it being placed by the Exam's `paperStyle` and the fit rule. A chosen layout stays where it is when the Exam later changes style; any other is placed again. Read only beside a `wordBankLayout`. Absent means false.",
+          "type": "boolean"
         }
       }
     },
     "workSpace": {
-      "description": "Room left below a Short Answer Question for a student's working. A `height` of 0 with `fill` false is no room, set on purpose: it wins over the room a `questionStyle` would otherwise rule there.",
+      "description": "Room left below a Short Answer Question for a student's working. A `height` of 0 with `fill` false is no room, set on purpose: it wins over the room a `paperStyle` would otherwise rule there.",
       "type": "object",
       "required": [
         "height",
