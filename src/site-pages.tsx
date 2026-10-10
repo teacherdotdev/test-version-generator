@@ -1,7 +1,7 @@
 import type { PersistentStorageStatus } from './durable-storage'
 import { AppShell } from './app-shell'
 
-const SUPPORT_EMAIL = 'support@testparrot.com'
+const SUPPORT_EMAIL = 'support@teacher.dev'
 
 export function AboutPage({
   persistentStorage,
