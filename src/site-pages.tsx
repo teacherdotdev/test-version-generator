@@ -1,6 +1,6 @@
 import { Footer, SiteHeader } from './site-chrome'
 
-const SUPPORT_EMAIL = 'support@testparrot.com'
+const SUPPORT_EMAIL = 'support@teacher.dev'
 
 export function AboutPage() {
   return (
